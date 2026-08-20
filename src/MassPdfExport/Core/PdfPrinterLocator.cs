@@ -11,11 +11,17 @@ namespace GvrTools.MassPdfExport.Core
     /// </summary>
     public static class PdfPrinterLocator
     {
+        public static string[] GetInstalledPrinters()
+        {
+            return System.Drawing.Printing.PrinterSettings.InstalledPrinters
+                .Cast<string>()
+                .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
+                .ToArray();
+        }
+
         public static string FindPdfPrinterName()
         {
-            string[] installed = System.Drawing.Printing.PrinterSettings.InstalledPrinters
-                .Cast<string>()
-                .ToArray();
+            string[] installed = GetInstalledPrinters();
 
             string builtIn = installed.FirstOrDefault(n =>
                 string.Equals(n, "Microsoft Print to PDF", StringComparison.OrdinalIgnoreCase));

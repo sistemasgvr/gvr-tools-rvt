@@ -22,9 +22,14 @@ lámina exportada.
 - Nombre de archivo configurable mediante tokens: `{SheetNumber}`, `{SheetName}`,
   `{RevisionNumber}`, `{RevisionDescription}` (por defecto: `{SheetNumber} - {SheetName}`).
 - Cada lámina se exporta en el tamaño de papel que le corresponde según su rótulo (título), no en
-  un tamaño fijo para todas.
+  un tamaño fijo para todas — se puede desactivar si da problemas con una impresora en particular.
+- Opciones de plotéo configurables: qué impresora PDF usar (por si hay más de una instalada o la
+  detección automática elige mal), si se ajusta el contenido a la página o se imprime a escala
+  real 100%, y si se imprime sin margen o con el margen mínimo de la impresora.
+- Recuerda entre sesiones de Revit la última carpeta de destino, impresora y opciones usadas.
 - Barra de progreso con opción de cancelar a mitad de proceso, resumen final con errores por
-  lámina (si los hubiera), y opción de abrir la carpeta de destino al finalizar.
+  lámina (si los hubiera, con el detalle exacto de qué falló y con qué configuración), y opción de
+  abrir la carpeta de destino al finalizar.
 - No depende del idioma de instalación de Revit ni de Windows: no asume nombres de categorías,
   parámetros ni impresoras en inglés.
 
@@ -78,9 +83,13 @@ Parámetros útiles:
 3. Selecciona las láminas a exportar (con casillas, búsqueda o un set de láminas guardado).
 4. Elige la carpeta destino con **Examinar...**. El cuadro inferior muestra la subcarpeta que se
    creará (con el nombre del proyecto).
-5. Ajusta el patrón de nombre de archivo si lo necesitas.
+5. Ajusta el patrón de nombre de archivo y las opciones de plotéo (impresora, ajustar a página,
+   margen) si lo necesitas.
 6. Presiona **Exportar PDF**. Puedes cancelar en cualquier momento; al finalizar se muestra un
    resumen y, si la opción está marcada, se abre la carpeta de destino.
+
+La carpeta de destino, la impresora y las demás opciones quedan guardadas para la próxima vez que
+abras la ventana (incluso en otro proyecto o después de reiniciar Revit).
 
 ### Estructura del proyecto
 
@@ -92,9 +101,11 @@ src/MassPdfExport/
   Core/
     SheetCollector.cs          Lee láminas y sets de láminas del documento
     SheetSizeReader.cs         Mide el tamaño real de una lámina a partir de su rótulo
-    PdfPrinterLocator.cs       Busca una impresora PDF instalada, sin asumir idioma
+    PdfPrinterLocator.cs       Busca/lista impresoras PDF instaladas, sin asumir idioma
     PaperSizeMatcher.cs        Empareja el tamaño de la lámina con un tamaño de papel del driver
     PdfExportService.cs        Orquesta la exportación lámina por lámina vía PrintManager
+    PdfExportOptions.cs        Opciones de plotéo configurables (impresora, zoom, margen, tamaño)
+    AppSettings.cs             Persiste la carpeta/impresora/opciones entre sesiones de Revit
     FileNaming.cs              Arma y sanea el nombre de archivo a partir de un patrón
     ExportModels.cs            Modelos simples de progreso/resultado/resumen
     NaturalSortComparer.cs     Orden natural de números de lámina (A-2 antes que A-10)

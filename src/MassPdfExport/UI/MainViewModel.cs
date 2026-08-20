@@ -26,12 +26,14 @@ namespace GvrTools.MassPdfExport.UI
         private readonly PdfExportService _exportService = new PdfExportService();
         private readonly Dictionary<string, HashSet<ElementId>> _sheetSets;
         private readonly Dispatcher _dispatcher;
+        private readonly AppSettings _settings;
 
         private bool _cancelRequested;
 
         public ObservableCollection<SheetRow> Sheets { get; } = new ObservableCollection<SheetRow>();
         public ICollectionView SheetsView { get; }
         public List<string> SheetSetNames { get; }
+        public List<string> AvailablePrinters { get; }
         public string DocumentTitle { get; }
 
         private string _searchText = string.Empty;
@@ -70,6 +72,34 @@ namespace GvrTools.MassPdfExport.UI
         {
             get => _openFolderWhenDone;
             set => Set(ref _openFolderWhenDone, value);
+        }
+
+        private string _selectedPrinter;
+        public string SelectedPrinter
+        {
+            get => _selectedPrinter;
+            set => Set(ref _selectedPrinter, value);
+        }
+
+        private bool _noMargin = true;
+        public bool NoMargin
+        {
+            get => _noMargin;
+            set => Set(ref _noMargin, value);
+        }
+
+        private bool _fitToPage = true;
+        public bool FitToPage
+        {
+            get => _fitToPage;
+            set => Set(ref _fitToPage, value);
+        }
+
+        private bool _matchSheetSize = true;
+        public bool MatchSheetSize
+        {
+            get => _matchSheetSize;
+            set => Set(ref _matchSheetSize, value);
         }
 
         private bool _isExporting;
@@ -112,6 +142,7 @@ namespace GvrTools.MassPdfExport.UI
             _document = document;
             _sheetSets = sheetSets ?? new Dictionary<string, HashSet<ElementId>>();
             _dispatcher = Dispatcher.CurrentDispatcher;
+            _settings = AppSettings.Load();
 
             DocumentTitle = string.IsNullOrWhiteSpace(document.Title) ? "Proyecto" : document.Title;
 
@@ -125,7 +156,17 @@ namespace GvrTools.MassPdfExport.UI
             SheetSetNames.AddRange(_sheetSets.Keys.OrderBy(k => k, StringComparer.CurrentCultureIgnoreCase));
             _selectedSheetSet = AllSheetSetsLabel;
 
-            OutputFolder = GetDefaultFolder(document);
+            AvailablePrinters = PdfPrinterLocator.GetInstalledPrinters().ToList();
+            _selectedPrinter = ResolveInitialPrinter(_settings.PrinterName, AvailablePrinters);
+
+            OutputFolder = !string.IsNullOrWhiteSpace(_settings.OutputFolder) && Directory.Exists(_settings.OutputFolder)
+                ? _settings.OutputFolder
+                : GetDefaultFolder(document);
+            _namingPattern = string.IsNullOrWhiteSpace(_settings.NamingPattern) ? FileNaming.DefaultPattern : _settings.NamingPattern;
+            _openFolderWhenDone = _settings.OpenFolderWhenDone;
+            _noMargin = _settings.NoMargin;
+            _fitToPage = _settings.FitToPage;
+            _matchSheetSize = _settings.MatchSheetSize;
 
             SelectAllCommand = new RelayCommand(_ => SetVisibleSelection(true));
             SelectNoneCommand = new RelayCommand(_ => SetVisibleSelection(false));
@@ -182,6 +223,30 @@ namespace GvrTools.MassPdfExport.UI
             return Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
         }
 
+        private static string ResolveInitialPrinter(string savedPrinter, List<string> installed)
+        {
+            if (!string.IsNullOrWhiteSpace(savedPrinter) && installed.Contains(savedPrinter))
+                return savedPrinter;
+
+            string autoDetected = PdfPrinterLocator.FindPdfPrinterName();
+            if (autoDetected != null && installed.Contains(autoDetected))
+                return autoDetected;
+
+            return installed.FirstOrDefault();
+        }
+
+        private void SaveSettings()
+        {
+            _settings.OutputFolder = OutputFolder;
+            _settings.NamingPattern = NamingPattern;
+            _settings.PrinterName = SelectedPrinter ?? string.Empty;
+            _settings.NoMargin = NoMargin;
+            _settings.FitToPage = FitToPage;
+            _settings.MatchSheetSize = MatchSheetSize;
+            _settings.OpenFolderWhenDone = OpenFolderWhenDone;
+            _settings.Save();
+        }
+
         private void BrowseFolder()
         {
             using (var dialog = new FolderBrowserDialog
@@ -194,7 +259,10 @@ namespace GvrTools.MassPdfExport.UI
                     dialog.SelectedPath = OutputFolder;
 
                 if (dialog.ShowDialog() == DialogResult.OK)
+                {
                     OutputFolder = dialog.SelectedPath;
+                    SaveSettings();
+                }
             }
         }
 
@@ -215,6 +283,15 @@ namespace GvrTools.MassPdfExport.UI
             if (selected.Count == 0 || string.IsNullOrWhiteSpace(OutputFolder)) return;
 
             string targetFolder = Path.Combine(OutputFolder, FileNaming.Sanitize(DocumentTitle));
+            var exportOptions = new PdfExportOptions
+            {
+                PrinterName = SelectedPrinter,
+                NoMargin = NoMargin,
+                FitToPage = FitToPage,
+                MatchSheetSize = MatchSheetSize
+            };
+
+            SaveSettings();
 
             _cancelRequested = false;
             IsExporting = true;
@@ -231,6 +308,7 @@ namespace GvrTools.MassPdfExport.UI
                     selected,
                     targetFolder,
                     NamingPattern,
+                    exportOptions,
                     OnProgress,
                     () => _cancelRequested);
             }

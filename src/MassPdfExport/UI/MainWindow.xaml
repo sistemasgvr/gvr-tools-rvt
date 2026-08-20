@@ -29,9 +29,10 @@
             <RowDefinition Height="*"/>      <!-- 2: sheet grid -->
             <RowDefinition Height="Auto"/>   <!-- 3: output folder -->
             <RowDefinition Height="Auto"/>   <!-- 4: naming pattern -->
-            <RowDefinition Height="Auto"/>   <!-- 5: open-folder option -->
-            <RowDefinition Height="Auto"/>   <!-- 6: progress / status -->
-            <RowDefinition Height="Auto"/>   <!-- 7: action buttons -->
+            <RowDefinition Height="Auto"/>   <!-- 5: print options (printer, margen, zoom, tamaño) -->
+            <RowDefinition Height="Auto"/>   <!-- 6: open-folder option -->
+            <RowDefinition Height="Auto"/>   <!-- 7: progress / status -->
+            <RowDefinition Height="Auto"/>   <!-- 8: action buttons -->
         </Grid.RowDefinitions>
 
         <!-- Header -->
@@ -119,23 +120,46 @@
                        Text="Tokens disponibles: {SheetNumber}  {SheetName}  {RevisionNumber}  {RevisionDescription}"/>
         </Grid>
 
+        <!-- Print options -->
+        <Border Grid.Row="5" Margin="0,12,0,0" Padding="10" Background="#F5F5F5" CornerRadius="3">
+            <StackPanel>
+                <Grid>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto"/>
+                        <ColumnDefinition Width="*"/>
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Grid.Column="0" Text="Impresora PDF:" VerticalAlignment="Center" Margin="0,0,8,0"/>
+                    <ComboBox Grid.Column="1" HorizontalAlignment="Left" MinWidth="260"
+                              ItemsSource="{Binding AvailablePrinters}" SelectedItem="{Binding SelectedPrinter}"/>
+                </Grid>
+                <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
+                    <CheckBox Content="Detectar tamaño de cada lámina" IsChecked="{Binding MatchSheetSize}" Margin="0,0,20,0"
+                              ToolTip="Intenta usar el tamaño de papel real de cada lámina según su rótulo."/>
+                    <CheckBox Content="Ajustar a la página" IsChecked="{Binding FitToPage}" Margin="0,0,20,0"
+                              ToolTip="Si no está marcado, imprime a escala real 100%."/>
+                    <CheckBox Content="Sin margen" IsChecked="{Binding NoMargin}"
+                              ToolTip="Si no está marcado, usa el margen mínimo de la impresora."/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Open-folder option -->
-        <CheckBox Grid.Row="5" Content="Abrir la carpeta de destino al finalizar la exportación"
+        <CheckBox Grid.Row="6" Content="Abrir la carpeta de destino al finalizar la exportación"
                   IsChecked="{Binding OpenFolderWhenDone}" Margin="0,10,0,0"/>
 
         <!-- Progress / status -->
-        <Grid Grid.Row="6" Margin="0,14,0,0">
+        <Grid Grid.Row="7" Margin="0,14,0,0">
             <Grid.RowDefinitions>
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="Auto"/>
             </Grid.RowDefinitions>
             <ProgressBar Grid.Row="0" Height="16" Minimum="0" Maximum="{Binding ProgressTotal}" Value="{Binding ProgressCurrent, Mode=OneWay}"
                          Visibility="{Binding IsExporting, Converter={StaticResource BoolToVis}}"/>
-            <TextBlock Grid.Row="1" Margin="0,4,0,0" Text="{Binding StatusText}" Foreground="#444"/>
+            <TextBlock Grid.Row="1" Margin="0,4,0,0" Text="{Binding StatusText}" Foreground="#444" TextWrapping="Wrap"/>
         </Grid>
 
         <!-- Action buttons -->
-        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
+        <StackPanel Grid.Row="8" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,16,0,0">
             <Button Content="Cancelar" Style="{StaticResource ActionButton}" Command="{Binding CancelCommand}"
                     Visibility="{Binding IsExporting, Converter={StaticResource BoolToVis}}"/>
             <Button Content="Exportar PDF" Style="{StaticResource ActionButton}" Command="{Binding ExportCommand}"
