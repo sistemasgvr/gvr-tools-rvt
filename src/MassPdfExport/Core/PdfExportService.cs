@@ -125,9 +125,14 @@ namespace GvrTools.MassPdfExport.Core
                 printManager.PrintToFileName = destPath;
                 printManager.Apply();
 
+                // "Microsoft Print to PDF" pops its own native Save dialog on every job and ignores
+                // PrintToFileName, which would otherwise block unattended export. SubmitPrint() below
+                // blocks until that dialog is dismissed, so the watcher has to start before it.
+                SaveDialogAutomator.WatchAndFillIn(destPath, TimeSpan.FromSeconds(20));
+
                 bool success = printManager.SubmitPrint();
 
-                if (!success || !File.Exists(destPath))
+                if (!success || !WaitForFile(destPath, TimeSpan.FromSeconds(5)))
                     return SheetExportResult.Fail(info, $"Revit no generó el archivo PDF para esta lámina ({diagnostics}).");
 
                 return SheetExportResult.Ok(info, destPath);
@@ -136,6 +141,18 @@ namespace GvrTools.MassPdfExport.Core
             {
                 return SheetExportResult.Fail(info, $"Error al exportar la lámina ({diagnostics}): {ex.Message}");
             }
+        }
+
+        /// <summary>The PDF write can finish a moment after SubmitPrint() returns; poll briefly instead of failing immediately.</summary>
+        private static bool WaitForFile(string path, TimeSpan timeout)
+        {
+            DateTime deadline = DateTime.UtcNow.Add(timeout);
+            while (DateTime.UtcNow < deadline)
+            {
+                if (File.Exists(path)) return true;
+                System.Threading.Thread.Sleep(200);
+            }
+            return File.Exists(path);
         }
 
         /// <summary>Configures paper size/orientation/zoom/margin for one sheet. Returns a short diagnostic string for error messages.</summary>
