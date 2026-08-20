@@ -104,20 +104,34 @@ namespace GvrTools.MassPdfExport.Core
 
         private static void ApplyPrintSettings(Document doc, PrintManager printManager, string printerName, ViewSheet sheet)
         {
-            InSessionPrintSetting settings = printManager.PrintSetup.InSession;
-            PrintParameters parameters = settings.PrintParameters;
+            // Same lesson as the ViewSheetSetting fix above: activate the in-session print setting
+            // first, then mutate PrintParameters through the freshly-active reference.
+            PrintSetup printSetup = printManager.PrintSetup;
+            printSetup.CurrentPrintSetting = printSetup.InSession;
+            PrintParameters parameters = printSetup.CurrentPrintSetting.PrintParameters;
 
             (double widthIn, double heightIn) = SheetSizeReader.GetSheetSizeInches(doc, sheet);
             PaperSize match = PaperSizeMatcher.FindBestMatch(printManager.PaperSizes, printerName, widthIn, heightIn);
 
+            bool sizeApplied = false;
             if (match != null)
             {
-                parameters.PaperSize = match;
-                parameters.PageOrientation = widthIn >= heightIn ? PageOrientationType.Landscape : PageOrientationType.Portrait;
-                parameters.ZoomType = ZoomType.Zoom;
-                parameters.Zoom = 100;
+                try
+                {
+                    parameters.PaperSize = match;
+                    parameters.PageOrientation = widthIn >= heightIn ? PageOrientationType.Landscape : PageOrientationType.Portrait;
+                    parameters.ZoomType = ZoomType.Zoom;
+                    parameters.Zoom = 100;
+                    sizeApplied = true;
+                }
+                catch (Exception)
+                {
+                    // Some drivers report paper sizes the API then refuses on assignment; fall back
+                    // to "fit to page" below rather than let a sizing nicety abort the whole export.
+                }
             }
-            else
+
+            if (!sizeApplied)
             {
                 parameters.ZoomType = ZoomType.FitToPage;
             }
@@ -131,8 +145,6 @@ namespace GvrTools.MassPdfExport.Core
             parameters.HideReforWorkPlanes = true;
             parameters.MaskCoincidentLines = true;
             parameters.ViewLinksinBlue = false;
-
-            printManager.PrintSetup.CurrentPrintSetting = settings;
         }
     }
 }
