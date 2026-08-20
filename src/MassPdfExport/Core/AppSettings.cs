@@ -17,6 +17,7 @@ namespace GvrTools.MassPdfExport.Core
 
         public string OutputFolder { get; set; } = string.Empty;
         public string NamingPattern { get; set; } = FileNaming.DefaultPattern;
+        public string ExportFormat { get; set; } = "PDF";
         public string PrinterName { get; set; } = string.Empty;
         public bool NoMargin { get; set; } = true;
         public bool FitToPage { get; set; } = true;
@@ -41,6 +42,7 @@ namespace GvrTools.MassPdfExport.Core
 
                 settings.OutputFolder = Get(values, nameof(OutputFolder), settings.OutputFolder);
                 settings.NamingPattern = Get(values, nameof(NamingPattern), settings.NamingPattern);
+                settings.ExportFormat = Get(values, nameof(ExportFormat), settings.ExportFormat);
                 settings.PrinterName = Get(values, nameof(PrinterName), settings.PrinterName);
                 settings.NoMargin = GetBool(values, nameof(NoMargin), settings.NoMargin);
                 settings.FitToPage = GetBool(values, nameof(FitToPage), settings.FitToPage);
@@ -65,6 +67,7 @@ namespace GvrTools.MassPdfExport.Core
                 {
                     $"{nameof(OutputFolder)}={OutputFolder}",
                     $"{nameof(NamingPattern)}={NamingPattern}",
+                    $"{nameof(ExportFormat)}={ExportFormat}",
                     $"{nameof(PrinterName)}={PrinterName}",
                     $"{nameof(NoMargin)}={NoMargin}",
                     $"{nameof(FitToPage)}={FitToPage}",

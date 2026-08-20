@@ -105,7 +105,7 @@ namespace GvrTools.MassPdfExport.Core
             string namingPattern,
             PdfExportOptions options)
         {
-            string fileName = FileNaming.BuildFileName(namingPattern, info);
+            string fileName = FileNaming.BuildFileName(namingPattern, info, ".pdf");
             string destPath = FileNaming.GetUniquePath(destinationFolder, fileName);
             string diagnostics = $"impresora: {printerName}";
 

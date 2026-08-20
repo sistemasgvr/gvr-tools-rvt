@@ -5,8 +5,8 @@ using System.Text;
 namespace GvrTools.MassPdfExport.Core
 {
     /// <summary>
-    /// Builds sanitized, collision-free PDF file names from a sheet using a token pattern,
-    /// e.g. "{SheetNumber} - {SheetName}".
+    /// Builds sanitized, collision-free file names from a sheet using a token pattern,
+    /// e.g. "{SheetNumber} - {SheetName}". Format-agnostic: callers add their own extension.
     /// </summary>
     public static class FileNaming
     {
@@ -14,7 +14,7 @@ namespace GvrTools.MassPdfExport.Core
 
         private static readonly char[] InvalidChars = Path.GetInvalidFileNameChars();
 
-        public static string BuildFileName(string pattern, SheetExportInfo sheet)
+        public static string BuildBaseName(string pattern, SheetExportInfo sheet)
         {
             string pat = string.IsNullOrWhiteSpace(pattern) ? DefaultPattern : pattern;
 
@@ -26,11 +26,11 @@ namespace GvrTools.MassPdfExport.Core
 
             result = Sanitize(result);
 
-            if (string.IsNullOrWhiteSpace(result))
-                result = Sanitize(sheet.SheetNumber);
-
-            return result + ".pdf";
+            return string.IsNullOrWhiteSpace(result) ? Sanitize(sheet.SheetNumber) : result;
         }
+
+        public static string BuildFileName(string pattern, SheetExportInfo sheet, string extension) =>
+            BuildBaseName(pattern, sheet) + extension;
 
         public static string Sanitize(string value)
         {
@@ -62,6 +62,25 @@ namespace GvrTools.MassPdfExport.Core
                 next = Path.Combine(folder, $"{nameOnly} ({i}){ext}");
                 i++;
             } while (File.Exists(next));
+
+            return next;
+        }
+
+        /// <summary>
+        /// Like <see cref="GetUniquePath"/>, but for APIs (like Document.Export) that take a base
+        /// name without extension and append it themselves. Returns just the base name to use.
+        /// </summary>
+        public static string GetUniqueBaseName(string folder, string baseName, string extension)
+        {
+            if (!File.Exists(Path.Combine(folder, baseName + extension))) return baseName;
+
+            int i = 2;
+            string next;
+            do
+            {
+                next = $"{baseName} ({i})";
+                i++;
+            } while (File.Exists(Path.Combine(folder, next + extension)));
 
             return next;
         }

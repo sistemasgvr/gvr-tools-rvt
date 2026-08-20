@@ -5,28 +5,32 @@ Complementos (add-ins) internos de GVR para Autodesk Revit.
 ## Exportador de PDF Masivo
 
 Complemento para Revit que agrega una pestaña **GVR Tools** a la cinta de opciones con un botón
-para plotear/exportar láminas (sheets) a PDF de forma masiva, similar a herramientas como
+para plotear/exportar láminas (sheets) a PDF o DWG de forma masiva, similar a herramientas como
 ProSheets o DiRoots PDF Export. Permite elegir qué láminas exportar, elegir una carpeta destino,
-y genera automáticamente una subcarpeta con el nombre del proyecto que contiene un PDF por cada
-lámina exportada.
+y genera automáticamente una subcarpeta con el nombre del proyecto que contiene un archivo por
+cada lámina exportada.
 
 ### Características
 
 - Botón en una pestaña propia de la cinta de Revit (**GVR Tools**), sin depender de macros ni de
   ventanas externas al programa.
+- Exporta a **PDF** o a **DWG**, elegible desde un combo en la misma ventana.
 - Lista de todas las láminas del proyecto activo, con casillas de selección, buscador por número o
   nombre, y filtro por **set de láminas** (los "Sheet Issue/Revision Sets" guardados en el
   proyecto).
 - Selección de carpeta destino; el complemento crea dentro de ella una subcarpeta con el nombre del
-  archivo/proyecto de Revit y exporta ahí un PDF por cada lámina seleccionada.
+  archivo/proyecto de Revit y exporta ahí un archivo por cada lámina seleccionada.
 - Nombre de archivo configurable mediante tokens: `{SheetNumber}`, `{SheetName}`,
   `{RevisionNumber}`, `{RevisionDescription}` (por defecto: `{SheetNumber} - {SheetName}`).
-- Cada lámina se exporta en el tamaño de papel que le corresponde según su rótulo (título), no en
-  un tamaño fijo para todas — se puede desactivar si da problemas con una impresora en particular.
-- Opciones de plotéo configurables: qué impresora PDF usar (por si hay más de una instalada o la
-  detección automática elige mal), si se ajusta el contenido a la página o se imprime a escala
+- **PDF**: cada lámina se exporta en el tamaño de papel que le corresponde según su rótulo
+  (título), no en un tamaño fijo para todas — se puede desactivar si da problemas con una
+  impresora en particular. Totalmente desatendido: ninguna ventana de Windows queda visible
+  durante la exportación (ver "Cómo funciona la exportación a PDF" más abajo).
+- Opciones de plotéo PDF configurables: qué impresora PDF usar (por si hay más de una instalada o
+  la detección automática elige mal), si se ajusta el contenido a la página o se imprime a escala
   real 100%, y si se imprime sin margen o con el margen mínimo de la impresora.
-- Recuerda entre sesiones de Revit la última carpeta de destino, impresora y opciones usadas.
+- Recuerda entre sesiones de Revit la última carpeta de destino, formato, impresora y opciones
+  usadas.
 - Barra de progreso con opción de cancelar a mitad de proceso, resumen final con errores por
   lámina (si los hubiera, con el detalle exacto de qué falló y con qué configuración), y opción de
   abrir la carpeta de destino al finalizar.
@@ -83,9 +87,9 @@ Parámetros útiles:
 3. Selecciona las láminas a exportar (con casillas, búsqueda o un set de láminas guardado).
 4. Elige la carpeta destino con **Examinar...**. El cuadro inferior muestra la subcarpeta que se
    creará (con el nombre del proyecto).
-5. Ajusta el patrón de nombre de archivo y las opciones de plotéo (impresora, ajustar a página,
-   margen) si lo necesitas.
-6. Presiona **Exportar PDF**. Puedes cancelar en cualquier momento; al finalizar se muestra un
+5. Elige el **formato** (PDF o DWG), el patrón de nombre de archivo y, si exportas a PDF, las
+   opciones de plotéo (impresora, ajustar a página, margen).
+6. Presiona **Exportar PDF/DWG**. Puedes cancelar en cualquier momento; al finalizar se muestra un
    resumen y, si la opción está marcada, se abre la carpeta de destino.
 
 La carpeta de destino, la impresora y las demás opciones quedan guardadas para la próxima vez que
@@ -103,9 +107,11 @@ src/MassPdfExport/
     SheetSizeReader.cs         Mide el tamaño real de una lámina a partir de su rótulo
     PdfPrinterLocator.cs       Busca/lista impresoras PDF instaladas, sin asumir idioma
     PaperSizeMatcher.cs        Empareja el tamaño de la lámina con un tamaño de papel del driver
-    PdfExportService.cs        Orquesta la exportación lámina por lámina vía PrintManager
-    PdfExportOptions.cs        Opciones de plotéo configurables (impresora, zoom, margen, tamaño)
-    AppSettings.cs             Persiste la carpeta/impresora/opciones entre sesiones de Revit
+    PdfExportService.cs        Orquesta la exportación PDF lámina por lámina vía PrintManager
+    PdfExportOptions.cs        Opciones de plotéo PDF configurables (impresora, zoom, margen, tamaño)
+    SaveDialogAutomator.cs     Rellena en silencio el diálogo de "Microsoft Print to PDF"
+    DwgExportService.cs        Orquesta la exportación DWG lámina por lámina (API nativa)
+    AppSettings.cs             Persiste la carpeta/formato/impresora/opciones entre sesiones de Revit
     FileNaming.cs              Arma y sanea el nombre de archivo a partir de un patrón
     ExportModels.cs            Modelos simples de progreso/resultado/resumen
     NaturalSortComparer.cs     Orden natural de números de lámina (A-2 antes que A-10)
@@ -129,14 +135,30 @@ el complemento plotea usando `Document.PrintManager` contra una impresora PDF re
 Windows, exactamente como lo haría un usuario desde el diálogo *Imprimir* de Revit, pero de forma
 automática:
 
-- Cada lámina se imprime por separado, como un set de una sola vista, con `CombinedFile = true` y
-  `PrintToFileName` apuntando directamente al nombre final deseado — así Revit no necesita adivinar
-  ningún nombre de archivo.
+- Cada lámina se convierte en la vista activa de Revit (`UIDocument.ActiveView`) y se imprime con
+  `PrintRange.Current` ("imprimir la vista actual") — es el mecanismo más básico y estable de
+  PrintManager; el enfoque alternativo vía `ViewSheetSetting`/`InSession` resultó perder la
+  selección de forma intermitente en pruebas reales y se descartó. Al terminar, se restaura la
+  vista que estaba activa antes de exportar.
 - El tamaño de papel de cada lámina se mide a partir del rótulo (bounding box del title block) y se
   compara contra los tamaños que realmente reporta la impresora seleccionada (usando
   `System.Drawing.Printing.PrinterSettings`, que consulta el mismo controlador de Windows que usa
   Revit). Si se encuentra una coincidencia razonable, se imprime a tamaño real (100%); si no, se usa
   "Ajustar a página" como respaldo para que la exportación nunca falle.
+- **"Microsoft Print to PDF" ignora `PrintToFileName`** y muestra su propio diálogo nativo de
+  "Guardar como" en cada lámina — es una limitación de ese driver específico, no de Revit ni de
+  este complemento. `Core/SaveDialogAutomator.cs` detecta esa ventana (por clase de ventana, no por
+  título, para no depender del idioma) y escribe la ruta directamente en sus controles mediante
+  mensajes de Windows (`WM_SETTEXT`/`BM_CLICK`), sin necesidad de mostrarla en pantalla; si esos
+  controles no coinciden con los esperados, cae de respaldo a simular el tecleo de forma visible en
+  vez de quedarse trabada. Con impresoras que sí respetan `PrintToFileName` (Adobe PDF, Bullzip,
+  etc.) esta rutina simplemente no encuentra ninguna ventana que atender y no hace nada.
+
+### Cómo funciona la exportación a DWG
+
+A diferencia de PDF, Revit 2021 sí tiene una API nativa y silenciosa para DWG
+(`Document.Export(folder, nombre, vistas, DWGExportOptions)`), así que no depende de ninguna
+impresora ni ventana: es la misma llamada, sin trucos, para todas las versiones de Revit.
 
 ### Extender a otras versiones de Revit
 
@@ -169,5 +191,10 @@ El desarrollo de este complemento vive en la rama `dev_deyvy`.
 - No exporta a un único PDF combinado: el pedido original es una carpeta con un PDF por lámina, que
   es lo que hace. Si en el futuro se necesita también un combinado, es una función adicional a
   agregar sobre `PdfExportService`.
+- El manejo automático del diálogo de "Microsoft Print to PDF" interactúa con una ventana nativa de
+  Windows (por controles estándar; si no los encuentra, cae de respaldo a teclear de forma visible),
+  así que en general es menos predecible que hablar directo con la API de Revit. Si en algún equipo
+  da problemas, la alternativa más robusta es elegir otra impresora PDF en el selector (Adobe PDF,
+  Bullzip, etc.) o usar DWG, que no depende de ninguna impresora.
 - Los tokens de revisión (`{RevisionNumber}`, `{RevisionDescription}`) leen los parámetros
   estándar de Revit "Revisión actual" de la lámina; si el proyecto no usa revisiones, quedan vacíos.

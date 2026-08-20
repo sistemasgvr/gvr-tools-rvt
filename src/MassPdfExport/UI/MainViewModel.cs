@@ -23,9 +23,12 @@ namespace GvrTools.MassPdfExport.UI
     {
         public const string AllSheetSetsLabel = "(Todas las láminas)";
 
+        public static readonly List<string> ExportFormats = new List<string> { "PDF", "DWG" };
+
         private readonly UIDocument _uiDocument;
         private readonly Document _document;
-        private readonly PdfExportService _exportService = new PdfExportService();
+        private readonly PdfExportService _pdfExportService = new PdfExportService();
+        private readonly DwgExportService _dwgExportService = new DwgExportService();
         private readonly Dictionary<string, HashSet<ElementId>> _sheetSets;
         private readonly Dispatcher _dispatcher;
         private readonly AppSettings _settings;
@@ -75,6 +78,23 @@ namespace GvrTools.MassPdfExport.UI
             get => _openFolderWhenDone;
             set => Set(ref _openFolderWhenDone, value);
         }
+
+        private string _selectedExportFormat = "PDF";
+        public string SelectedExportFormat
+        {
+            get => _selectedExportFormat;
+            set
+            {
+                if (Set(ref _selectedExportFormat, value))
+                {
+                    OnPropertyChanged(nameof(IsPdfFormat));
+                    OnPropertyChanged(nameof(ExportButtonLabel));
+                }
+            }
+        }
+
+        public bool IsPdfFormat => string.Equals(SelectedExportFormat, "PDF", StringComparison.OrdinalIgnoreCase);
+        public string ExportButtonLabel => IsPdfFormat ? "Exportar PDF" : "Exportar DWG";
 
         private string _selectedPrinter;
         public string SelectedPrinter
@@ -171,6 +191,7 @@ namespace GvrTools.MassPdfExport.UI
                 ? _settings.OutputFolder
                 : GetDefaultFolder(document);
             _namingPattern = string.IsNullOrWhiteSpace(_settings.NamingPattern) ? FileNaming.DefaultPattern : _settings.NamingPattern;
+            _selectedExportFormat = ExportFormats.Contains(_settings.ExportFormat) ? _settings.ExportFormat : "PDF";
             _openFolderWhenDone = _settings.OpenFolderWhenDone;
             _noMargin = _settings.NoMargin;
             _fitToPage = _settings.FitToPage;
@@ -247,6 +268,7 @@ namespace GvrTools.MassPdfExport.UI
         {
             _settings.OutputFolder = OutputFolder;
             _settings.NamingPattern = NamingPattern;
+            _settings.ExportFormat = SelectedExportFormat;
             _settings.PrinterName = SelectedPrinter ?? string.Empty;
             _settings.NoMargin = NoMargin;
             _settings.FitToPage = FitToPage;
@@ -291,13 +313,7 @@ namespace GvrTools.MassPdfExport.UI
             if (selected.Count == 0 || string.IsNullOrWhiteSpace(OutputFolder)) return;
 
             string targetFolder = Path.Combine(OutputFolder, FileNaming.Sanitize(DocumentTitle));
-            var exportOptions = new PdfExportOptions
-            {
-                PrinterName = SelectedPrinter,
-                NoMargin = NoMargin,
-                FitToPage = FitToPage,
-                MatchSheetSize = MatchSheetSize
-            };
+            bool exportAsPdf = IsPdfFormat;
 
             SaveSettings();
 
@@ -311,14 +327,28 @@ namespace GvrTools.MassPdfExport.UI
             ExportSummary summary;
             try
             {
-                summary = _exportService.ExportSheets(
-                    _uiDocument,
-                    selected,
-                    targetFolder,
-                    NamingPattern,
-                    exportOptions,
-                    OnProgress,
-                    () => _cancelRequested);
+                summary = exportAsPdf
+                    ? _pdfExportService.ExportSheets(
+                        _uiDocument,
+                        selected,
+                        targetFolder,
+                        NamingPattern,
+                        new PdfExportOptions
+                        {
+                            PrinterName = SelectedPrinter,
+                            NoMargin = NoMargin,
+                            FitToPage = FitToPage,
+                            MatchSheetSize = MatchSheetSize
+                        },
+                        OnProgress,
+                        () => _cancelRequested)
+                    : _dwgExportService.ExportSheets(
+                        _uiDocument,
+                        selected,
+                        targetFolder,
+                        NamingPattern,
+                        OnProgress,
+                        () => _cancelRequested);
             }
             catch (Exception ex)
             {
