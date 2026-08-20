@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Manual installation:
+  1. Build the project (see README.md).
+  2. Replace the <Assembly> path below with the full path to the built
+     GvrTools.MassPdfExport.dll (e.g. ...\src\MassPdfExport\bin\Release\GvrTools.MassPdfExport.dll).
+  3. Copy this file into:
+       %APPDATA%\Autodesk\Revit\Addins\2021\
+     (or %PROGRAMDATA%\Autodesk\Revit\Addins\2021\ to install for all users)
+  4. Restart Revit 2021.
+
+  Prefer scripts\install-addin.ps1, which builds the project and writes this
+  file for you with the correct absolute path already filled in.
+-->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>GVR Tools - Exportador PDF Masivo</Name>
+    <Assembly>FULL_PATH_TO\GvrTools.MassPdfExport.dll</Assembly>
+    <AddInId>87c18a7a-dc0c-47af-a20d-86d2bcd59a91</AddInId>
+    <FullClassName>GvrTools.MassPdfExport.App</FullClassName>
+    <VendorId>GVR</VendorId>
+    <VendorDescription>GVR, www.github.com/sistemasgvr</VendorDescription>
+  </AddIn>
+</RevitAddIns>
