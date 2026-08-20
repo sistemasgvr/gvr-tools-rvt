@@ -11,6 +11,7 @@ using System.Windows.Forms;
 using System.Windows.Input;
 using System.Windows.Threading;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 using GvrTools.MassPdfExport.Core;
 using MessageBox = System.Windows.MessageBox;
 using MessageBoxButton = System.Windows.MessageBoxButton;
@@ -22,6 +23,7 @@ namespace GvrTools.MassPdfExport.UI
     {
         public const string AllSheetSetsLabel = "(Todas las láminas)";
 
+        private readonly UIDocument _uiDocument;
         private readonly Document _document;
         private readonly PdfExportService _exportService = new PdfExportService();
         private readonly Dictionary<string, HashSet<ElementId>> _sheetSets;
@@ -137,9 +139,11 @@ namespace GvrTools.MassPdfExport.UI
         public ICommand ExportCommand { get; }
         public ICommand CancelCommand { get; }
 
-        public MainViewModel(Document document, IList<ViewSheet> sheets, Dictionary<string, HashSet<ElementId>> sheetSets)
+        public MainViewModel(UIDocument uiDocument, IList<ViewSheet> sheets, Dictionary<string, HashSet<ElementId>> sheetSets)
         {
-            _document = document;
+            _uiDocument = uiDocument;
+            _document = uiDocument.Document;
+            Document document = _document;
             _sheetSets = sheetSets ?? new Dictionary<string, HashSet<ElementId>>();
             _dispatcher = Dispatcher.CurrentDispatcher;
             _settings = AppSettings.Load();
@@ -149,12 +153,16 @@ namespace GvrTools.MassPdfExport.UI
             foreach (ViewSheet sheet in sheets)
                 Sheets.Add(new SheetRow(sheet, SheetCollector.ToExportInfo(sheet)));
 
-            SheetsView = CollectionViewSource.GetDefaultView(Sheets);
-            SheetsView.Filter = FilterSheet;
-
+            // _selectedSheetSet must be set BEFORE the view's Filter is assigned: assigning Filter
+            // runs it immediately once, and with _selectedSheetSet still null at that point every
+            // row was filtered out (fixed empty grid until something else forced a Refresh(), like
+            // typing in the search box).
             SheetSetNames = new List<string> { AllSheetSetsLabel };
             SheetSetNames.AddRange(_sheetSets.Keys.OrderBy(k => k, StringComparer.CurrentCultureIgnoreCase));
             _selectedSheetSet = AllSheetSetsLabel;
+
+            SheetsView = CollectionViewSource.GetDefaultView(Sheets);
+            SheetsView.Filter = FilterSheet;
 
             AvailablePrinters = PdfPrinterLocator.GetInstalledPrinters().ToList();
             _selectedPrinter = ResolveInitialPrinter(_settings.PrinterName, AvailablePrinters);
@@ -304,7 +312,7 @@ namespace GvrTools.MassPdfExport.UI
             try
             {
                 summary = _exportService.ExportSheets(
-                    _document,
+                    _uiDocument,
                     selected,
                     targetFolder,
                     NamingPattern,

@@ -35,7 +35,7 @@ namespace GvrTools.MassPdfExport.Commands
 
             try
             {
-                var viewModel = new MainViewModel(doc, sheets, sheetSets);
+                var viewModel = new MainViewModel(uiDoc, sheets, sheetSets);
                 var window = new MainWindow(viewModel);
                 new WindowInteropHelper(window).Owner = commandData.Application.MainWindowHandle;
 

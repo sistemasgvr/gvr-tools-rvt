@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using Autodesk.Revit.DB;
+using Autodesk.Revit.UI;
 
 namespace GvrTools.MassPdfExport.Core
 {
@@ -9,19 +10,23 @@ namespace GvrTools.MassPdfExport.Core
     /// Exports sheets to PDF one at a time via Document.PrintManager, printing through an
     /// installed PDF printer driver (e.g. "Microsoft Print to PDF"). Revit 2021 has no PDF export
     /// API of its own — that only exists from Revit 2022 onward — so this is the one path that
-    /// actually works on 2021. Each sheet becomes its own single-view "print set" so Revit writes
-    /// exactly one PDF, named exactly as requested, with a paper size matched to that sheet.
+    /// actually works on 2021.
     ///
-    /// PrintManager's sub-settings (PrintSetup, ViewSheetSetting) turned out to interfere with each
-    /// other across Apply() calls during testing, so each stage below is configured and Applied
-    /// independently, in a fixed order, with its own try/catch so a failure names the exact stage
-    /// and carries diagnostic context (printer, measured sheet size, matched paper) instead of a
-    /// bare Revit exception message.
+    /// Repeated real-Revit testing showed PrintRange.Select combined with
+    /// ViewSheetSetting.InSession losing the selected sheet by the time SubmitPrint() actually ran,
+    /// even when verified present right beforehand — that whole API area proved too flaky to trust.
+    /// Instead, each sheet is made Revit's active view and printed with PrintRange.Current, which is
+    /// the same "print what's on screen" path Revit's own UI relies on and needs no separate
+    /// view-selection object at all.
+    ///
+    /// Paper/zoom/margin configuration is best-effort and never blocks the export: if it fails for
+    /// any reason, the sheet still gets printed with whatever settings the printer currently has,
+    /// because producing a PDF matters more than a perfect page size.
     /// </summary>
     public sealed class PdfExportService
     {
         public ExportSummary ExportSheets(
-            Document doc,
+            UIDocument uiDoc,
             IList<(ViewSheet Sheet, SheetExportInfo Info)> sheets,
             string destinationFolder,
             string namingPattern,
@@ -29,6 +34,7 @@ namespace GvrTools.MassPdfExport.Core
             Action<ExportProgress> onProgress,
             Func<bool> isCancellationRequested)
         {
+            Document doc = uiDoc.Document;
             Directory.CreateDirectory(destinationFolder);
 
             string printerName = string.IsNullOrWhiteSpace(options?.PrinterName)
@@ -52,32 +58,45 @@ namespace GvrTools.MassPdfExport.Core
                 throw new InvalidOperationException($"No se pudo seleccionar la impresora \"{printerName}\": {ex.Message}", ex);
             }
 
-            printManager.PrintRange = PrintRange.Select;
+            printManager.PrintRange = PrintRange.Current;
             printManager.CombinedFile = true;
             printManager.PrintToFile = true;
 
+            View originalActiveView = uiDoc.ActiveView;
             var results = new List<SheetExportResult>();
             bool cancelled = false;
 
-            for (int i = 0; i < sheets.Count; i++)
+            try
             {
-                if (isCancellationRequested())
+                for (int i = 0; i < sheets.Count; i++)
                 {
-                    cancelled = true;
-                    break;
+                    if (isCancellationRequested())
+                    {
+                        cancelled = true;
+                        break;
+                    }
+
+                    var (sheet, info) = sheets[i];
+                    onProgress?.Invoke(new ExportProgress(i + 1, sheets.Count, info));
+
+                    results.Add(ExportOne(uiDoc, printManager, printerName, sheet, info, destinationFolder, namingPattern, options));
                 }
-
-                var (sheet, info) = sheets[i];
-                onProgress?.Invoke(new ExportProgress(i + 1, sheets.Count, info));
-
-                results.Add(ExportOne(doc, printManager, printerName, sheet, info, destinationFolder, namingPattern, options));
+            }
+            finally
+            {
+                try
+                {
+                    if (originalActiveView != null && originalActiveView.IsValidObject)
+                        uiDoc.ActiveView = originalActiveView;
+                }
+                catch { /* restoring the original view is a courtesy, never fatal */ }
             }
 
             return new ExportSummary(results, cancelled, destinationFolder);
         }
 
         private static SheetExportResult ExportOne(
-            Document doc,
+            UIDocument uiDoc,
             PrintManager printManager,
             string printerName,
             ViewSheet sheet,
@@ -92,53 +111,31 @@ namespace GvrTools.MassPdfExport.Core
 
             try
             {
-                diagnostics = ApplyPrintSettings(doc, printManager, printerName, sheet, options);
-                printManager.Apply();
-            }
-            catch (Exception ex)
-            {
-                return SheetExportResult.Fail(info, $"Error al configurar tamaño/zoom de impresión ({diagnostics}): {ex.Message}");
-            }
+                uiDoc.ActiveView = sheet;
 
-            try
-            {
-                using (var sheetSet = new ViewSet())
+                try
                 {
-                    sheetSet.Insert(sheet);
-
-                    // Mirrors Autodesk's own ViewPrinter SDK sample: switch to the in-session set
-                    // first, then set Views through the freshly-read CurrentViewSheetSet — not
-                    // through a separately-held reference — since assigning CurrentViewSheetSet
-                    // resets it. This is applied AFTER the print-parameter stage above and given its
-                    // own Apply(), because applying print-parameter changes was observed to silently
-                    // clear a view selection made beforehand.
-                    ViewSheetSetting viewSheetSetting = printManager.ViewSheetSetting;
-                    viewSheetSetting.CurrentViewSheetSet = viewSheetSetting.InSession;
-                    viewSheetSetting.CurrentViewSheetSet.Views = sheetSet;
-
-                    printManager.PrintToFileName = destPath;
-                    printManager.Apply();
+                    diagnostics = ApplyPrintSettings(uiDoc.Document, printManager, printerName, sheet, options);
                 }
+                catch (Exception ex)
+                {
+                    diagnostics += $" [aviso: no se pudo aplicar tamaño/zoom, se usó la config. actual de la impresora: {ex.Message}]";
+                }
+
+                printManager.PrintToFileName = destPath;
+                printManager.Apply();
+
+                bool success = printManager.SubmitPrint();
+
+                if (!success || !File.Exists(destPath))
+                    return SheetExportResult.Fail(info, $"Revit no generó el archivo PDF para esta lámina ({diagnostics}).");
+
+                return SheetExportResult.Ok(info, destPath);
             }
             catch (Exception ex)
             {
-                return SheetExportResult.Fail(info, $"Error al seleccionar la lámina para imprimir ({diagnostics}): {ex.Message}");
+                return SheetExportResult.Fail(info, $"Error al exportar la lámina ({diagnostics}): {ex.Message}");
             }
-
-            bool success;
-            try
-            {
-                success = printManager.SubmitPrint();
-            }
-            catch (Exception ex)
-            {
-                return SheetExportResult.Fail(info, $"Error al enviar la lámina a la impresora ({diagnostics}): {ex.Message}");
-            }
-
-            if (!success || !File.Exists(destPath))
-                return SheetExportResult.Fail(info, $"Revit no generó el archivo PDF para esta lámina ({diagnostics}).");
-
-            return SheetExportResult.Ok(info, destPath);
         }
 
         /// <summary>Configures paper size/orientation/zoom/margin for one sheet. Returns a short diagnostic string for error messages.</summary>
@@ -179,10 +176,11 @@ namespace GvrTools.MassPdfExport.Core
             if (!options.FitToPage)
                 parameters.Zoom = 100;
 
+            // MarginType can only be set while PaperPlacement is Margins — Revit throws if you set
+            // it under Center, so Center (the "no margin" mode) must leave MarginType untouched.
             if (options.NoMargin)
             {
                 parameters.PaperPlacement = PaperPlacementType.Center;
-                parameters.MarginType = MarginType.NoMargin;
             }
             else
             {
