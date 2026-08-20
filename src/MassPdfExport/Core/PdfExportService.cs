@@ -76,9 +76,13 @@ namespace GvrTools.MassPdfExport.Core
                 {
                     sheetSet.Insert(sheet);
 
-                    InSessionViewSheetSet inSessionViews = printManager.ViewSheetSetting.InSession;
-                    inSessionViews.Views = sheetSet;
-                    printManager.ViewSheetSetting.CurrentViewSheetSet = inSessionViews;
+                    // Mirrors Autodesk's own ViewPrinter SDK sample: switch to the in-session set
+                    // first, then set Views through the freshly-read CurrentViewSheetSet — not
+                    // through a separately-held reference — since assigning CurrentViewSheetSet
+                    // can reset it, which is what caused "no views/sheets selected" before this fix.
+                    ViewSheetSetting viewSheetSetting = printManager.ViewSheetSetting;
+                    viewSheetSetting.CurrentViewSheetSet = viewSheetSetting.InSession;
+                    viewSheetSetting.CurrentViewSheetSet.Views = sheetSet;
 
                     ApplyPrintSettings(doc, printManager, printerName, sheet);
 
