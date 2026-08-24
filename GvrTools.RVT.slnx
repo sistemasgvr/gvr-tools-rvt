@@ -4,6 +4,7 @@
     <Project Path="src/GvrTools.UI/GvrTools.UI.csproj" />
     <Project Path="src/GvrTools.Revit/GvrTools.Revit.csproj" />
     <Project Path="src/GvrTools.Tools.BatchExport/GvrTools.Tools.BatchExport.csproj" />
+    <Project Path="src/GvrTools.Licensing/GvrTools.Licensing.csproj" />
     <Project Path="src/GvrTools.App/GvrTools.App.csproj" />
   </Folder>
   <Folder Name="/tests/">

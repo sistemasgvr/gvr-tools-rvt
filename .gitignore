@@ -75,3 +75,11 @@ $RECYCLE.BIN/
 
 # Salida de compilación por versión de Revit (scripts/install-addin.ps1)
 build/
+
+# Secretos locales del License API (server/) -- connection strings y claves reales nunca se
+# versionan; en EasyPanel viven como variables de entorno (docs/LICENSING_PLAN.md, Pieza 6 "Secrets")
+server/**/appsettings.*.json
+!server/**/appsettings.json
+server/.env
+server/**/*.pfx
+server/**/*.pem
