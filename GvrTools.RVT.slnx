@@ -1,5 +1,12 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/MassPdfExport/MassPdfExport.csproj" />
+    <Project Path="src/GvrTools.Core/GvrTools.Core.csproj" />
+    <Project Path="src/GvrTools.UI/GvrTools.UI.csproj" />
+    <Project Path="src/GvrTools.Revit/GvrTools.Revit.csproj" />
+    <Project Path="src/GvrTools.Tools.BatchExport/GvrTools.Tools.BatchExport.csproj" />
+    <Project Path="src/GvrTools.App/GvrTools.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/GvrTools.Core.Tests/GvrTools.Core.Tests.csproj" />
   </Folder>
 </Solution>

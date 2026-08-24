@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Reference manifest for a manual installation.
+
+  Prefer scripts\install-addin.ps1: it builds every Revit release you have installed and writes one
+  of these per release with the correct absolute path already filled in.
+
+  Manual steps, if you really need them:
+    1. dotnet build src/GvrTools.App/GvrTools.App.csproj -c Release -p:RevitVersion=2025
+    2. Replace ASSEMBLY_PATH below with the full path of the built DLL, e.g.
+         D:\GVR\Proyectos_DEV\gvr-tools-rvt\build\2025\GvrTools.App.dll
+    3. Copy this file to  %APPDATA%\Autodesk\Revit\Addins\2025\
+       (or %PROGRAMDATA%\Autodesk\Revit\Addins\2025\ to install for every user of the machine)
+    4. Restart Revit and look for the "GVR Tools" tab.
+
+  The AddInId must stay exactly as it is: Revit keys the add-in's identity on it, so changing it
+  would make an upgraded install show up as a second, duplicate add-in.
+-->
+<RevitAddIns>
+  <AddIn Type="Application">
+    <Name>GVR Tools</Name>
+    <Assembly>ASSEMBLY_PATH</Assembly>
+    <AddInId>87c18a7a-dc0c-47af-a20d-86d2bcd59a91</AddInId>
+    <FullClassName>GvrTools.App.GvrApplication</FullClassName>
+    <VendorId>GVR</VendorId>
+    <VendorDescription>GVR, www.github.com/sistemasgvr</VendorDescription>
+  </AddIn>
+</RevitAddIns>

@@ -2,199 +2,211 @@
 
 Complementos (add-ins) internos de GVR para Autodesk Revit.
 
-## Exportador de PDF Masivo
+Un solo complemento con una pestaña propia, **GVR Tools**, pensado para ir sumando herramientas: el
+código está organizado de modo que agregar una herramienta nueva es crear un proyecto, no modificar
+el complemento. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-Complemento para Revit que agrega una pestaña **GVR Tools** a la cinta de opciones con un botón
-para plotear/exportar láminas (sheets) a PDF o DWG de forma masiva, similar a herramientas como
-ProSheets o DiRoots PDF Export. Permite elegir qué láminas exportar, elegir una carpeta destino,
-y genera automáticamente una subcarpeta con el nombre del proyecto que contiene un archivo por
-cada lámina exportada.
+**Compatible con Revit 2021, 2022, 2023, 2024 y 2025** desde un único código fuente.
 
-### Características
+## Herramientas incluidas
 
-- Botón en una pestaña propia de la cinta de Revit (**GVR Tools**), sin depender de macros ni de
-  ventanas externas al programa.
-- Exporta a **PDF** o a **DWG**, elegible desde un combo en la misma ventana.
-- Lista de todas las láminas del proyecto activo, con casillas de selección, buscador por número o
-  nombre, y filtro por **set de láminas** (los "Sheet Issue/Revision Sets" guardados en el
-  proyecto).
-- Selección de carpeta destino; el complemento crea dentro de ella una subcarpeta con el nombre del
-  archivo/proyecto de Revit y exporta ahí un archivo por cada lámina seleccionada.
-- Nombre de archivo configurable mediante tokens: `{SheetNumber}`, `{SheetName}`,
-  `{RevisionNumber}`, `{RevisionDescription}` (por defecto: `{SheetNumber} - {SheetName}`).
-- **PDF**: cada lámina se exporta en el tamaño de papel que le corresponde según su rótulo
-  (título), no en un tamaño fijo para todas — se puede desactivar si da problemas con una
-  impresora en particular. Totalmente desatendido: ninguna ventana de Windows queda visible
-  durante la exportación (ver "Cómo funciona la exportación a PDF" más abajo).
-- Opciones de plotéo PDF configurables: qué impresora PDF usar (por si hay más de una instalada o
-  la detección automática elige mal), si se ajusta el contenido a la página o se imprime a escala
-  real 100%, y si se imprime sin margen o con el margen mínimo de la impresora.
-- Recuerda entre sesiones de Revit la última carpeta de destino, formato, impresora y opciones
-  usadas.
-- Barra de progreso con opción de cancelar a mitad de proceso, resumen final con errores por
-  lámina (si los hubiera, con el detalle exacto de qué falló y con qué configuración), y opción de
-  abrir la carpeta de destino al finalizar.
-- No depende del idioma de instalación de Revit ni de Windows: no asume nombres de categorías,
-  parámetros ni impresoras en inglés.
+### Exportación masiva de láminas
 
-### Requisitos
+Exporta las láminas del proyecto activo a **PDF** o **DWG**, un archivo por lámina, dentro de una
+subcarpeta con el nombre del proyecto. Equivalente en alcance a ProSheets / DiRoots PDF Export.
 
-- **Revit 2021** (cualquier idioma). El proyecto está pensado para poder adaptarse a versiones
-  2022 en adelante más adelante — ver [Extender a otras versiones](#extender-a-otras-versiones-de-revit).
-- Windows 10/11 de 64 bits.
-- Una impresora PDF instalada. Revit 2021 no tiene un exportador de PDF propio en su API (esa
-  función se agregó recién en Revit 2022), así que este complemento plotea usando
-  `Document.PrintManager` a través de una impresora PDF real, por ejemplo **Microsoft Print to
-  PDF**, que viene incluida en Windows 10/11 (Panel de control → Dispositivos e impresoras →
-  Agregar impresora, si no aparece ya instalada). También funciona con otras impresoras PDF
-  (Adobe PDF, Bullzip, CutePDF, etc.) si el nombre contiene "PDF".
-- Para compilar: [.NET SDK](https://dotnet.microsoft.com/) (se probó con la SDK 10) y, opcionalmente,
-  Visual Studio 2022 con la carga de trabajo ".NET desktop development".
+- Lista de láminas con casillas, buscador y — si el proyecto los tiene — filtro por **set de
+  láminas** guardado en el proyecto.
+- Nombre de archivo fijo: `Número - Nombre` (los mismos que aparecen en el título de la lámina).
+- Formato **PDF**, **DWG** o **PDF + DWG** (exporta ambos en una sola pasada con una barra de
+  progreso continua).
+- Opciones PDF: tamaño de papel por lámina (según su rótulo), ajustar a página o escala real 100%,
+  con o sin margen, color / escala de grises / blanco y negro, y calidad ráster.
+- Opciones DWG: versión de AutoCAD, combinar vistas, coordenadas compartidas, y opcionalmente
+  también un PNG por lámina junto al DWG.
+- Cada opción de la ventana tiene un tooltip explicando qué hace, así que no hay que leer manual
+  para usar el complemento con confianza.
+- **No bloquea el equipo ni Revit**: la ventana no es modal, la exportación avanza lámina por lámina
+  devolviéndole el control a Revit entre cada una, y se puede cancelar en cualquier momento.
+- Barra de progreso, lista de resultados por lámina en la propia ventana (no un cuadro de diálogo al
+  final) y detalle exacto del error cuando alguna falla.
+- Recuerda entre sesiones la carpeta, el formato, el patrón de nombre y todas las opciones.
+- Independiente del idioma de Revit y de Windows.
 
-### Instalación rápida (para probar)
+## Requisitos
+
+- **Revit 2021, 2022, 2023, 2024 o 2025**, en cualquier idioma. Windows 10/11 de 64 bits.
+- Para exportar **PDF en Revit 2022 o superior**: nada más. Revit tiene exportador de PDF propio y el
+  complemento lo usa directamente.
+- Para exportar **PDF en Revit 2021**: una impresora PDF de Windows a la que se le pueda indicar el
+  archivo de destino **sin preguntar**. Sirven **Adobe PDF** (vía Acrobat Distiller) y las que
+  respetan la ruta de salida directamente (PDF24 Creator, Bullzip PDF Printer, CutePDF Writer,
+  PDFCreator, doPDF). **No sirve "Microsoft Print to PDF"**. Ver
+  [PDF en Revit 2021](#pdf-en-revit-2021) más abajo.
+- Para exportar **DWG**: nada, en ninguna versión.
+- Para compilar: [.NET SDK](https://dotnet.microsoft.com/) 8 o superior (probado con 10) y,
+  opcionalmente, Visual Studio 2022 con ".NET desktop development".
+
+## Instalación
 
 ```powershell
 .\scripts\install-addin.ps1
 ```
 
-Esto compila el proyecto en modo `Release` y registra el `.addin` en
-`%APPDATA%\Autodesk\Revit\Addins\2021\`. Reinicia Revit 2021 y busca la pestaña **GVR Tools**.
+Detecta qué versiones de Revit tienes instaladas, compila una por una y registra el complemento para
+cada una. Reinicia Revit y busca la pestaña **GVR Tools**.
+
+Si ya tenías instalada la versión anterior del complemento (`GvrTools.MassPdfExport.addin`), el
+script la retira para que no aparezcan botones duplicados.
 
 Parámetros útiles:
 
 ```powershell
-# Instalar para todos los usuarios del equipo (requiere PowerShell como administrador)
+# Solo una versión
+.\scripts\install-addin.ps1 -RevitVersion 2025
+
+# Varias versiones a la vez
+.\scripts\install-addin.ps1 -RevitVersion 2021,2025
+
+# Para todos los usuarios del equipo (requiere PowerShell como administrador)
 .\scripts\install-addin.ps1 -AllUsers
 
-# Compilar en Debug y registrar para otra versión de Revit ya migrada
-.\scripts\install-addin.ps1 -Configuration Debug -RevitVersion 2022
+# Solo reescribir los manifiestos, sin recompilar
+.\scripts\install-addin.ps1 -SkipBuild
+
+# Compilar en Debug
+.\scripts\install-addin.ps1 -Configuration Debug
+
+# Quitar el complemento
+.\scripts\install-addin.ps1 -Uninstall
 ```
 
-### Instalación manual
+Para una instalación manual, ver los comentarios de [deploy/GvrTools.addin](deploy/GvrTools.addin).
 
-1. Compila el proyecto: `dotnet build src/MassPdfExport/MassPdfExport.csproj -c Release`.
-2. Copia `deploy/GvrTools.MassPdfExport.addin` a
-   `%APPDATA%\Autodesk\Revit\Addins\2021\` (o a
-   `%PROGRAMDATA%\Autodesk\Revit\Addins\2021\` para instalarlo para todos los usuarios).
-3. Edita el `<Assembly>` del `.addin` copiado para que apunte a la ruta completa de
-   `src\MassPdfExport\bin\Release\GvrTools.MassPdfExport.dll`.
-4. Reinicia Revit.
+## Compilación
 
-### Uso
+```bash
+# Una versión concreta; la salida queda en build/<año>/
+dotnet build src/GvrTools.App/GvrTools.App.csproj -c Release -p:RevitVersion=2025
 
-1. Abre un proyecto en Revit 2021.
-2. En la pestaña **GVR Tools**, presiona **Exportar PDF Masivo**.
-3. Selecciona las láminas a exportar (con casillas, búsqueda o un set de láminas guardado).
-4. Elige la carpeta destino con **Examinar...**. El cuadro inferior muestra la subcarpeta que se
-   creará (con el nombre del proyecto).
-5. Elige el **formato** (PDF o DWG), el patrón de nombre de archivo y, si exportas a PDF, las
-   opciones de plotéo (impresora, ajustar a página, margen).
-6. Presiona **Exportar PDF/DWG**. Puedes cancelar en cualquier momento; al finalizar se muestra un
-   resumen y, si la opción está marcada, se abre la carpeta de destino.
+# Pruebas unitarias (no requieren tener Revit instalado)
+dotnet test tests/GvrTools.Core.Tests/GvrTools.Core.Tests.csproj
+```
 
-La carpeta de destino, la impresora y las demás opciones quedan guardadas para la próxima vez que
-abras la ventana (incluso en otro proyecto o después de reiniciar Revit).
+En Visual Studio también existen las configuraciones `Debug R21` … `Release R25`, que fijan la
+versión sin pasar la propiedad a mano.
 
-### Estructura del proyecto
+## Uso
+
+1. Abre un proyecto en Revit y ve a la pestaña **GVR Tools** → **Exportar láminas**.
+2. Selecciona las láminas (casillas, buscador o un set guardado).
+3. Elige la carpeta destino con **Examinar…**. Debajo se indica la subcarpeta que se creará.
+4. Ajusta el patrón de nombre; la línea inferior muestra cómo quedará el primer archivo.
+5. Elige formato y opciones.
+6. **Exportar**. La ventana sigue usable, Revit sigue usable, y puedes cancelar cuando quieras.
+
+## PDF en Revit 2021
+
+Revit 2021 no tiene API de exportación a PDF — se agregó en Revit 2022 — así que en esa versión el
+complemento plotea con una impresora PDF de Windows.
+
+Y ahí está el problema real: **"imprimir a un archivo" no es un solo mecanismo, sino varios**, y cuál
+aplica depende del driver. Revit solo conoce el suyo (`PrintToFileName`); un driver que lo ignora hay
+que avisarle en su propio idioma, antes de enviar el trabajo. El complemento clasifica cada impresora
+leyendo su puerto y su driver del registro de Windows, y elige el mecanismo correspondiente:
+
+| Tipo | Impresoras | Cómo se le indica el destino |
+| --- | --- | --- |
+| `WritesToGivenPath` | PDF24, Bullzip, CutePDF, PDFCreator, doPDF, PDF-XChange, Foxit | `PrintManager.PrintToFileName` (Revit escribe el archivo) |
+| `AdobeDistiller` | Adobe PDF | Se escribe la ruta de destino en `HKCU\Software\Adobe\Acrobat Distiller\PrinterJobControl` antes de cada lámina — es el canal documentado de Adobe, y se limpia al terminar |
+| `AlwaysPrompts` | Microsoft Print to PDF, Microsoft XPS Document Writer | **no hay forma**: se rechaza antes de empezar |
+| `Unknown` | cualquier otra | se intenta con `PrintToFileName` y se avisa en la ventana |
+
+**Por qué "Microsoft Print to PDF" se rechaza y no se automatiza.** Está en el puerto `PORTPROMPT:`:
+Windows abre su propio cuadro de diálogo "Guardar salida de impresión como" en *cada* lámina y
+`SubmitPrint()` se queda bloqueado hasta que alguien lo responda. Responderlo por código obliga a
+buscar la ventana y simular teclado, o sea a apoderarse del primer plano y del teclado en cada
+lámina — exactamente lo que dejaba el equipo inutilizable. Y **ocultar la ventana es peor**: el
+trabajo se bloquea igual, solo que ahora sin que se vea por qué. Así que el complemento declina y
+explica qué hacer.
+
+La ventana muestra, debajo del selector, cómo se va a comportar la impresora elegida — antes de
+empezar el lote, no a mitad de camino.
+
+Opciones, de mejor a peor:
+
+1. **Revit 2022 o superior** — API nativa, sin impresora y sin ventanas. Es la mejor opción con
+   diferencia.
+2. **Adobe PDF**, si tienes Acrobat instalado: silenciosa vía Distiller. Dos ajustes que conviene
+   hacer **una sola vez** en Windows → Impresoras y escáneres → *Adobe PDF* → Preferencias:
+   - desmarcar **"Ver los resultados de Adobe PDF"** (si no, Acrobat abre cada PDF al terminarlo);
+   - desmarcar **"Preguntar por el nombre del archivo"** si estuviera activado.
+
+   Ambos ajustes viven dentro del driver de Adobe (no en un valor de registro plano), así que el
+   complemento no puede desactivarlos por código de forma confiable; una vez desmarcados quedan así
+   para siempre.
+3. **Instalar una impresora PDF silenciosa**: PDF24 Creator, Bullzip PDF Printer, CutePDF Writer,
+   PDFCreator, doPDF.
+4. **Exportar a DWG**, que no depende de ninguna impresora en ninguna versión.
+
+## Estructura del repositorio
 
 ```
-src/MassPdfExport/
-  App.cs                       Punto de entrada del add-in (IExternalApplication), crea la cinta
-  Commands/
-    MassPdfExportCommand.cs    Comando de Revit (IExternalCommand) que abre la ventana
-  Core/
-    SheetCollector.cs          Lee láminas y sets de láminas del documento
-    SheetSizeReader.cs         Mide el tamaño real de una lámina a partir de su rótulo
-    PdfPrinterLocator.cs       Busca/lista impresoras PDF instaladas, sin asumir idioma
-    PaperSizeMatcher.cs        Empareja el tamaño de la lámina con un tamaño de papel del driver
-    PdfExportService.cs        Orquesta la exportación PDF lámina por lámina vía PrintManager
-    PdfExportOptions.cs        Opciones de plotéo PDF configurables (impresora, zoom, margen, tamaño)
-    SaveDialogAutomator.cs     Rellena en silencio el diálogo de "Microsoft Print to PDF"
-    DwgExportService.cs        Orquesta la exportación DWG lámina por lámina (API nativa)
-    AppSettings.cs             Persiste la carpeta/formato/impresora/opciones entre sesiones de Revit
-    FileNaming.cs              Arma y sanea el nombre de archivo a partir de un patrón
-    ExportModels.cs            Modelos simples de progreso/resultado/resumen
-    NaturalSortComparer.cs     Orden natural de números de lámina (A-2 antes que A-10)
-  UI/
-    MainWindow.xaml(.cs)       Ventana WPF
-    MainViewModel.cs           Lógica de la ventana (MVVM)
-    SheetRow.cs, RelayCommand.cs
-  Resources/
-    RibbonIconFactory.cs       Ícono del botón dibujado por código (sin archivos binarios)
+src/
+  Directory.Build.props            Matriz de versiones de Revit (una sola perilla: RevitVersion)
+  GvrTools.Revit.props             Framework, paquetes y símbolos REVITxxxx por versión
+  GvrTools.Core/                   Sin Revit ni WPF: nombres, saneado, ajustes, log, resultados
+  GvrTools.UI/                     WPF compartido: tema, MVVM, diálogos, íconos vectoriales
+  GvrTools.Revit/                  API de Revit: IRevitTool, scheduler, láminas, motores de export
+  GvrTools.Tools.BatchExport/      La herramienta de exportación masiva (botón + comando + ventana)
+  GvrTools.App/                    IExternalApplication: arma la cinta con lo que encuentre
+tests/
+  GvrTools.Core.Tests/             Pruebas de la lógica pura, corren sin Revit
 deploy/
-  GvrTools.MassPdfExport.addin Manifiesto de referencia para instalación manual
+  GvrTools.addin                   Manifiesto de referencia para instalación manual
 scripts/
-  install-addin.ps1            Compila e instala el add-in localmente para pruebas
+  install-addin.ps1                Compila e instala en todas las versiones detectadas
+docs/
+  ARCHITECTURE.md                  Por qué está dividido así y cómo agregar una herramienta
+build/                             Salida por versión (ignorada por git)
 ```
 
-### Cómo funciona la exportación a PDF
+## Agregar una herramienta nueva
 
-La API pública de Revit para exportar PDF directamente (`PDFExportOptions` +
-`Document.Export(...)`) **no existe en Revit 2021** — se agregó en Revit 2022. Por eso, para 2021
-el complemento plotea usando `Document.PrintManager` contra una impresora PDF real instalada en
-Windows, exactamente como lo haría un usuario desde el diálogo *Imprimir* de Revit, pero de forma
-automática:
+Resumen: crear `src/GvrTools.Tools.MiHerramienta/`, implementar `IRevitTool` y un `IExternalCommand`,
+y referenciar el proyecto desde `GvrTools.App.csproj`. No hay que modificar ningún archivo existente
+del complemento. Los pasos con código están en
+[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md#cómo-agregar-una-herramienta-nueva).
 
-- Cada lámina se convierte en la vista activa de Revit (`UIDocument.ActiveView`) y se imprime con
-  `PrintRange.Current` ("imprimir la vista actual") — es el mecanismo más básico y estable de
-  PrintManager; el enfoque alternativo vía `ViewSheetSetting`/`InSession` resultó perder la
-  selección de forma intermitente en pruebas reales y se descartó. Al terminar, se restaura la
-  vista que estaba activa antes de exportar.
-- El tamaño de papel de cada lámina se mide a partir del rótulo (bounding box del title block) y se
-  compara contra los tamaños que realmente reporta la impresora seleccionada (usando
-  `System.Drawing.Printing.PrinterSettings`, que consulta el mismo controlador de Windows que usa
-  Revit). Si se encuentra una coincidencia razonable, se imprime a tamaño real (100%); si no, se usa
-  "Ajustar a página" como respaldo para que la exportación nunca falle.
-- **"Microsoft Print to PDF" ignora `PrintToFileName`** y muestra su propio diálogo nativo de
-  "Guardar como" en cada lámina — es una limitación de ese driver específico, no de Revit ni de
-  este complemento. `Core/SaveDialogAutomator.cs` detecta esa ventana (por clase de ventana, no por
-  título, para no depender del idioma) y escribe la ruta directamente en sus controles mediante
-  mensajes de Windows (`WM_SETTEXT`/`BM_CLICK`), sin necesidad de mostrarla en pantalla; si esos
-  controles no coinciden con los esperados, cae de respaldo a simular el tecleo de forma visible en
-  vez de quedarse trabada. Con impresoras que sí respetan `PrintToFileName` (Adobe PDF, Bullzip,
-  etc.) esta rutina simplemente no encuentra ninguna ventana que atender y no hace nada.
+## Diagnóstico
 
-### Cómo funciona la exportación a DWG
+Si algo falla, lo primero que hay que mirar es el log:
 
-A diferencia de PDF, Revit 2021 sí tiene una API nativa y silenciosa para DWG
-(`Document.Export(folder, nombre, vistas, DWGExportOptions)`), así que no depende de ninguna
-impresora ni ventana: es la misma llamada, sin trucos, para todas las versiones de Revit.
+```
+%LOCALAPPDATA%\GVR\GvrTools\logs\gvrtools-AAAAMMDD.log
+```
 
-### Extender a otras versiones de Revit
+Un archivo por día, se conservan los últimos 10. Registra qué versión de Revit se cargó, qué
+estrategia de exportación se eligió, y cada error con su traza completa. Las preferencias de cada
+herramienta se guardan aparte, en `%APPDATA%\GVR\GvrTools\<herramienta>.settings`; borrar ese archivo
+devuelve la herramienta a sus valores por defecto.
 
-El proyecto compila contra el paquete NuGet
-[`Nice3point.Revit.Api.RevitAPI`](https://www.nuget.org/packages/Nice3point.Revit.Api.RevitAPI/)
-(ensamblados de referencia, no requieren tener Revit instalado para compilar). Para dar soporte a
-Revit 2022 en adelante, que sí tiene `PDFExportOptions`/`Document.Export` nativos para PDF:
+## Limitaciones conocidas
 
-1. Crea un `PropertyGroup` adicional (o multi-target el `.csproj`) para la versión nueva, con su
-   propio `Nice3point.Revit.Api.RevitAPI`/`RevitAPIUI` (p. ej. `2022.*`). Revit 2021-2024 usan
-   `net48`; Revit 2025 en adelante usa `net8.0-windows`.
-   [Repositorio de plantillas de Nice3point](https://github.com/Nice3point/RevitTemplates)
-- Como en Revit 2022+ sí existe `PDFExportOptions`, conviene implementar una segunda variante de
-  `IPdfExportStrategy` (interfaz que puedes extraer de `PdfExportService`) que use
-  `Document.Export(folder, viewIds, options)` en vez de `PrintManager`, seleccionada según la
-  versión de Revit en tiempo de compilación (`#if REVIT2022_OR_GREATER`, etc.) — es más simple y no
-  depende de una impresora instalada.
-2. Genera un `.addin` por versión (o un único `.addin` con varias entradas `<AddIn>`, una por
-   ensamblado) y ajusta `scripts/install-addin.ps1` para el año correspondiente.
+- No genera un PDF único combinado: produce un archivo por lámina, que es el pedido original. Con la
+  API nativa (2022+) agregarlo es directo — es un punto de extensión previsto en el motor de PDF.
+- En Revit 2021, el emparejamiento automático de tamaño de papel depende de que la impresora reporte
+  el tamaño estándar correspondiente; los rótulos muy personalizados caen de respaldo en "ajustar a
+  página".
+- En Revit 2021 la exportación PDF sí detiene a Revit un instante por lámina, mientras se comprueba
+  que la impresora terminó de escribir el archivo (unas décimas de segundo con una impresora que
+  funciona; hasta 15 s por lámina si algo va mal). Es inevitable: el trabajo de impresión vive en el
+  hilo de la API. Con la API nativa (Revit 2022+) esa espera no existe.
+- Los tokens de revisión leen los parámetros estándar de "revisión actual" de la lámina; si el
+  proyecto no usa revisiones, quedan vacíos (y su separador desaparece del nombre).
+- Revit 2026 y posteriores todavía no están en la matriz. Agregarlos es una línea en
+  `src/GvrTools.Revit.props` más el año en `SupportedVersions` del script de instalación.
 
-### Rama de trabajo
+## Rama de trabajo
 
-El desarrollo de este complemento vive en la rama `dev_deyvy`.
-
-### Limitaciones conocidas
-
-- El emparejamiento automático de tamaño de papel depende de que la impresora PDF instalada
-  reporte ese tamaño estándar (ANSI/ARCH/ISO/Carta, etc.); tamaños de rótulo muy personalizados
-  caen de respaldo en "Ajustar a página".
-- No exporta a un único PDF combinado: el pedido original es una carpeta con un PDF por lámina, que
-  es lo que hace. Si en el futuro se necesita también un combinado, es una función adicional a
-  agregar sobre `PdfExportService`.
-- El manejo automático del diálogo de "Microsoft Print to PDF" interactúa con una ventana nativa de
-  Windows (por controles estándar; si no los encuentra, cae de respaldo a teclear de forma visible),
-  así que en general es menos predecible que hablar directo con la API de Revit. Si en algún equipo
-  da problemas, la alternativa más robusta es elegir otra impresora PDF en el selector (Adobe PDF,
-  Bullzip, etc.) o usar DWG, que no depende de ninguna impresora.
-- Los tokens de revisión (`{RevisionNumber}`, `{RevisionDescription}`) leen los parámetros
-  estándar de Revit "Revisión actual" de la lámina; si el proyecto no usa revisiones, quedan vacíos.
+El desarrollo vive en la rama `dev_deyvy`.

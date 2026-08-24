@@ -1,0 +1,27 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Everything that touches the Revit API lives here: the ribbon contract every tool implements,
+    the scheduler that keeps long jobs off Revit's blocking path, sheet reading, and the export
+    engines. Tools depend on this; this depends on no tool.
+  -->
+
+  <Import Project="..\GvrTools.Revit.props" />
+
+  <PropertyGroup>
+    <AssemblyName>GvrTools.Revit</AssemblyName>
+    <RootNamespace>GvrTools.Revit</RootNamespace>
+    <Description>Adaptadores de la API de Revit y motores de exportación de GVR Tools.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\GvrTools.Core\GvrTools.Core.csproj" />
+  </ItemGroup>
+
+  <!-- Revit 2021 has no PDF export API, so that build (and only that build) plots through a
+       Windows PDF printer driver and needs the printing types from System.Drawing. -->
+  <ItemGroup Condition="!$(DefineConstants.Contains('REVIT2022_OR_GREATER'))">
+    <Reference Include="System.Drawing" />
+  </ItemGroup>
+
+</Project>

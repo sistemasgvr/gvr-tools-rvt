@@ -1,0 +1,274 @@
+<Window x:Class="GvrTools.Tools.BatchExport.Views.BatchExportWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GVR Tools · Exportación masiva de láminas"
+        Height="780" Width="900" MinHeight="640" MinWidth="720"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="CanResizeWithGrip"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Window.Resources>
+        <ResourceDictionary Source="pack://application:,,,/GvrTools.UI;component/Theme/GvrTheme.xaml"/>
+    </Window.Resources>
+
+    <Grid Margin="{StaticResource Gvr.Padding.Window}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 0 header -->
+            <RowDefinition Height="Auto"/>   <!-- 1 selection toolbar -->
+            <RowDefinition Height="*"/>      <!-- 2 sheet grid -->
+            <RowDefinition Height="Auto"/>   <!-- 3 destination -->
+            <RowDefinition Height="Auto"/>   <!-- 4 format options -->
+            <RowDefinition Height="Auto"/>   <!-- 5 progress -->
+            <RowDefinition Height="Auto"/>   <!-- 6 results -->
+            <RowDefinition Height="Auto"/>   <!-- 7 actions -->
+        </Grid.RowDefinitions>
+
+        <!-- Header: GVR shield + tool name + document + strategy hint -->
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0" x:Name="HeaderIcon" Width="42" Height="42"
+                   Margin="0,0,12,0" VerticalAlignment="Center"/>
+
+            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Exportación masiva de láminas" Style="{StaticResource Gvr.Text.Title}"/>
+                    <TextBlock Text="{Binding DocumentTitle, StringFormat=' · {0}'}"
+                               Style="{StaticResource Gvr.Text.Title}"
+                               Foreground="{StaticResource Gvr.Brush.Muted}"/>
+                </StackPanel>
+                <TextBlock Text="{Binding StrategyDescription}" Style="{StaticResource Gvr.Text.Subtle}"
+                           Margin="0,2,0,0"/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Selection toolbar. Search is always visible; the Set filter only appears when the
+             project actually has saved sheet sets. -->
+        <Grid Grid.Row="1" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="180"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="Todas" Style="{StaticResource Gvr.Button}"
+                    Command="{Binding SelectAllCommand}"
+                    ToolTip="Marca todas las láminas que ahora mismo se ven en la lista (respetando el buscador y el filtro por set)."/>
+            <Button Grid.Column="1" Content="Ninguna" Style="{StaticResource Gvr.Button}"
+                    Command="{Binding SelectNoneCommand}"
+                    ToolTip="Desmarca las láminas visibles en la lista."/>
+            <Button Grid.Column="2" Content="Invertir" Style="{StaticResource Gvr.Button}"
+                    Command="{Binding InvertSelectionCommand}"
+                    ToolTip="Invierte la selección de las láminas visibles: marca las desmarcadas y desmarca las marcadas."/>
+
+            <TextBlock Grid.Column="4" Text="Buscar:" Style="{StaticResource Gvr.Text.Label}" Margin="12,0,6,0"/>
+            <TextBox Grid.Column="5" Style="{StaticResource Gvr.TextBox}"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Filtra la lista por número o por nombre de lámina. No modifica lo que ya está marcado."/>
+
+            <StackPanel Grid.Column="6" Grid.ColumnSpan="2" Orientation="Horizontal"
+                        Visibility="{Binding HasSheetSets, Converter={StaticResource Gvr.BoolToVisibility}}">
+                <TextBlock Text="Set:" Style="{StaticResource Gvr.Text.Label}" Margin="12,0,6,0"/>
+                <ComboBox MinWidth="190" Style="{StaticResource Gvr.ComboBox}"
+                          ItemsSource="{Binding SheetSetNames}" SelectedItem="{Binding SelectedSheetSet}"
+                          ToolTip="Filtra las láminas por un set guardado en el proyecto (los mismos sets que aparecen en el diálogo Imprimir de Revit)."/>
+            </StackPanel>
+        </Grid>
+
+        <!-- Sheet grid + count summary -->
+        <DockPanel Grid.Row="2">
+            <TextBlock DockPanel.Dock="Bottom" Text="{Binding SelectionSummary}"
+                       Style="{StaticResource Gvr.Text.Subtle}"
+                       HorizontalAlignment="Right" Margin="0,4,2,0"/>
+
+            <DataGrid Style="{StaticResource Gvr.DataGrid}" ItemsSource="{Binding SheetsView}">
+                <DataGrid.Columns>
+                    <DataGridCheckBoxColumn Width="34"
+                                            Binding="{Binding IsSelected, UpdateSourceTrigger=PropertyChanged}"/>
+                    <DataGridTextColumn Header="N° lámina" Binding="{Binding Number}" Width="110" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Nombre" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Rev." Binding="{Binding RevisionNumber}" Width="60" IsReadOnly="True"/>
+                    <DataGridTextColumn Header="Descripción de revisión" Binding="{Binding RevisionDescription}" Width="210" IsReadOnly="True"/>
+                </DataGrid.Columns>
+            </DataGrid>
+        </DockPanel>
+
+        <!-- Destination folder. The naming pattern is fixed to "SheetNumber - SheetName". -->
+        <Grid Grid.Row="3" Margin="0,10,0,0" IsEnabled="{Binding CanEditOptions}">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <TextBlock Grid.Row="0" Grid.Column="0" Text="Carpeta destino:" Style="{StaticResource Gvr.Text.Label}"
+                       ToolTip="Se crea automáticamente una subcarpeta con el nombre del proyecto, y ahí caen los archivos exportados."/>
+            <TextBox Grid.Row="0" Grid.Column="1" Style="{StaticResource Gvr.TextBox}"
+                     Text="{Binding OutputFolder, UpdateSourceTrigger=PropertyChanged}"
+                     ToolTip="Ruta donde se guardarán los archivos. Se puede escribir o pegar directamente, o elegir con Examinar."/>
+            <Button Grid.Row="0" Grid.Column="2" Content="Examinar..." Style="{StaticResource Gvr.Button}"
+                    Margin="8,0,0,0" Command="{Binding BrowseFolderCommand}"
+                    ToolTip="Abre el explorador de carpetas para elegir la carpeta destino."/>
+
+            <TextBlock Grid.Row="1" Grid.Column="1" Grid.ColumnSpan="2" Margin="0,3,0,0"
+                       Style="{StaticResource Gvr.Text.Subtle}"
+                       Text="{Binding DestinationFolder, StringFormat='Se creará: {0}'}"/>
+        </Grid>
+
+        <!-- Format-specific options. All checkboxes carry a tooltip explaining what they do,
+             because these settings only make sense with context. -->
+        <Border Grid.Row="4" Style="{StaticResource Gvr.Card}" Margin="0,12,0,0" IsEnabled="{Binding CanEditOptions}">
+            <StackPanel>
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Formato:" Style="{StaticResource Gvr.Text.Label}"/>
+                    <ComboBox MinWidth="130" Style="{StaticResource Gvr.ComboBox}"
+                              ItemsSource="{Binding FormatChoices}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                              SelectedValue="{Binding SelectedFormatMode}"
+                              ToolTip="Formato de salida: PDF, DWG, o ambos a la vez. PDF + DWG exporta primero todos los PDF y luego todos los DWG, con una sola barra de progreso."/>
+
+                    <CheckBox Content="Abrir la carpeta al finalizar" Style="{StaticResource Gvr.CheckBox}"
+                              Margin="20,0,0,0" IsChecked="{Binding OpenFolderWhenDone}"
+                              ToolTip="Cuando termine la exportación, abre el explorador de Windows en la carpeta destino."/>
+                </StackPanel>
+
+                <!-- PDF options -->
+                <StackPanel Margin="0,12,0,0"
+                            Visibility="{Binding ShowPdfOptions, Converter={StaticResource Gvr.BoolToVisibility}}">
+                    <TextBlock Text="Opciones de PDF" Style="{StaticResource Gvr.Text.Subtle}"
+                               FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <StackPanel Visibility="{Binding ShowPrinterSelector, Converter={StaticResource Gvr.BoolToVisibility}}"
+                                ToolTip="Revit 2021 no tiene exportador de PDF propio, así que se plotea con PDF24 Toolbox, la única impresora que este complemento usa para exportación masiva.">
+                        <TextBlock Text="{Binding PrinterHint}" TextWrapping="Wrap">
+                            <TextBlock.Style>
+                                <Style TargetType="TextBlock" BasedOn="{StaticResource Gvr.Text.Subtle}">
+                                    <Style.Triggers>
+                                        <DataTrigger Binding="{Binding IsPdfPrinterMissing}" Value="True">
+                                            <Setter Property="Foreground" Value="{StaticResource Gvr.Brush.Danger}"/>
+                                        </DataTrigger>
+                                    </Style.Triggers>
+                                </Style>
+                            </TextBlock.Style>
+                        </TextBlock>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <TextBlock Text="Color:" Style="{StaticResource Gvr.Text.Label}"/>
+                        <ComboBox MinWidth="150" Style="{StaticResource Gvr.ComboBox}"
+                                  ItemsSource="{Binding PdfColorModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding PdfColorMode}"
+                                  ToolTip="Color imprime a todo color, Escala de grises convierte a tonos de gris, Blanco y negro imprime todo con líneas negras (sin rellenos ni colores)."/>
+
+                        <TextBlock Text="Calidad ráster:" Style="{StaticResource Gvr.Text.Label}" Margin="18,0,8,0"/>
+                        <ComboBox MinWidth="150" Style="{StaticResource Gvr.ComboBox}"
+                                  ItemsSource="{Binding PdfRasterQualities}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding PdfRasterQuality}"
+                                  ToolTip="Resolución con la que se rasterizan las imágenes y sombreados en el PDF. Alta es el equilibrio habitual; Presentación produce archivos más grandes pero más nítidos."/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <CheckBox Content="Usar el tamaño de cada lámina" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding PdfMatchSheetSize}"
+                                  ToolTip="Cada PDF sale en el tamaño de papel real de la lámina (según su rótulo), en vez de forzar un tamaño único para todas."/>
+                        <CheckBox Content="Ajustar a la página" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding PdfFitToPage}"
+                                  ToolTip="Ajusta el dibujo al tamaño del papel. Si se desmarca, se plotea a escala real 100% (el dibujo puede quedar cortado si el papel es más chico)."/>
+                        <CheckBox Content="Sin margen" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding PdfNoMargin}"
+                                  ToolTip="Centra el dibujo sin dejar margen. Si se desmarca, se respeta el margen mínimo que declara la impresora."/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- DWG options -->
+                <StackPanel Margin="0,12,0,0"
+                            Visibility="{Binding ShowDwgOptions, Converter={StaticResource Gvr.BoolToVisibility}}">
+                    <TextBlock Text="Opciones de DWG" Style="{StaticResource Gvr.Text.Subtle}"
+                               FontWeight="SemiBold" Margin="0,0,0,6"/>
+                    <StackPanel Orientation="Horizontal">
+                        <TextBlock Text="Versión DWG:" Style="{StaticResource Gvr.Text.Label}"/>
+                        <ComboBox MinWidth="170" Style="{StaticResource Gvr.ComboBox}"
+                                  ItemsSource="{Binding DwgFileVersions}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                  SelectedValue="{Binding DwgFileVersion}"
+                                  ToolTip="Formato interno del DWG. AutoCAD abre versiones más nuevas que la propia, pero no al revés: elige la versión más antigua que necesites por compatibilidad."/>
+                    </StackPanel>
+
+                    <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
+                        <CheckBox Content="Combinar vistas" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding DwgMergeViews}"
+                                  ToolTip="Une todas las vistas de la lámina en un único espacio modelo del DWG. Si se desmarca, cada vista queda en su propio 'espacio papel' y hay que moverse entre ellas en AutoCAD."/>
+                        <CheckBox Content="Coordenadas compartidas" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding DwgSharedCoordinates}"
+                                  ToolTip="Usa el sistema de coordenadas compartido del proyecto (típicamente el sistema topográfico) en vez de las coordenadas internas de Revit. Actívalo si el DWG se va a georreferenciar con otros planos."/>
+                        <CheckBox Content="Exportar imágenes" Style="{StaticResource Gvr.CheckBox}"
+                                  IsChecked="{Binding DwgAlsoExportImage}"
+                                  ToolTip="Además del DWG, genera un PNG por lámina (mismo nombre, extensión .png) junto al DWG. Útil como vista previa o para adjuntar imágenes; duplica la cantidad de archivos."/>
+                    </StackPanel>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
+        <!-- Progress -->
+        <Grid Grid.Row="5" Margin="0,12,0,0">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto"/>
+                <RowDefinition Height="Auto"/>
+            </Grid.RowDefinitions>
+
+            <ProgressBar Grid.Row="0" Height="6" Minimum="0"
+                         Maximum="{Binding ProgressMaximum}" Value="{Binding ProgressValue, Mode=OneWay}"
+                         Visibility="{Binding IsExporting, Converter={StaticResource Gvr.BoolToVisibility}}"/>
+            <TextBlock Grid.Row="1" Margin="0,5,0,0" Style="{StaticResource Gvr.Text.Subtle}" Text="{Binding StatusText}"/>
+        </Grid>
+
+        <!-- Results -->
+        <Expander Grid.Row="6" Margin="0,10,0,0" Header="Detalle por lámina"
+                  IsExpanded="{Binding ShowResults, Mode=TwoWay}"
+                  ToolTip="Muestra el resultado de cada lámina exportada, y el detalle del error cuando alguna falla.">
+            <DataGrid Style="{StaticResource Gvr.DataGrid}" ItemsSource="{Binding Results}"
+                      MaxHeight="180" IsReadOnly="True" Margin="0,6,0,0">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="Estado" Binding="{Binding StatusText}" Width="70"/>
+                    <DataGridTextColumn Header="Lámina" Binding="{Binding Label}" Width="240"/>
+                    <DataGridTextColumn Header="Detalle" Binding="{Binding Detail}" Width="*"/>
+                </DataGrid.Columns>
+                <DataGrid.RowStyle>
+                    <Style TargetType="DataGridRow">
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding Succeeded}" Value="False">
+                                <Setter Property="Foreground" Value="{StaticResource Gvr.Brush.Danger}"/>
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </DataGrid.RowStyle>
+            </DataGrid>
+        </Expander>
+
+        <!-- Actions -->
+        <StackPanel Grid.Row="7" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Abrir carpeta" Style="{StaticResource Gvr.Button.Action}"
+                    Command="{Binding OpenFolderCommand}"
+                    ToolTip="Abre el explorador de Windows en la carpeta destino."/>
+            <Button Content="Cancelar exportación" Style="{StaticResource Gvr.Button.Action}"
+                    Command="{Binding CancelCommand}"
+                    Visibility="{Binding IsExporting, Converter={StaticResource Gvr.BoolToVisibility}}"
+                    ToolTip="Detiene la exportación al terminar la lámina actual (no rompe el archivo en curso)."/>
+            <Button Content="{Binding ExportButtonLabel}" Style="{StaticResource Gvr.Button.Primary}"
+                    Command="{Binding ExportCommand}"
+                    ToolTip="Inicia la exportación de las láminas marcadas."/>
+            <Button Content="Cerrar" Style="{StaticResource Gvr.Button.Action}" Click="OnCloseClick"
+                    ToolTip="Cierra la ventana. Si hay una exportación en curso se cancela primero."/>
+        </StackPanel>
+    </Grid>
+</Window>

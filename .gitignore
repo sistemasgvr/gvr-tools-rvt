@@ -72,3 +72,6 @@ $RECYCLE.BIN/
 
 # Logs
 *.log
+
+# Salida de compilación por versión de Revit (scripts/install-addin.ps1)
+build/
