@@ -32,9 +32,9 @@
     <div class="row g-3">
         <div class="col-md-6">
             <label asp-for="SheetsPerMonth" class="form-label">Láminas por mes</label>
-            <input asp-for="SheetsPerMonth" type="number" min="0" class="form-control" id="sheets-per-month-input" />
+            <input asp-for="SheetsPerMonth" type="number" min="0" class="form-control js-sheets-per-month" />
             <div class="form-check mt-2">
-                <input asp-for="SheetsPerMonthUnlimited" class="form-check-input" id="sheets-unlimited" />
+                <input asp-for="SheetsPerMonthUnlimited" class="form-check-input js-sheets-unlimited" />
                 <label asp-for="SheetsPerMonthUnlimited" class="form-check-label">Ilimitadas</label>
             </div>
             <div class="form-text">Se reinicia cada mes (UTC). Solo cuentan láminas exportadas con éxito.</div>
@@ -71,8 +71,10 @@
 
 <script>
   (() => {
-    const unlimited = document.getElementById('sheets-unlimited');
-    const input = document.getElementById('sheets-per-month-input');
+    const root = document.currentScript?.previousElementSibling?.parentElement
+      || document;
+    const unlimited = root.querySelector?.('.js-sheets-unlimited') || document.querySelector('.js-sheets-unlimited');
+    const input = root.querySelector?.('.js-sheets-per-month') || document.querySelector('.js-sheets-per-month');
     if (!unlimited || !input) return;
     const sync = () => { input.disabled = unlimited.checked; };
     unlimited.addEventListener('change', sync);

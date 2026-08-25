@@ -73,11 +73,9 @@ builder.Services.AddSwaggerGen(options =>
     {
         Title = "GVR License API",
         Version = "v1",
-        Description = "docs/LICENSING_PLAN.md -- API que consume el add-in (/v1/*) y, más adelante, el panel admin (/admin/*)."
+        Description = "API que consume el add-in Revit (/v1/*). El panel admin es Razor Pages (cookie), no aparece aquí."
     });
 
-    // Botón "Authorize" en Swagger UI: pegar el AccessToken de /v1/activate para probar
-    // /v1/heartbeat y /v1/usage sin salir del navegador.
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Name = "Authorization",
@@ -85,15 +83,10 @@ builder.Services.AddSwaggerGen(options =>
         Scheme = "bearer",
         BearerFormat = "JWT",
         In = ParameterLocation.Header,
-        Description = "Pegar solo el AccessToken devuelto por /v1/activate (sin el prefijo 'Bearer ')."
+        Description = "Pegar solo el AccessToken de /v1/activate (sin 'Bearer '). Solo hace falta en heartbeat y usage."
     });
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme { Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" } },
-            []
-        }
-    });
+    // No AddSecurityRequirement global: AuthorizeCheckOperationFilter lo aplica solo a endpoints autenticados.
+    options.OperationFilter<GvrLicense.Api.OpenApi.AuthorizeCheckOperationFilter>();
 });
 
 // Pieza 3 "Seguridad anti-abuso", punto 7: rate limit de activate/heartbeat. Nativo desde .NET 7,
@@ -107,20 +100,30 @@ var app = builder.Build();
 
 app.UseRateLimiter();
 
-if (app.Environment.IsDevelopment())
+// Swagger siempre disponible en este producto self-hosted (enlace "Avanzado · API" del admin).
+app.UseSwagger();
+app.UseSwaggerUI(options =>
 {
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "GVR License API v1");
+    options.DocumentTitle = "GVR License API";
+});
 
-app.UseStaticFiles(); // wwwroot/lib -- AdminLTE/Bootstrap/jQuery/FontAwesome vendorizados, ver Pages/Shared/_Layout.cshtml
+app.UseStaticFiles(); // wwwroot/lib -- AdminLTE/Bootstrap vendorizados, ver Pages/Shared/_Layout.cshtml
 app.UseAuthentication();
 app.UseAuthorization();
 
-// Pieza 6 "Monitoreo": valida conexión real a Postgres, no solo "el proceso responde" -- el monitor
-// externo (UptimeRobot) pega aquí.
+// Pieza 6 "Monitoreo": valida conexión real a Postgres.
 app.MapGet("/health", async (LicenseDbContext db) =>
-    await db.Database.CanConnectAsync() ? Results.Ok() : Results.StatusCode(StatusCodes.Status503ServiceUnavailable));
+        await db.Database.CanConnectAsync()
+            ? Results.Ok(new { status = "ok" })
+            : Results.Json(new { status = "unavailable" }, statusCode: StatusCodes.Status503ServiceUnavailable))
+    .WithTags("ops")
+    .WithSummary("Health check (Postgres)")
+    .WithDescription("UptimeRobot / EasyPanel. 200 si la base responde; 503 si no.")
+    .Produces(StatusCodes.Status200OK)
+    .Produces(StatusCodes.Status503ServiceUnavailable)
+    .AllowAnonymous()
+    .ExcludeFromDescription();
 
 app.MapV1Endpoints();
 app.MapRazorPages();

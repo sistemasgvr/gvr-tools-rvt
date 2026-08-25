@@ -17,6 +17,7 @@ public static class V1Endpoints
 
         v1.MapPost("/activate", async (ActivateRequest request, LicenseEngine engine, CancellationToken ct) =>
                 await RunAsync(() => engine.ActivateAsync(request, ct)))
+            .AllowAnonymous()
             .WithSummary("Activa una license key en este dispositivo")
             .WithDescription("Valida la key, crea/renueva el seat (node-locked por fingerprint) y devuelve el blob de entitlements firmado + un JWT (AccessToken) para heartbeat/usage.")
             .Produces<ActivateResponse>()
@@ -35,7 +36,8 @@ public static class V1Endpoints
             .WithDescription("Requiere 'Authorization: Bearer {AccessToken}' (JWT emitido por /v1/activate). Si la licencia fue suspendida en admin, corta aquí en vez de esperar a que se agote la gracia de 7 días.")
             .Produces<HeartbeatResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized)
-            .ProducesProblem(StatusCodes.Status403Forbidden);
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status404NotFound);
 
         v1.MapPost("/usage", async (UsageEventRequest request, ClaimsPrincipal user, LicenseEngine engine, CancellationToken ct) =>
                 await RunAsync(() =>
@@ -51,15 +53,19 @@ public static class V1Endpoints
 
         v1.MapGet("/updates/check", async (string? version, string? revit, LicenseEngine engine, CancellationToken ct) =>
                 await RunAsync(() => engine.CheckUpdateAsync(version, revit, ct)))
+            .AllowAnonymous()
             .WithSummary("Consulta si hay una versión más nueva en el canal stable")
             .Produces<UpdateCheckResponse>();
 
         v1.MapGet("/updates/download/{id:guid}", async (Guid id, LicenseEngine engine, CancellationToken ct) =>
             {
                 var location = await engine.GetDownloadLocationAsync(id, ct);
-                return Results.Ok(new { location });
+                return Results.Ok(new UpdateDownloadResponse { Location = location });
             })
-            .WithSummary("Ubicación del artefacto de un release (simplificado, ver LicenseEngine)")
+            .AllowAnonymous()
+            .WithSummary("Ubicación del artefacto de un release")
+            .WithDescription("Devuelve la ruta/URL del artefacto. En producción se reemplaza por URL firmada temporal (S3/MinIO).")
+            .Produces<UpdateDownloadResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         return app;

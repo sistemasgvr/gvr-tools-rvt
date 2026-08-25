@@ -37,6 +37,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             .ToListAsync();
 
         CustomerOptions = await db.Customers
+            .Where(c => c.IsActive)
             .OrderBy(c => c.CompanyName)
             .Select(c => new SelectListItem(c.CompanyName, c.Id.ToString()))
             .ToListAsync();

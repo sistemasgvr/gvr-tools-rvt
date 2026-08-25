@@ -147,6 +147,49 @@ public sealed class PlanFeatureForm
         return string.Join(" · ", parts);
     }
 
+    /// <summary>Plan + overrides de licencia (gana el override si el código se repite).</summary>
+    public static Dictionary<string, string> Merge(
+        IReadOnlyDictionary<string, string> plan,
+        IReadOnlyDictionary<string, string> overrides)
+    {
+        var merged = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in plan)
+        {
+            merged[kv.Key] = kv.Value;
+        }
+
+        foreach (var kv in overrides)
+        {
+            merged[kv.Key] = kv.Value;
+        }
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Solo guarda diferencias respecto al plan. Así el formulario muestra lo efectivo
+    /// (plan+overrides) y al guardar no duplica lo que ya viene del plan.
+    /// </summary>
+    public static Dictionary<string, string> DiffAgainstPlan(
+        IReadOnlyDictionary<string, string> plan,
+        IReadOnlyDictionary<string, string> desiredEffective)
+    {
+        var planNorm = FromDictionary(plan).ToDictionary();
+        var desiredNorm = FromDictionary(desiredEffective).ToDictionary();
+        var overrides = new Dictionary<string, string>(StringComparer.Ordinal);
+
+        foreach (var kv in desiredNorm)
+        {
+            if (!planNorm.TryGetValue(kv.Key, out var planVal)
+                || !string.Equals(planVal, kv.Value, StringComparison.Ordinal))
+            {
+                overrides[kv.Key] = kv.Value;
+            }
+        }
+
+        return overrides;
+    }
+
     private static string Bool(bool value) => value ? "true" : "false";
 
     private static bool IsTrue(IReadOnlyDictionary<string, string> features, string key, bool defaultValue = false)

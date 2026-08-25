@@ -1,0 +1,49 @@
+@page
+@using System.Text.Json
+@model GvrLicense.Api.Pages.Admin.Audit.IndexModel
+@{
+    ViewData["Title"] = "Auditoría";
+}
+
+<div class="card">
+    <div class="card-header">
+        <h3 class="card-title">Historial de cambios</h3>
+    </div>
+    <div class="card-body">
+        <p class="text-body-secondary small">Quién suspendió/reactivó licencias y otros eventos registrados.</p>
+        @if (Model.Rows.Count == 0)
+        {
+            <p class="text-secondary mb-0">Todavía no hay eventos de auditoría.</p>
+        }
+        else
+        {
+            <div id="audit-table"></div>
+        }
+    </div>
+</div>
+
+@if (Model.Rows.Count > 0)
+{
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    new Tabulator('#audit-table', {
+      data: data,
+      locale: 'es',
+      langs: window.gvrTabulatorLocale,
+      layout: 'fitColumns',
+      responsiveLayout: 'collapse',
+      pagination: true,
+      paginationSize: 25,
+      paginationCounter: 'rows',
+      columns: [
+        { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Cuándo', field: 'occurredAtUtc', width: 150, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
+        { title: 'Acción', field: 'action', minWidth: 120, responsive: 0 },
+        { title: 'Quién', field: 'actor', minWidth: 100, responsive: 1 },
+        { title: 'Detalle', field: 'detailsJson', minWidth: 200, responsive: 2 },
+      ],
+    });
+  });
+</script>
+}

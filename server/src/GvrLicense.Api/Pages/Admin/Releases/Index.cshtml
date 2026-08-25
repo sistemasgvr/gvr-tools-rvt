@@ -1,0 +1,111 @@
+@page
+@using System.Text.Json
+@model GvrLicense.Api.Pages.Admin.Releases.IndexModel
+@{
+    ViewData["Title"] = "Actualizaciones";
+}
+
+@if (TempData["Saved"] != null)
+{
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        Release publicado. El add-in lo ofrecerá en el próximo check de updates.
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+    </div>
+}
+
+<div class="card">
+    <div class="card-header">
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <h3 class="card-title">Actualizaciones (releases)</h3>
+            </div>
+            <div class="col-12 col-md-8">
+                <div class="d-flex flex-wrap justify-content-md-end gap-2">
+                    <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createReleaseModal">
+                        <i class="bi bi-cloud-upload me-1" aria-hidden="true"></i> Publicar release
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        @if (Model.Rows.Count == 0)
+        {
+            <div class="text-center text-secondary py-4">
+                <p class="mb-3">Aún no hay versiones publicadas. Cuando tengas un build listo, publícalo aquí.</p>
+                <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createReleaseModal">
+                    Publicar release
+                </button>
+            </div>
+        }
+        else
+        {
+            <div id="releases-table"></div>
+        }
+    </div>
+</div>
+
+<div class="modal fade" id="createReleaseModal" tabindex="-1" aria-labelledby="createReleaseModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createReleaseModalLabel">Publicar release</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Versión</label>
+                        <input name="Input.Version" class="form-control" placeholder="1.2.0" required />
+                        <div class="form-text">Semver que verá el add-in (AssemblyInformationalVersion).</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Ubicación del artefacto</label>
+                        <input name="Input.ArtifactLocation" class="form-control" placeholder="/data/releases/1.2.0.zip o s3://…" required />
+                        <div class="form-text">Ruta en el VPS o bucket. La URL firmada se afina en producción.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Checksum (SHA-256)</label>
+                        <input name="Input.Checksum" class="form-control font-monospace" placeholder="opcional" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas de la versión</label>
+                        <textarea name="Input.Notes" class="form-control" rows="3" placeholder="Qué hay de nuevo…"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Publicar</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+@if (Model.Rows.Count > 0)
+{
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    new Tabulator('#releases-table', {
+      data: data,
+      locale: 'es',
+      langs: window.gvrTabulatorLocale,
+      layout: 'fitColumns',
+      responsiveLayout: 'collapse',
+      pagination: true,
+      paginationSize: 10,
+      paginationCounter: 'rows',
+      columns: [
+        { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Versión', field: 'version', minWidth: 100, responsive: 0 },
+        { title: 'Publicado', field: 'publishedAtUtc', width: 140, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
+        { title: 'Canal', field: 'channel', width: 90, responsive: 1 },
+        { title: 'Artefacto', field: 'artifactLocation', minWidth: 180, responsive: 2 },
+        { title: 'Notas', field: 'notes', minWidth: 160, responsive: 3 },
+      ],
+    });
+  });
+</script>
+}
