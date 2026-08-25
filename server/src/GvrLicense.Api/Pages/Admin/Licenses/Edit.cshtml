@@ -28,6 +28,7 @@
         </div>
     </div>
     <form method="post">
+        <input asp-for="Id" type="hidden" />
         <div class="card-body">
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
@@ -96,8 +97,9 @@
                                     <td>@d.UserName</td>
                                     <td>@d.LastSeenUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
                                     <td class="text-end">
-                                        <form method="post" asp-page-handler="KickDevice" class="d-inline"
+                                        <form method="post" asp-page-handler="KickDevice" asp-route-id="@Model.Id" class="d-inline"
                                               onsubmit="return confirm('¿Liberar este PC? Dejará de contar como puesto ocupado.');">
+                                            @Html.AntiForgeryToken()
                                             <input type="hidden" name="deviceId" value="@d.Id" />
                                             <button type="submit" class="btn btn-sm btn-outline-danger">Liberar</button>
                                         </form>

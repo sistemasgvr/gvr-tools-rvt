@@ -1,3 +1,4 @@
+using System;
 using System.Windows;
 using System.Windows.Interop;
 using GvrTools.Licensing.Http.Dto;
@@ -7,6 +8,11 @@ namespace GvrTools.Licensing.Activation
     /// <summary>Helpers para abrir las ventanas de licencia desde comandos Revit (owner HWND).</summary>
     public static class LicenseUi
     {
+        /// <summary>
+        /// Opcional: lo registra el host Revit para cerrar la aplicación tras activar licencia.
+        /// </summary>
+        public static Action RequestApplicationClose { get; set; }
+
         public static bool? ShowActivate(
             LicenseClient client,
             System.IntPtr ownerHwnd = default,

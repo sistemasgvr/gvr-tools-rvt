@@ -5,7 +5,7 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class UpdateDownloadResponse
     {
-        [DataMember]
+        [DataMember(Name = "location")]
         public string Location { get; set; }
     }
 }

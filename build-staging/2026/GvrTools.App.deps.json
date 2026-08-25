@@ -1,0 +1,111 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v8.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v8.0": {
+      "GvrTools.App/1.0.0": {
+        "dependencies": {
+          "GvrTools.Core": "1.0.0",
+          "GvrTools.Licensing": "1.0.0",
+          "GvrTools.Revit": "1.0.0",
+          "GvrTools.Tools.BatchExport": "1.0.0",
+          "GvrTools.UI": "1.0.0"
+        },
+        "runtime": {
+          "GvrTools.App.dll": {}
+        }
+      },
+      "GvrTools.Core/1.0.0": {
+        "runtime": {
+          "GvrTools.Core.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "GvrTools.Licensing/1.0.0": {
+        "dependencies": {
+          "GvrTools.Core": "1.0.0",
+          "GvrTools.UI": "1.0.0"
+        },
+        "runtime": {
+          "GvrTools.Licensing.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "GvrTools.Revit/1.0.0": {
+        "dependencies": {
+          "GvrTools.Core": "1.0.0"
+        },
+        "runtime": {
+          "GvrTools.Revit.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "GvrTools.Tools.BatchExport/1.0.0": {
+        "dependencies": {
+          "GvrTools.Core": "1.0.0",
+          "GvrTools.Licensing": "1.0.0",
+          "GvrTools.Revit": "1.0.0",
+          "GvrTools.UI": "1.0.0"
+        },
+        "runtime": {
+          "GvrTools.Tools.BatchExport.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      },
+      "GvrTools.UI/1.0.0": {
+        "dependencies": {
+          "GvrTools.Core": "1.0.0"
+        },
+        "runtime": {
+          "GvrTools.UI.dll": {
+            "assemblyVersion": "1.0.0.0",
+            "fileVersion": "1.0.0.0"
+          }
+        }
+      }
+    }
+  },
+  "libraries": {
+    "GvrTools.App/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GvrTools.Core/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GvrTools.Licensing/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GvrTools.Revit/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GvrTools.Tools.BatchExport/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "GvrTools.UI/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

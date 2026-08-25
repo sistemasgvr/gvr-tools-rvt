@@ -5,7 +5,7 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class HeartbeatRequest
     {
-        [DataMember]
+        [DataMember(Name = "deviceFingerprint")]
         public string DeviceFingerprint { get; set; }
     }
 
@@ -13,13 +13,13 @@ namespace GvrTools.Licensing.Http.Dto
     public sealed class HeartbeatResponse
     {
         /// <summary>JWT renovado — reemplazar el AccessToken local.</summary>
-        [DataMember]
+        [DataMember(Name = "accessToken")]
         public string AccessToken { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "entitlementJson")]
         public string EntitlementJson { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "entitlementSignatureBase64")]
         public string EntitlementSignatureBase64 { get; set; }
     }
 }

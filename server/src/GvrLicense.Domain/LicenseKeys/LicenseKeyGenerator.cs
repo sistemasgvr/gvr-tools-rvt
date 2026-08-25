@@ -27,6 +27,25 @@ public static class LicenseKeyGenerator
         return $"GVR-{body[..4]}-{body[4..8]}-{body[8..10]}{checksum}";
     }
 
+    /// <summary>
+    /// Normaliza lo que pega el usuario (espacios, minúsculas) a GVR-XXXX-XXXX-XXXX.
+    /// </summary>
+    public static string Normalize(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return string.Empty;
+        }
+
+        var normalized = key.Trim().ToUpperInvariant().Replace(' ', '-');
+        while (normalized.Contains("--", StringComparison.Ordinal))
+        {
+            normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
+        }
+
+        return normalized;
+    }
+
     /// <summary>Valida formato + checksum, sin tocar la base de datos. No confirma que la key exista.</summary>
     public static bool TryValidateFormat(string? key)
     {
@@ -35,12 +54,13 @@ public static class LicenseKeyGenerator
             return false;
         }
 
-        var compact = key.Trim().ToUpperInvariant();
+        var compact = Normalize(key);
         if (compact.StartsWith("GVR-", StringComparison.Ordinal))
         {
             compact = compact["GVR-".Length..];
         }
-        compact = compact.Replace("-", string.Empty);
+
+        compact = compact.Replace("-", string.Empty).Replace(" ", string.Empty);
 
         if (compact.Length != PayloadLength + 2)
         {

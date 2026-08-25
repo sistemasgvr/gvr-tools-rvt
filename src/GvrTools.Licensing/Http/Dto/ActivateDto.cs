@@ -6,32 +6,32 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class ActivateRequest
     {
-        [DataMember]
+        [DataMember(Name = "licenseKey")]
         public string LicenseKey { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "deviceFingerprint")]
         public string DeviceFingerprint { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "deviceName")]
         public string DeviceName { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "userFullName")]
         public string UserFullName { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "userEmail")]
         public string UserEmail { get; set; }
     }
 
     [DataContract]
     public sealed class ActivateResponse
     {
-        [DataMember]
+        [DataMember(Name = "accessToken")]
         public string AccessToken { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "entitlementJson")]
         public string EntitlementJson { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "entitlementSignatureBase64")]
         public string EntitlementSignatureBase64 { get; set; }
     }
 }

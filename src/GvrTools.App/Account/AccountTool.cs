@@ -5,6 +5,7 @@ using Autodesk.Revit.Attributes;
 using Autodesk.Revit.UI;
 using GvrTools.Licensing;
 using GvrTools.Licensing.Activation;
+using GvrTools.Revit.Infrastructure;
 using GvrTools.Revit.Ribbon;
 using GvrTools.UI.Icons;
 using MediaColor = System.Windows.Media.Color;
@@ -47,6 +48,7 @@ namespace GvrTools.App.Account
             try
             {
                 LicenseRuntime.EnsureInitialized();
+                RevitRestart.PendingDocumentPath = commandData.Application.ActiveUIDocument?.Document?.PathName;
                 var hwnd = commandData.Application.MainWindowHandle;
                 LicenseUi.ShowAccount(LicenseRuntime.Client, hwnd);
                 return Result.Succeeded;

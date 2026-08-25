@@ -6,26 +6,26 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class UsageEventDto
     {
-        [DataMember]
+        [DataMember(Name = "deviceFingerprint")]
         public string DeviceFingerprint { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "eventId")]
         public Guid EventId { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "featureCode")]
         public string FeatureCode { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "quantity")]
         public int Quantity { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "occurredAtUtc")]
         public DateTimeOffset OccurredAtUtc { get; set; }
     }
 
     [DataContract]
     public sealed class UsageEventResponse
     {
-        [DataMember]
+        [DataMember(Name = "remaining")]
         public int? Remaining { get; set; }
     }
 }

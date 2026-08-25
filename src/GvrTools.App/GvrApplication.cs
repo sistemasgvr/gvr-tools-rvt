@@ -40,6 +40,7 @@ namespace GvrTools.App
                          $"PDF nativo: {RevitVersionInfo.HasNativePdfExport}).");
 
                 LicenseRuntime.EnsureInitialized();
+                LicenseUi.RequestApplicationClose = RevitRestart.RequestCloseAndRestart;
                 var uiContext = SynchronizationContext.Current;
 
                 // Heartbeat (renueva JWT) + sesión expirada / updates en background.

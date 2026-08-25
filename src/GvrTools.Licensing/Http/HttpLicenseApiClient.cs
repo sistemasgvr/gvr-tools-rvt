@@ -83,6 +83,7 @@ namespace GvrTools.Licensing.Http
                 if (!response.IsSuccessStatusCode)
                     throw CreateApiException(response.StatusCode, body);
 
+                ThrowIfHtmlResponse(response, body);
                 return Deserialize<UpdateCheckResponse>(body);
             }
         }
@@ -96,6 +97,7 @@ namespace GvrTools.Licensing.Http
                 if (!response.IsSuccessStatusCode)
                     throw CreateApiException(response.StatusCode, body);
 
+                ThrowIfHtmlResponse(response, body);
                 return Deserialize<UpdateDownloadResponse>(body);
             }
         }
@@ -125,6 +127,7 @@ namespace GvrTools.Licensing.Http
                     if (!response.IsSuccessStatusCode)
                         throw CreateApiException(response.StatusCode, responseBody);
 
+                    ThrowIfHtmlResponse(response, responseBody);
                     return Deserialize<TResponse>(responseBody);
                 }
             }
@@ -134,6 +137,19 @@ namespace GvrTools.Licensing.Http
         {
             var detail = TryReadProblemDetail(body) ?? ("Error HTTP " + (int)status);
             return new LicenseApiClientException((int)status, detail);
+        }
+
+        private static void ThrowIfHtmlResponse(HttpResponseMessage response, string body)
+        {
+            var contentType = response.Content.Headers.ContentType?.ToString();
+            if ((!string.IsNullOrEmpty(body) && body.TrimStart().StartsWith("<", StringComparison.Ordinal)) ||
+                (!string.IsNullOrEmpty(contentType) &&
+                 contentType.IndexOf("html", StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                throw new LicenseApiClientException(
+                    502,
+                    "La API devolvió HTML; revisa license-config.json: baseUrl debe ser http://localhost:5299 en desarrollo.");
+            }
         }
 
         private static string TryReadProblemDetail(string body)

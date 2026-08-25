@@ -5,14 +5,14 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class DeactivateRequest
     {
-        [DataMember]
+        [DataMember(Name = "deviceFingerprint")]
         public string DeviceFingerprint { get; set; }
     }
 
     [DataContract]
     public sealed class DeactivateResponse
     {
-        [DataMember]
+        [DataMember(Name = "deactivated")]
         public bool Deactivated { get; set; }
     }
 }

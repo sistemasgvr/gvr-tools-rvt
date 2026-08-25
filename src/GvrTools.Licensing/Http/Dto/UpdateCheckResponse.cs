@@ -5,16 +5,16 @@ namespace GvrTools.Licensing.Http.Dto
     [DataContract]
     public sealed class UpdateCheckResponse
     {
-        [DataMember]
+        [DataMember(Name = "updateAvailable")]
         public bool UpdateAvailable { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "latestVersion")]
         public string LatestVersion { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "downloadUrl")]
         public string DownloadUrl { get; set; }
 
-        [DataMember]
+        [DataMember(Name = "releaseNotes")]
         public string ReleaseNotes { get; set; }
     }
 }

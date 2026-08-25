@@ -32,7 +32,8 @@ public sealed class LicenseEngine(
 
     public async Task<ActivateResponse> ActivateAsync(ActivateRequest request, CancellationToken ct)
     {
-        if (!LicenseKeyGenerator.TryValidateFormat(request.LicenseKey))
+        var normalizedKey = LicenseKeyGenerator.Normalize(request.LicenseKey);
+        if (!LicenseKeyGenerator.TryValidateFormat(normalizedKey))
         {
             throw new LicenseApiException(400, "Formato de license key inválido.");
         }
@@ -42,7 +43,6 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(400, "Nombre y correo son obligatorios para activar.");
         }
 
-        var normalizedKey = request.LicenseKey.Trim().ToUpperInvariant();
         var license = await db.Licenses
             .Include(l => l.Plan)
             .Include(l => l.Devices)

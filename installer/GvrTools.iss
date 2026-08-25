@@ -6,7 +6,9 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "GVR"
 #define MyAppURL "https://github.com/sistemasgvr"
+#ifndef PayloadRoot
 #define PayloadRoot "..\build"
+#endif
 
 [Setup]
 AppId={{A7C3E2F1-9B4D-4E8A-9C1F-6D2B0A5E8F31}

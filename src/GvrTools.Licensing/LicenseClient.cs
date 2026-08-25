@@ -121,9 +121,16 @@ namespace GvrTools.Licensing
 
         public async Task ActivateAsync(string licenseKey, string userFullName, string userEmail, CancellationToken ct)
         {
+            var normalizedLicenseKey = (licenseKey ?? string.Empty)
+                .Trim()
+                .ToUpperInvariant()
+                .Replace(' ', '-');
+            while (normalizedLicenseKey.Contains("--"))
+                normalizedLicenseKey = normalizedLicenseKey.Replace("--", "-");
+
             var response = await _api.ActivateAsync(new ActivateRequest
             {
-                LicenseKey = (licenseKey ?? string.Empty).Trim(),
+                LicenseKey = normalizedLicenseKey,
                 DeviceFingerprint = _fingerprint.GetFingerprint(),
                 DeviceName = Environment.MachineName,
                 UserFullName = (userFullName ?? string.Empty).Trim(),

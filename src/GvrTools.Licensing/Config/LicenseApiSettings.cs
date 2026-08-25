@@ -8,7 +8,8 @@ namespace GvrTools.Licensing.Config
 {
     /// <summary>
     /// Base URL del License API. Override en %APPDATA%\GVR\GvrTools\license-config.json
-    /// para apuntar a un servidor local sin redeploy.
+    /// para apuntar a un servidor local sin redeploy. DefaultBaseUrl es solo un placeholder;
+    /// en desarrollo se requiere el override local (http://localhost:5299).
     /// </summary>
     public static class LicenseApiSettings
     {
