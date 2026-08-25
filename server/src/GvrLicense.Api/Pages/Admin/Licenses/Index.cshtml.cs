@@ -1,5 +1,6 @@
 using GvrLicense.Domain.Entities;
 using GvrLicense.Infrastructure;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Rendering;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace GvrLicense.Api.Pages.Admin.Licenses;
 
-public class IndexModel(LicenseDbContext db) : PageModel
+public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageModel
 {
     public List<LicenseRow> Rows { get; private set; } = [];
 
@@ -15,8 +16,16 @@ public class IndexModel(LicenseDbContext db) : PageModel
     public List<SelectListItem> CustomerOptions { get; private set; } = [];
     public List<SelectListItem> PlanOptions { get; private set; } = [];
 
+    /// <summary>
+    /// Tabulator genera el botón Suspender/Reactivar por fila como HTML crudo (no hay `<form>` de
+    /// Razor por fila), así que necesita el token a mano para poder incluirlo en cada form generado.
+    /// </summary>
+    public string AntiForgeryToken { get; private set; } = string.Empty;
+
     public async Task OnGetAsync()
     {
+        AntiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken!;
+
         Rows = await db.Licenses
             .Include(l => l.Customer)
             .Include(l => l.Plan)

@@ -1,20 +1,27 @@
 using System.Security.Claims;
 using GvrLicense.Infrastructure;
+using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
 namespace GvrLicense.Api.Pages.Admin.Users;
 
-public class IndexModel(LicenseDbContext db) : PageModel
+public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageModel
 {
     public List<AdminRow> Rows { get; private set; } = [];
 
+    /// <summary>Tabulator genera el botón Activar/Desactivar por fila como HTML crudo, necesita el token a mano.</summary>
+    public string AntiForgeryToken { get; private set; } = string.Empty;
+
     public async Task OnGetAsync()
     {
+        AntiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken!;
+
+        var currentUsername = User.Identity?.Name;
         Rows = await db.AdminUsers
             .OrderBy(u => u.Username)
-            .Select(u => new AdminRow(u.Id, u.Username, u.IsActive, u.CreatedAtUtc))
+            .Select(u => new AdminRow(u.Id, u.Username, u.IsActive, u.CreatedAtUtc, u.Username == currentUsername))
             .ToListAsync();
     }
 
@@ -38,5 +45,5 @@ public class IndexModel(LicenseDbContext db) : PageModel
         return RedirectToPage();
     }
 
-    public sealed record AdminRow(Guid Id, string Username, bool IsActive, DateTimeOffset CreatedAtUtc);
+    public sealed record AdminRow(Guid Id, string Username, bool IsActive, DateTimeOffset CreatedAtUtc, bool IsSelf);
 }

@@ -1,0 +1,63 @@
+/* Ajustes sobre AdminLTE 4 + Tabulator (bootstrap5).
+   Card header: patrón de dist/users.html (row + d-flex gap-2).
+   Paginación: símbolos cortos + footer que no desborda. */
+
+/* AdminLTE flota .card-title; dentro del row de users.html no debe flotar. */
+.card-header > .row .card-title {
+  float: none;
+}
+
+/* --- Tabulator footer / paginación --- */.tabulator .tabulator-footer {
+  padding: 0.5rem 0.75rem;
+}
+
+.tabulator .tabulator-footer .tabulator-footer-contents {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  width: 100%;
+}
+
+.tabulator .tabulator-footer .tabulator-paginator {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.25rem 0.35rem;
+  margin-left: auto;
+}
+
+.tabulator .tabulator-footer .tabulator-page {
+  min-width: 2rem;
+  padding-left: 0.5rem;
+  padding-right: 0.5rem;
+}
+
+.tabulator .tabulator-footer .tabulator-page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  white-space: nowrap;
+}
+
+@media (max-width: 575.98px) {
+  /* Una sola franja: Filas + botones; el contador debajo (como card-footer AdminLTE). */
+  .tabulator .tabulator-footer .tabulator-footer-contents {
+    justify-content: center;
+  }
+
+  .tabulator .tabulator-footer .tabulator-paginator {
+    margin-left: 0;
+    justify-content: center;
+    flex: 1 1 auto;
+  }
+
+  .tabulator .tabulator-footer .tabulator-page-counter {
+    flex: 1 1 100%;
+    text-align: center;
+    order: 3;
+    font-size: 0.875rem;
+  }
+}

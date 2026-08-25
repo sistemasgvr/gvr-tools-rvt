@@ -1,4 +1,5 @@
 @page
+@using System.Text.Json
 @model GvrLicense.Api.Pages.Admin.Users.IndexModel
 @{
     ViewData["Title"] = "Administradores";
@@ -10,54 +11,26 @@
 }
 
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h3 class="card-title mb-0">Administradores</h3>
-        <div class="d-flex gap-2">
-            <input type="search" class="form-control form-control-sm" style="min-width: 16rem" placeholder="Buscar por usuario…"
-                   oninput="gvrFilterTable(this, '#adminsTable tbody')" />
-            <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createAdminModal">
-                <i class="bi bi-shield-lock me-1"></i> Nuevo administrador
-            </button>
+    <div class="card-header">
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <h3 class="card-title">Administradores</h3>
+            </div>
+            <div class="col-12 col-md-8">
+                <div class="d-flex flex-wrap justify-content-md-end gap-2">
+                    <div class="input-group input-group-sm w-auto flex-grow-1 flex-md-grow-0" style="max-width: 16rem">
+                        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                        <input id="admins-filter" type="search" class="form-control" placeholder="Buscar…" aria-label="Buscar" style="min-width: 8rem" />
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createAdminModal">
+                        <i class="bi bi-shield-lock me-1" aria-hidden="true"></i> Nuevo administrador
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card-body p-0">
-        <table class="table table-striped table-hover mb-0" id="adminsTable">
-            <thead>
-                <tr>
-                    <th>Usuario</th>
-                    <th>Estado</th>
-                    <th>Alta</th>
-                    <th></th>
-                </tr>
-            </thead>
-            <tbody>
-            @foreach (var row in Model.Rows)
-            {
-                var isSelf = row.Username == User.Identity?.Name;
-                <tr data-search-row>
-                    <td>
-                        @row.Username
-                        @if (isSelf)
-                        {
-                            <span class="badge text-bg-info ms-1">tú</span>
-                        }
-                    </td>
-                    <td><span class="badge @(row.IsActive ? "text-bg-success" : "text-bg-secondary")">@(row.IsActive ? "Activo" : "Desactivado")</span></td>
-                    <td>@row.CreatedAtUtc.ToString("yyyy-MM-dd")</td>
-                    <td>
-                        @if (!isSelf)
-                        {
-                            <form method="post" asp-page-handler="Toggle" asp-route-userId="@row.Id">
-                                <button type="submit" class="btn btn-sm @(row.IsActive ? "btn-outline-warning" : "btn-outline-success")">
-                                    @(row.IsActive ? "Desactivar" : "Reactivar")
-                                </button>
-                            </form>
-                        }
-                    </td>
-                </tr>
-            }
-            </tbody>
-        </table>
+    <div class="card-body">
+        <div id="admins-table"></div>
     </div>
 </div>
 
@@ -87,3 +60,56 @@
         </div>
     </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const csrfToken = '@Model.AntiForgeryToken';
+
+    const usernameFormatter = (cell) => {
+      const row = cell.getData();
+      return row.isSelf ? `${row.username} <span class="badge text-bg-info ms-1">tú</span>` : row.username;
+    };
+
+    const statusBadge = (cell) => {
+      const isActive = cell.getValue();
+      return `<span class="badge text-bg-${isActive ? 'success' : 'secondary'}">${isActive ? 'Activo' : 'Desactivado'}</span>`;
+    };
+
+    const actionButton = (cell) => {
+      const row = cell.getData();
+      if (row.isSelf) return '';
+      const label = row.isActive ? 'Desactivar' : 'Reactivar';
+      const btnClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
+      return `<form method="post" action="/Admin/Users/Index?handler=Toggle&userId=${row.id}">
+                <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
+                <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+              </form>`;
+    };
+
+    const table = new Tabulator('#admins-table', {
+      data: data,
+      locale: 'es',
+      langs: window.gvrTabulatorLocale,
+      layout: 'fitColumns',
+      responsiveLayout: 'collapse',
+      pagination: true,
+      paginationSize: 10,
+      paginationSizeSelector: [10, 25, 50, 100],
+      paginationCounter: 'rows',
+      placeholder: 'Sin administradores',
+      columns: [
+        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Usuario', field: 'username', minWidth: 160, formatter: usernameFormatter, responsive: 0 },
+        { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 1 },
+        { title: '', field: 'id', formatter: actionButton, width: 140, hozAlign: 'center', headerSort: false, responsive: 2 },
+        { title: 'Alta', field: 'createdAtUtc', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 3 },
+      ],
+    });
+
+    document.getElementById('admins-filter').addEventListener('input', (e) => {
+      const value = e.target.value;
+      table.setFilter(value ? [{ field: 'username', type: 'like', value }] : []);
+    });
+  });
+</script>

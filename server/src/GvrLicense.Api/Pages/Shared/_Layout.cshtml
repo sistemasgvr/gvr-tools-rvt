@@ -28,9 +28,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
     <link rel="stylesheet" href="~/lib/fonts/source-sans-3/index.css" />
+    <link rel="stylesheet" href="~/lib/tabulator/css/tabulator_bootstrap5.min.css" />
     <link rel="stylesheet" href="~/lib/overlayscrollbars/styles/overlayscrollbars.min.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/lib/adminlte/css/adminlte.min.css" />
+    <link rel="stylesheet" href="~/css/admin-site.css" />
 </head>
 <body class="layout-fixed sidebar-expand-lg bg-body-tertiary">
 <div class="app-wrapper">
@@ -221,6 +223,35 @@
 <script src="~/lib/overlayscrollbars/browser/overlayscrollbars.browser.es6.min.js"></script>
 <script src="~/lib/bootstrap/js/bootstrap.bundle.min.js"></script>
 <script src="~/lib/adminlte/js/adminlte.min.js"></script>
+<script src="~/lib/tabulator/js/tabulator.min.js"></script>
+<script>
+  // Tabulator no trae español de fábrica (ver src/js/modules/Localize/defaults/langs.js en
+  // server/vendor/adminlte -- solo define "default" en inglés). Cada página con una tabla usa
+  // esto como `langs: window.gvrTabulatorLocale, locale: 'es'`.
+  window.gvrTabulatorLocale = {
+    es: {
+      groups: { item: 'elemento', items: 'elementos' },
+      data: { loading: 'Cargando', error: 'Error' },
+      // Labels cortos « ‹ › » como AdminLTE (dist/users.html / tables/simple);
+      // los *_title siguen en español para tooltip / accesibilidad.
+      pagination: {
+        page_size: 'Filas',
+        page_title: 'Mostrar página',
+        first: '«',
+        first_title: 'Primera página',
+        last: '»',
+        last_title: 'Última página',
+        prev: '‹',
+        prev_title: 'Página anterior',
+        next: '›',
+        next_title: 'Página siguiente',
+        all: 'Todos',
+        counter: { showing: 'Mostrando', of: 'de', rows: 'filas', pages: 'páginas' },
+      },
+      headerFilters: { default: 'filtrar columna...' },
+    },
+  };
+</script>
 <script>
   document.addEventListener('DOMContentLoaded', function () {
     const sidebarWrapper = document.querySelector('.sidebar-wrapper');
@@ -231,16 +262,6 @@
       });
     }
   });
-
-  // Filtro de tabla en vivo, sin dependencias: usado por los buscadores de Clientes/Licencias/Administradores.
-  function gvrFilterTable(input, tbodySelector) {
-    const term = input.value.trim().toLowerCase();
-    const rows = document.querySelectorAll(tbodySelector + ' > tr[data-search-row]');
-    rows.forEach(function (row) {
-      const matches = row.textContent.toLowerCase().includes(term);
-      row.classList.toggle('d-none', !matches);
-    });
-  }
 </script>
 </body>
 </html>

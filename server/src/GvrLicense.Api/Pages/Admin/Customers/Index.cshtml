@@ -1,50 +1,31 @@
 @page
+@using System.Text.Json
 @model GvrLicense.Api.Pages.Admin.Customers.IndexModel
 @{
     ViewData["Title"] = "Clientes";
 }
 
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
-        <h3 class="card-title mb-0">Clientes</h3>
-        <div class="d-flex gap-2">
-            <input type="search" class="form-control form-control-sm" style="min-width: 16rem" placeholder="Buscar por empresa, contacto, correo…"
-                   oninput="gvrFilterTable(this, '#customersTable tbody')" />
-            <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createCustomerModal">
-                <i class="bi bi-person-plus me-1"></i> Nuevo cliente
-            </button>
+    <div class="card-header">
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <h3 class="card-title">Clientes</h3>
+            </div>
+            <div class="col-12 col-md-8">
+                <div class="d-flex flex-wrap justify-content-md-end gap-2">
+                    <div class="input-group input-group-sm w-auto flex-grow-1 flex-md-grow-0" style="max-width: 16rem">
+                        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                        <input id="customers-filter" type="search" class="form-control" placeholder="Buscar…" aria-label="Buscar" style="min-width: 8rem" />
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createCustomerModal">
+                        <i class="bi bi-person-plus me-1" aria-hidden="true"></i> Nuevo cliente
+                    </button>
+                </div>
+            </div>
         </div>
     </div>
-    <div class="card-body p-0">
-        <table class="table table-striped table-hover mb-0" id="customersTable">
-            <thead>
-                <tr>
-                    <th>Empresa</th>
-                    <th>Contacto</th>
-                    <th>Correo</th>
-                    <th>Notas de pago</th>
-                    <th>Licencias</th>
-                    <th>Alta</th>
-                </tr>
-            </thead>
-            <tbody>
-            @if (Model.Rows.Count == 0)
-            {
-                <tr><td colspan="6" class="text-center text-secondary p-3">Sin clientes todavía -- crea el primero con el botón de arriba.</td></tr>
-            }
-            @foreach (var row in Model.Rows)
-            {
-                <tr data-search-row>
-                    <td>@row.CompanyName</td>
-                    <td>@row.ContactName</td>
-                    <td>@row.ContactEmail</td>
-                    <td class="text-secondary">@row.PaymentNotes</td>
-                    <td><span class="badge text-bg-secondary">@row.LicenseCount</span></td>
-                    <td>@row.CreatedAtUtc.ToString("yyyy-MM-dd")</td>
-                </tr>
-            }
-            </tbody>
-        </table>
+    <div class="card-body">
+        <div id="customers-table"></div>
     </div>
 </div>
 
@@ -82,3 +63,44 @@
         </div>
     </div>
 </div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+
+    const table = new Tabulator('#customers-table', {
+      data: data,
+      locale: 'es',
+      langs: window.gvrTabulatorLocale,
+      layout: 'fitColumns',
+      responsiveLayout: 'collapse',
+      pagination: true,
+      paginationSize: 10,
+      paginationSizeSelector: [10, 25, 50, 100],
+      paginationCounter: 'rows',
+      placeholder: 'Sin clientes todavía',
+      columns: [
+        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Empresa', field: 'companyName', minWidth: 140, responsive: 0 },
+        { title: 'Correo', field: 'contactEmail', minWidth: 180, responsive: 1 },
+        { title: 'Licencias', field: 'licenseCount', width: 110, hozAlign: 'center', responsive: 2 },
+        { title: 'Alta', field: 'createdAtUtc', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 3 },
+        { title: 'Contacto', field: 'contactName', minWidth: 120, responsive: 4 },
+        { title: 'Notas de pago', field: 'paymentNotes', minWidth: 160, responsive: 5 },
+      ],
+    });
+
+    document.getElementById('customers-filter').addEventListener('input', (e) => {
+      const value = e.target.value;
+      if (value) {
+        table.setFilter([[
+          { field: 'companyName', type: 'like', value },
+          { field: 'contactName', type: 'like', value },
+          { field: 'contactEmail', type: 'like', value },
+        ]]);
+      } else {
+        table.clearFilter();
+      }
+    });
+  });
+</script>

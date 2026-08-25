@@ -560,7 +560,9 @@ No vendas el `.exe` a terceros hasta tener:
   - [x] Login usuario/contraseña + sesión por cookie tokenizada, sin 2FA (decisión explícita), admins en tabla `AdminUser` -- probado con dos administradores reales de principio a fin
   - [x] Cerrar sesión (`/Admin/Logout`, solo POST) -- probado: limpia la cookie y vuelve a redirigir a Login
   - [x] Listados: `/Admin/Customers/Index`, `/Admin/Licenses/Index` (suspender/reactivar), `/Admin/Users/Index` (activar/desactivar, con guardia para no desactivarte a ti mismo) -- probados de punta a punta contra la base real
-  - [x] Buscador en vivo (sin dependencias) en los tres listados + formularios de alta como modal de Bootstrap sobre la misma lista, en vez de navegar a una página aparte -- probado creando cliente/licencia/admin desde el modal
+  - [x] Formularios de alta como modal de Bootstrap sobre la misma lista, en vez de navegar a una página aparte -- probado creando cliente/licencia/admin desde el modal
+  - [x] Listados con **Tabulator** (la misma librería que usa `dist/tables/data.html` de la plantilla real, no un buscador casero): paginación real con selector de tamaño de página, buscador, orden por columna -- probado incluyendo un bug real que encontró la prueba (el enum `LicenseStatus` se serializaba como 0/1 en vez de "Active"/"Suspended", corregido con `JsonStringEnumConverter`)
+  - [x] Paginación y locale en español (Tabulator no trae uno de fábrica, se definió a mano en `_Layout.cshtml`) + `layout: fitColumns` con `responsiveLayout: collapse` y prioridad por columna, para que las columnas se repartan el ancho de forma pareja y colapsen las de menor prioridad en pantallas angostas -- confirmado visualmente por el usuario en dos rondas
   - [x] `/Admin/Users/Create`: alta de más administradores ya logueado
   - [x] Customers: crear
   - [x] Licenses: crear (genera key), suspender/reactivar (auditoría automática vía trigger)
