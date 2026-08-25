@@ -195,6 +195,36 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
         return new UsageEventResponse { Remaining = remaining };
     }
 
+    /// <summary>
+    /// Libera el dispositivo del JWT (mismo efecto que "Liberar" en admin): el add-in borra su
+    /// cache local después. No exige licencia active -- un usuario debe poder desactivar aunque
+    /// la licencia esté suspendida.
+    /// </summary>
+    public async Task<DeactivateResponse> DeactivateAsync(Guid licenseId, Guid deviceId, DeactivateRequest request, CancellationToken ct)
+    {
+        var device = await db.Devices.FirstOrDefaultAsync(
+            d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
+
+        if (device is null)
+        {
+            throw new LicenseApiException(404, "Dispositivo no encontrado o ya liberado.");
+        }
+
+        db.Devices.Remove(device);
+        db.AuditLogs.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            LicenseId = licenseId,
+            Actor = "device",
+            Action = "device.deactivate",
+            DetailsJson = $"{{\"deviceId\":\"{deviceId}\",\"fingerprint\":\"{device.Fingerprint}\"}}",
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
+
+        return new DeactivateResponse { Deactivated = true };
+    }
+
     public async Task<UpdateCheckResponse> CheckUpdateAsync(string? currentVersion, string? revitVersion, CancellationToken ct)
     {
         var latest = await db.Releases

@@ -20,6 +20,14 @@
 
   <ItemGroup>
     <ProjectReference Include="..\GvrTools.Core\GvrTools.Core.csproj" />
+    <ProjectReference Include="..\GvrTools.UI\GvrTools.UI.csproj" />
+  </ItemGroup>
+
+  <!-- HttpClient vive en System.Net.Http; en net48 hay que referenciarlo explícitamente.
+       No es un NuGet de runtime embebido junto al add-in: es ensamblado del GAC/.NET Framework. -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http" />
+    <Reference Include="System.Runtime.Serialization" />
   </ItemGroup>
 
 </Project>

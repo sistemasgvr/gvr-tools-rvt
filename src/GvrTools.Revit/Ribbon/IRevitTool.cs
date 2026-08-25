@@ -44,5 +44,11 @@ namespace GvrTools.Revit.Ribbon
         /// needs, a missing external dependency...). Returning false simply omits the button.
         /// </summary>
         bool IsSupported(UIControlledApplication application);
+
+        /// <summary>
+        /// Feature code del License API requerido para mostrar el botón (ej. tool.batch_export).
+        /// Null o vacío = siempre visible (p. ej. Cuenta / Licencia).
+        /// </summary>
+        string RequiredFeature { get; }
     }
 }

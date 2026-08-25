@@ -5,6 +5,9 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Diagnostics;
 using GvrTools.Core.Settings;
+using GvrTools.Licensing;
+using GvrTools.Licensing.Activation;
+using GvrTools.Licensing.Entitlements;
 using GvrTools.Revit.Infrastructure;
 using GvrTools.Tools.BatchExport.ViewModels;
 using GvrTools.Tools.BatchExport.Views;
@@ -44,6 +47,17 @@ namespace GvrTools.Tools.BatchExport
             {
                 TaskDialog.Show(DialogTitle, "Esta herramienta funciona sobre proyectos, no sobre familias.");
                 return Result.Cancelled;
+            }
+
+            LicenseRuntime.EnsureInitialized();
+            if (!LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))
+            {
+                var hwnd = commandData.Application.MainWindowHandle;
+                TaskDialog.Show(DialogTitle,
+                    "No hay una licencia válida para Exportar láminas. Activa tu clave GVR-… en Cuenta / Licencia.");
+                LicenseUi.ShowActivate(LicenseRuntime.Client, hwnd);
+                if (!LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))
+                    return Result.Cancelled;
             }
 
             if (_openWindow != null)

@@ -1,19 +1,31 @@
 using System;
+using System.Runtime.Serialization;
 
 namespace GvrTools.Licensing.Http.Dto
 {
-    /// <summary>
-    /// POST /v1/usage. EventId es un GUID generado por el cliente al momento del consumo (no al
-    /// reportarlo), así un reintento de red por caída offline reenvía el mismo EventId y el servidor
-    /// lo descarta por la constraint única (ver LICENSING_PLAN.md, "Dónde vive la lógica"). El JWT
-    /// no va aquí: ILicenseApiClient lo manda como header "Authorization: Bearer".
-    /// </summary>
+    [DataContract]
     public sealed class UsageEventDto
     {
+        [DataMember]
         public string DeviceFingerprint { get; set; }
+
+        [DataMember]
         public Guid EventId { get; set; }
+
+        [DataMember]
         public string FeatureCode { get; set; }
+
+        [DataMember]
         public int Quantity { get; set; }
+
+        [DataMember]
         public DateTimeOffset OccurredAtUtc { get; set; }
+    }
+
+    [DataContract]
+    public sealed class UsageEventResponse
+    {
+        [DataMember]
+        public int? Remaining { get; set; }
     }
 }

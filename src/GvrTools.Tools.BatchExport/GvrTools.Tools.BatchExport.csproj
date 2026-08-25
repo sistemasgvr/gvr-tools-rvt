@@ -19,6 +19,7 @@
     <ProjectReference Include="..\GvrTools.Core\GvrTools.Core.csproj" />
     <ProjectReference Include="..\GvrTools.Revit\GvrTools.Revit.csproj" />
     <ProjectReference Include="..\GvrTools.UI\GvrTools.UI.csproj" />
+    <ProjectReference Include="..\GvrTools.Licensing\GvrTools.Licensing.csproj" />
   </ItemGroup>
 
 </Project>

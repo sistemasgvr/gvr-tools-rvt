@@ -1,22 +1,37 @@
+using System;
+using System.Runtime.Serialization;
+
 namespace GvrTools.Licensing.Http.Dto
 {
-    /// <summary>POST /v1/activate.</summary>
+    [DataContract]
     public sealed class ActivateRequest
     {
+        [DataMember]
         public string LicenseKey { get; set; }
+
+        [DataMember]
         public string DeviceFingerprint { get; set; }
+
+        [DataMember]
         public string DeviceName { get; set; }
 
-        /// <summary>El seat se cuenta por persona, no por dispositivo -- ver docs/LICENSING_PLAN.md, "Métodos de suscripción".</summary>
+        [DataMember]
         public string UserFullName { get; set; }
+
+        [DataMember]
         public string UserEmail { get; set; }
     }
 
+    [DataContract]
     public sealed class ActivateResponse
     {
-        /// <summary>JWT (ES256) -- mandar como "Authorization: Bearer {AccessToken}" en /v1/heartbeat y /v1/usage.</summary>
+        [DataMember]
         public string AccessToken { get; set; }
+
+        [DataMember]
         public string EntitlementJson { get; set; }
+
+        [DataMember]
         public string EntitlementSignatureBase64 { get; set; }
     }
 }

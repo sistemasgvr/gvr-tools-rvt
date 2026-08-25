@@ -18,6 +18,8 @@ using GvrTools.Revit.Model;
 using GvrTools.Revit.Sheets;
 using GvrTools.UI.Mvvm;
 using GvrTools.UI.Services;
+using GvrTools.Licensing;
+using GvrTools.Licensing.Entitlements;
 
 namespace GvrTools.Tools.BatchExport.ViewModels
 {
@@ -91,6 +93,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             _preferences = _settingsStore.Load<BatchExportPreferences>(BatchExportPreferences.StorageKey);
             ApplyPreferences(_preferences);
+            FormatChoices = BuildFormatChoices();
+            EnsureSelectedFormatAllowed();
 
             SelectAllCommand = new RelayCommand(() => SetVisibleSelection(true));
             SelectNoneCommand = new RelayCommand(() => SetVisibleSelection(false));
@@ -198,10 +202,33 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         // ---------------------------------------------------------------- format and options
 
-        public IReadOnlyList<ChoiceItem<FormatMode>> FormatChoices { get; } = ChoiceItem.List(
-            ChoiceItem.Of(FormatMode.Pdf, "PDF"),
-            ChoiceItem.Of(FormatMode.Dwg, "DWG"),
-            ChoiceItem.Of(FormatMode.PdfAndDwg, "PDF + DWG"));
+        public IReadOnlyList<ChoiceItem<FormatMode>> FormatChoices { get; private set; }
+
+        private static IReadOnlyList<ChoiceItem<FormatMode>> BuildFormatChoices()
+        {
+            LicenseRuntime.EnsureInitialized();
+            var entitlements = LicenseRuntime.Entitlements;
+            var list = new List<ChoiceItem<FormatMode>>();
+
+            if (entitlements.CanUse(FeatureCodes.FormatPdf))
+                list.Add(ChoiceItem.Of(FormatMode.Pdf, "PDF"));
+            if (entitlements.CanUse(FeatureCodes.FormatDwg))
+                list.Add(ChoiceItem.Of(FormatMode.Dwg, "DWG"));
+            if (entitlements.CanUse(FeatureCodes.FormatPdfDwg) ||
+                (entitlements.CanUse(FeatureCodes.FormatPdf) && entitlements.CanUse(FeatureCodes.FormatDwg)))
+                list.Add(ChoiceItem.Of(FormatMode.PdfAndDwg, "PDF + DWG"));
+
+            if (list.Count == 0)
+                list.Add(ChoiceItem.Of(FormatMode.Pdf, "PDF"));
+
+            return list;
+        }
+
+        private void EnsureSelectedFormatAllowed()
+        {
+            if (FormatChoices.Any(c => Equals(c.Value, _selectedFormatMode))) return;
+            _selectedFormatMode = FormatChoices[0].Value;
+        }
 
         private FormatMode _selectedFormatMode = FormatMode.Pdf;
         public FormatMode SelectedFormatMode
@@ -516,6 +543,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             if (selected.Count == 0) return;
 
+            if (!TryValidateLicenseQuota(selected.Count, out string licenseError))
+            {
+                _dialogs.ShowError(DialogTitle, licenseError);
+                return;
+            }
+
             SavePreferences();
             Results.Clear();
             ShowResults = false;
@@ -537,6 +570,42 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 : ExportFormat.Pdf;
 
             LaunchFormat(firstFormat, selected);
+        }
+
+        private bool TryValidateLicenseQuota(int selectedCount, out string error)
+        {
+            error = null;
+            LicenseRuntime.EnsureInitialized();
+            var entitlements = LicenseRuntime.Entitlements;
+
+            if (!entitlements.CanUse(FeatureCodes.ToolBatchExport))
+            {
+                error = "No hay una licencia válida. Abre Cuenta / Licencia y activa tu clave.";
+                return false;
+            }
+
+            int batchLimit = entitlements.Remaining(FeatureCodes.LimitSheetsPerBatch);
+            // Remaining() sobre un feature no-quota: el valor del plan es el tope (no remanente).
+            // Si no existe, Remaining devuelve 0 — tratar 0 sin feature como “sin tope” no aplica;
+            // limit.* siempre es un entero del plan. Si es 0, bloquear todo.
+            if (batchLimit > 0 && selectedCount > batchLimit)
+            {
+                error = $"Tu plan permite como máximo {batchLimit} lámina(s) por lote. Seleccionaste {selectedCount}.";
+                return false;
+            }
+
+            int unitsPerSheet = _selectedFormatMode == FormatMode.PdfAndDwg ? 2 : 1;
+            int needed = selectedCount * unitsPerSheet;
+            int remaining = entitlements.Remaining(FeatureCodes.QuotaSheetsPerMonth);
+            if (remaining != -1 && needed > remaining)
+            {
+                error = remaining <= 0
+                    ? "Se agotó la cuota de láminas de este mes."
+                    : $"Te quedan {remaining} unidad(es) este mes y este lote necesita {needed} (PDF+DWG cuenta doble).";
+                return false;
+            }
+
+            return true;
         }
 
         private void LaunchFormat(ExportFormat format, List<SheetSnapshot> sheets)
@@ -634,10 +703,34 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             string formatTag = _isMultiFormat ? ExportFormatInfo.Label(_currentExportFormat) : null;
             Results.Add(new ExportResultViewModel(result, formatTag));
 
-            if (result.Succeeded) return;
+            if (result.Succeeded)
+            {
+                RecordSuccessfulSheetUsage();
+                return;
+            }
 
             LastRunHadFailures = true;
             ShowResults = true;
+        }
+
+        private void RecordSuccessfulSheetUsage()
+        {
+            try
+            {
+                LicenseRuntime.EnsureInitialized();
+                if (!LicenseRuntime.Entitlements.TryConsume(FeatureCodes.QuotaSheetsPerMonth, 1))
+                {
+                    _log.Warn("No se pudo descontar cuota local tras una lámina exitosa (remaining insuficiente).");
+                    return;
+                }
+
+                // Reconciliar con el servidor en background; fallos de red quedan en la cola.
+                System.Threading.Tasks.Task.Run(() => LicenseRuntime.Client.FlushUsageQueueAsync(default));
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("Error al registrar uso de licencia: " + ex.Message);
+            }
         }
 
         private void OnFinished(BatchResult result)

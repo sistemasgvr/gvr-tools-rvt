@@ -536,37 +536,38 @@ No vendas el `.exe` a terceros hasta tener:
 
 ### Fase 0 — Fundaciones (1 semana)
 
-- Repo/backend `gvr-license-server` (puede vivir monorepo `server/` o repo aparte)
-- Postgres schema + migrate
-- Activate + heartbeat + verify signature en cliente stub
-- Deploy EasyPanel + HTTPS
+- [x] Repo/backend `gvr-license-server` (monorepo `server/`)
+- [x] Postgres schema + migrate
+- [x] Activate + heartbeat + verify signature (servidor + verificador cliente)
+- [ ] Deploy EasyPanel + HTTPS
 
 ### Fase 1 — Monetización usable (1–2 semanas)
 
-- Admin: customers, plans, licenses, suspend/renew
-- Add-in: UI activación, gate ribbon, gate BatchExport + metering láminas/export
-- Gracia 7 días + mensajes de error claros
+- [x] Admin: customers, plans, licenses, suspend/renew
+- [x] Add-in: UI activación, gate ribbon, gate BatchExport + metering láminas/export
+- [x] Gracia 7 días + mensajes de error claros (`LicenseClient` + cache en el add-in)
 
 ### Fase 2 — Instalador profesional + prerequisitos (1–2 semanas)
 
-- Wizard `.exe` (idioma, TOS, checkboxes Revit 2021–2025)
-- Detección de Revit instalado + copia a `%ProgramData%\GVR\GvrTools\<año>\`
-- Paso prerequisitos: PDF24 (u allow-list) **obligatorio si se instala 2021**
-- Mantener `install-addin.ps1` solo para desarrollo
+- [x] Wizard `.exe` (idioma, TOS, checkboxes Revit 2021–2025) — esqueleto Inno Setup en `installer/` (sin Authenticode aún)
+- [x] Detección de Revit instalado + copia a `%ProgramData%\GVR\GvrTools\<año>\`
+- [x] Paso prerequisitos: PDF24 (u allow-list) **obligatorio si se instala 2021**
+- [x] Mantener `install-addin.ps1` solo para desarrollo
 
 ### Fase 3 — Updates + endurecimiento (1 semana)
 
-- Check/download updates + reemplazo de carpetas por año
-- Obfuscación Release pipeline
-- Device limit + kick seat
-- Audit + rate limits
-- Authenticode en el `.exe` (y pipeline)
+- [x] Check/download updates en API + admin para publicar releases (metadatos)
+- [ ] Reemplazo de carpetas por año en el add-in + ofuscación Release pipeline
+- [x] Device limit + kick seat (admin)
+- [x] Audit (trigger + visor admin) + rate limiter registrado
+- [ ] Authenticode en el `.exe` (y pipeline)
+- [ ] Políticas de rate limit afinadas (hoy solo el middleware está registrado)
 
 ### Fase 4 — Operación
 
-- Runbook: emitir licencia tras pago, renovar, suspender moroso, rotar signing key
-- Métricas simples en admin
-- FAQ soporte (2021/PDF24, multi-Revit, liberar seat)
+- [x] Runbook: emitir licencia tras pago, renovar, suspender moroso (`docs/RUNBOOK_LICENSING.md`; rotar signing key pendiente)
+- [x] Métricas simples en admin (dashboard + uso por licencia)
+- [ ] FAQ soporte (2021/PDF24, multi-Revit, liberar seat)
 
 ### Checklist de entregables
 
@@ -576,42 +577,48 @@ No vendas el `.exe` a terceros hasta tener:
   - [x] Firma ECDsa P-256: interoperabilidad servidor (`System.Text.Json`) ↔ cliente (`DataContractJsonSerializer`, net48) verificada de punta a punta con un blob real firmado y verificado
   - [x] `POST /v1/activate`, `/v1/heartbeat`, `/v1/usage` (idempotente por `EventId`), `GET /v1/updates/check` -- probados por HTTP contra la base real: activar, consumir cuota, bloquear al agotarla, tope de `max_devices`, key con formato inválido
   - [x] Sesión del add-in vía **JWT real** (ES256, `AddJwtBearer`, no un token casero): `/v1/heartbeat` y `/v1/usage` exigen `Authorization: Bearer`, probado sin token (401), con token válido (200) y con token manipulado (401)
-  - [ ] `GET /v1/updates/download` simplificado (falta URL firmada temporal; depende de la elección de storage de la Pieza 6)
+  - [x] `GET /v1/updates/download/{id}` simplificado (devuelve `ArtifactLocation`; falta URL firmada temporal / storage Pieza 6)
+  - [x] Swagger: documenta los 5 endpoints `/v1/*`; Bearer solo en heartbeat/usage; `/health` fuera del documento OpenAPI
   - [ ] Deploy real en EasyPanel (dominio, HTTPS, contenedor) -- hoy solo corrió local/ad-hoc contra la base online
-- [ ] `GvrTools.Licensing`: activate/heartbeat/cache firmada + gracia 7 días
+- [x] `GvrTools.Licensing`: activate/heartbeat/cache firmada + gracia 7 días
   - [x] Verificador ECDsa + DTOs del cliente (`net48` y `net8.0-windows`, cero NuGet) -- verificado contra blobs reales firmados por el servidor, incluida detección de manipulación
-  - [ ] `LicenseClient` (llamadas HTTP activate/heartbeat/usage), cache en `license.dat`, ventana de activación WPF -- pendiente. La ventana ahora también tiene que pedir nombre y correo (ver "Métodos de suscripción"), no solo la key
-- [ ] Panel admin: customers, plans, licenses, suspend/renew, devices
+  - [x] `LicenseClient` (llamadas HTTP activate/heartbeat/usage/deactivate), cache en `license.dat`, ventana de activación WPF (key + nombre + correo)
+- [x] Panel admin: customers, plans, licenses, suspend/renew, devices
   - [x] Login usuario/contraseña + sesión por cookie tokenizada, sin 2FA (decisión explícita), admins en tabla `AdminUser` -- probado con dos administradores reales de principio a fin
   - [x] Cerrar sesión (`/Admin/Logout`, solo POST) -- probado: limpia la cookie y vuelve a redirigir a Login
   - [x] Listados: `/Admin/Customers/Index`, `/Admin/Licenses/Index` (suspender/reactivar), `/Admin/Users/Index` (activar/desactivar, con guardia para no desactivarte a ti mismo) -- probados de punta a punta contra la base real
   - [x] Formularios de alta como modal de Bootstrap sobre la misma lista, en vez de navegar a una página aparte -- probado creando cliente/licencia/admin desde el modal
   - [x] Listados con **Tabulator** (la misma librería que usa `dist/tables/data.html` de la plantilla real, no un buscador casero): paginación real con selector de tamaño de página, buscador, orden por columna -- probado incluyendo un bug real que encontró la prueba (el enum `LicenseStatus` se serializaba como 0/1 en vez de "Active"/"Suspended", corregido con `JsonStringEnumConverter`)
   - [x] Paginación y locale en español (Tabulator no trae uno de fábrica, se definió a mano en `_Layout.cshtml`) + `layout: fitColumns` con `responsiveLayout: collapse` y prioridad por columna, para que las columnas se repartan el ancho de forma pareja y colapsen las de menor prioridad en pantallas angostas -- confirmado visualmente por el usuario en dos rondas
+  - [x] UX admin en español (badges Activa/Suspendida/Vencida, fechas `dd/MM/yyyy`, vacíos con CTA, columna Acciones visible en móvil)
 - [x] Multi-usuario por empresa (`CompanyUser`, seat por persona no por dispositivo, tope de dispositivos por persona configurable, `License.FeatureOverrides` para extras por cliente) -- probado de punta a punta contra la base real: 1ª persona + 2 dispositivos dentro del tope permitido, 3er dispositivo de la misma persona rechazado por el tope por-usuario, 2ª persona distinta consume un seat nuevo, 3ª persona rechazada al llegar a `MaxUsers`
-- [x] Admin: **Planes** (`/Admin/Plans`) crear y editar features desde la UI, ya no solo por SQL -- probado creando y editando un plan de punta a punta
+- [x] Admin: **Planes** (`/Admin/Plans`) crear y editar features desde la UI amigable (interruptores/números; extras técnicos solo en avanzado) -- ya no solo por SQL / textarea `codigo=valor`
 - [x] Admin: **Miembros por cliente** (`/Admin/Customers/Members`) -- lista personas + sus dispositivos, activar/desactivar -- probado: desactivar a alguien bloquea su próxima activación con 403
   - [x] `/Admin/Users/Create`: alta de más administradores ya logueado
   - [x] Customers: crear
-  - [x] Licenses: crear (genera key), suspender/reactivar (auditoría automática vía trigger)
+  - [x] Licenses: crear (genera key + pantalla “Copiar clave”), suspender/reactivar (auditoría automática vía trigger)
   - [x] UI con **AdminLTE 4** (Bootstrap 5): código fuente completo clonado en `server/vendor/adminlte/` (referencia para portar más páginas) + assets compilados vendorizados en `wwwroot/lib` (sin CDN en producción). Dashboard con widgets `small-box` (licencias activas/suspendidas/por vencer, clientes) usando datos reales de la base, no de ejemplo
-  - [ ] Devices: listar y "kick seat"
-  - [ ] Releases: subir artefactos + publicar
+  - [x] Devices: listar y **kick seat** (“Liberar”) en `/Admin/Licenses/Edit`
+  - [x] Releases: publicar metadatos de release desde `/Admin/Releases` (versión, ruta de artefacto, notas; canal `stable`) -- falta upload binario + URL firmada
+  - [x] Configuración: `/Admin/Settings` (`AppSettings`: correo soporte, TOS, privacidad)
+  - [x] Auditoría: `/Admin/Audit` (visor de `AuditLog`)
+  - [x] Uso/cuotas del mes visibles en `/Admin/Licenses/Edit`
 - [x] Editar + desactivar (soft-delete, nunca borrado real) en todo lo construido hasta ahora, probado de punta a punta contra la base real:
   - [x] `Customer.IsActive` / `Plan.IsActive` (columnas nuevas, migración `AddCustomerAndPlanIsActive` aplicada) + `/Admin/Customers/Edit` + toggle Activar/Desactivar en Customers e Index
   - [x] Plans: toggle Activo/Descontinuado en `/Admin/Plans/Index`; un plan descontinuado desaparece del `<select>` de `Licenses/Create` y `Licenses/Index` pero las licencias que ya lo usan lo siguen usando igual
-  - [x] `/Admin/Licenses/Edit`: renovar `ValidUntil`, ajustar `MaxUsers`, cambiar de plan, editar `FeatureOverrides` -- antes solo era posible por SQL directo
+  - [x] `/Admin/Licenses/Edit`: renovar `ValidUntil`, ajustar `MaxUsers`, cambiar de plan, editar capacidades con el mismo editor amigable que Planes (overrides = diff vs plan)
   - [x] `/Admin/Customers/Members`: editar nombre/correo de un `CompanyUser` vía modal
   - [x] `/Admin/Users/Index`: restablecer contraseña de un administrador vía modal (sin flujo de "olvidé mi contraseña" por correo)
   - [x] **Bug real encontrado y corregido**: todos los formularios modal con `action="ruta literal"` (crear cliente/plan/licencia/admin, y los dos nuevos de esta pasada) no llevaban el antiforgery token -- el `FormTagHelper` de Razor Pages solo lo inyecta solo en un `<form method="post">` sin `action` o con atributos `asp-*`, nunca con una URL literal. Cada submit real fallaba con 400 aunque la UI se viera bien; nadie lo había notado porque las rondas de revisión anteriores solo miraban capturas de pantalla, sin enviar el formulario. Corregido agregando `@Html.AntiForgeryToken()` explícito en los 6 formularios afectados y verificado por HTTP contra la base real (200/302, no 400)
-- [ ] Gates en ribbon y BatchExport + metering de uso reportado al API
-- [ ] Instalador `.exe` multi-versión estilo ProSheets + prerequisito PDF24 para 2021
-- [ ] Canal de updates firmados + reinicio Revit
-- [ ] Obfuscación Release, rate limits, audit log, kick seat, Authenticode
-  - [x] Rate limiting nativo registrado (política por afinar en Fase 3)
-  - [x] Audit log automático vía trigger de Postgres, no a mano en C#
-  - [ ] Obfuscación, kick seat, Authenticode
-- [ ] Runbook operativo + FAQ soporte + backups Postgres
+- [x] Gates en ribbon y BatchExport + metering de uso reportado al API
+- [x] Instalador `.exe` multi-versión estilo ProSheets + prerequisito PDF24 para 2021 (`installer/`; Authenticode pendiente)
+- [ ] Canal de updates firmados + reinicio Revit (lado add-in)
+- [ ] Obfuscación Release, rate limits afinados, Authenticode
+  - [x] Rate limiting nativo registrado (política por afinar)
+  - [x] Audit log automático vía trigger de Postgres + visor admin
+  - [x] Kick seat en admin
+  - [ ] Obfuscación, Authenticode, políticas de rate limit
+- [x] Runbook operativo (`docs/RUNBOOK_LICENSING.md`; FAQ soporte + backups Postgres pendientes)
 
 ---
 

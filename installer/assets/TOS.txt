@@ -1,0 +1,10 @@
+Términos de uso — GVR Tools (borrador v1)
+
+Al instalar y usar GVR Tools aceptas:
+
+1. La licencia es personal o de la empresa contratante según el plan adquirido.
+2. No puedes redistribuir, revender ni eludir la validación de licencia.
+3. El software se entrega "tal cual"; el soporte se brinda según el plan contratado.
+4. El tratamiento de datos de activación (nombre, correo, huella de dispositivo) se describe en la política de privacidad publicada por GVR.
+
+Sustituye este texto por tus TOS definitivos antes de la primera venta.

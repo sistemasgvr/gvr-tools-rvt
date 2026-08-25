@@ -1,4 +1,4 @@
-using System.Collections.Generic;
+using System.Runtime.Serialization;
 
 namespace GvrTools.Licensing.Entitlements
 {
@@ -11,21 +11,37 @@ namespace GvrTools.Licensing.Entitlements
     /// Solo tipos primitivos a propósito (string, List, nada de Dictionary/DateTimeOffset nativo):
     /// este tipo se deserializa con DataContractJsonSerializer (net48 no tiene System.Text.Json en
     /// el framework), que no es compatible byte a byte con la salida de System.Text.Json del
-    /// servidor para Dictionary ni DateTimeOffset. Ver Crypto/EntitlementBlobParser.
+    /// servidor para Dictionary ni DateTimeOffset.
     /// </summary>
+    [DataContract]
     public sealed class EntitlementBlob
     {
+        [DataMember]
         public string LicenseId { get; set; }
+
+        [DataMember]
         public string PlanCode { get; set; }
-        public List<FeatureEntry> Features { get; set; }
+
+        [DataMember]
+        public System.Collections.Generic.List<FeatureEntry> Features { get; set; }
+
+        [DataMember]
         public string IssuedAtUtc { get; set; }
+
+        [DataMember]
         public string OfflineUntilUtc { get; set; }
+
+        [DataMember]
         public string DeviceId { get; set; }
     }
 
+    [DataContract]
     public sealed class FeatureEntry
     {
+        [DataMember]
         public string Code { get; set; }
+
+        [DataMember]
         public string Value { get; set; }
     }
 }

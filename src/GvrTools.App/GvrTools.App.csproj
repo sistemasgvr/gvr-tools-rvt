@@ -26,6 +26,7 @@
     <ProjectReference Include="..\GvrTools.Core\GvrTools.Core.csproj" />
     <ProjectReference Include="..\GvrTools.Revit\GvrTools.Revit.csproj" />
     <ProjectReference Include="..\GvrTools.UI\GvrTools.UI.csproj" />
+    <ProjectReference Include="..\GvrTools.Licensing\GvrTools.Licensing.csproj" />
 
     <!-- Referenced so the tool is deployed next to the host; it is still *discovered* by scanning
          the output folder for GvrTools.Tools.*.dll, so dropping in a tool built elsewhere works

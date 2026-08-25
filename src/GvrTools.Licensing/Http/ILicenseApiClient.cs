@@ -1,3 +1,4 @@
+using System;
 using System.Threading;
 using System.Threading.Tasks;
 using GvrTools.Licensing.Http.Dto;
@@ -5,19 +6,31 @@ using GvrTools.Licensing.Http.Dto;
 namespace GvrTools.Licensing.Http
 {
     /// <summary>
-    /// Envoltorio sobre HttpClient para los cuatro endpoints de docs/LICENSING_PLAN.md ("API mínima
-    /// v1"). Deliberadamente sin dependencias NuGet: HttpClient + System.Text.Json ya están en
-    /// net48 y net8.0-windows (ver GvrTools.Licensing.csproj).
+    /// Envoltorio sobre HttpClient para los endpoints de docs/LICENSING_PLAN.md ("API mínima v1")
+    /// más /v1/deactivate. Sin NuGet: HttpClient + DataContractJsonSerializer.
     /// </summary>
     public interface ILicenseApiClient
     {
         Task<ActivateResponse> ActivateAsync(ActivateRequest request, CancellationToken ct);
 
-        Task<HeartbeatResponse> HeartbeatAsync(HeartbeatRequest request, CancellationToken ct);
+        Task<HeartbeatResponse> HeartbeatAsync(string accessToken, HeartbeatRequest request, CancellationToken ct);
 
-        /// <summary>Idempotente por UsageEventDto.EventId -- reintentar tras un fallo de red es seguro.</summary>
-        Task ReportUsageAsync(UsageEventDto usageEvent, CancellationToken ct);
+        Task<UsageEventResponse> ReportUsageAsync(string accessToken, UsageEventDto usageEvent, CancellationToken ct);
+
+        Task<DeactivateResponse> DeactivateAsync(string accessToken, DeactivateRequest request, CancellationToken ct);
 
         Task<UpdateCheckResponse> CheckForUpdateAsync(string currentVersion, string revitVersion, CancellationToken ct);
+    }
+
+    /// <summary>Error HTTP del License API (ProblemDetails u otro cuerpo).</summary>
+    public sealed class LicenseApiClientException : Exception
+    {
+        public LicenseApiClientException(int statusCode, string message)
+            : base(message)
+        {
+            StatusCode = statusCode;
+        }
+
+        public int StatusCode { get; }
     }
 }

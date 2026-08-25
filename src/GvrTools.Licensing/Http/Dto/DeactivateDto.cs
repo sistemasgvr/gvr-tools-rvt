@@ -3,19 +3,16 @@ using System.Runtime.Serialization;
 namespace GvrTools.Licensing.Http.Dto
 {
     [DataContract]
-    public sealed class HeartbeatRequest
+    public sealed class DeactivateRequest
     {
         [DataMember]
         public string DeviceFingerprint { get; set; }
     }
 
     [DataContract]
-    public sealed class HeartbeatResponse
+    public sealed class DeactivateResponse
     {
         [DataMember]
-        public string EntitlementJson { get; set; }
-
-        [DataMember]
-        public string EntitlementSignatureBase64 { get; set; }
+        public bool Deactivated { get; set; }
     }
 }

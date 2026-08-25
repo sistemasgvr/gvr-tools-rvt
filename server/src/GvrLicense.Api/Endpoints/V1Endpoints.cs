@@ -51,6 +51,19 @@ public static class V1Endpoints
             .Produces<UsageEventResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
+        v1.MapPost("/deactivate", async (DeactivateRequest request, ClaimsPrincipal user, LicenseEngine engine, CancellationToken ct) =>
+                await RunAsync(() =>
+                {
+                    var (licenseId, deviceId) = RequireClaims(user);
+                    return engine.DeactivateAsync(licenseId, deviceId, request, ct);
+                }))
+            .RequireAuthorization(BearerPolicy)
+            .WithSummary("Libera este PC (Desactivar este PC en el add-in)")
+            .WithDescription("Requiere 'Authorization: Bearer {AccessToken}'. Borra el device del seat para que otra máquina o el mismo usuario pueda activar de nuevo.")
+            .Produces<DeactivateResponse>()
+            .ProducesProblem(StatusCodes.Status401Unauthorized)
+            .ProducesProblem(StatusCodes.Status404NotFound);
+
         v1.MapGet("/updates/check", async (string? version, string? revit, LicenseEngine engine, CancellationToken ct) =>
                 await RunAsync(() => engine.CheckUpdateAsync(version, revit, ct)))
             .AllowAnonymous()

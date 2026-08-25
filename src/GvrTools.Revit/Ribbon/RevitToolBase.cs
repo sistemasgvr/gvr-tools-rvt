@@ -28,5 +28,8 @@ namespace GvrTools.Revit.Ribbon
         public virtual ImageSource CreateIcon() => null;
 
         public virtual bool IsSupported(UIControlledApplication application) => true;
+
+        /// <inheritdoc cref="IRevitTool.RequiredFeature"/>
+        public virtual string RequiredFeature => null;
     }
 }

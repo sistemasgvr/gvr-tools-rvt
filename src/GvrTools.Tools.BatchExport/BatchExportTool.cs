@@ -23,6 +23,8 @@ namespace GvrTools.Tools.BatchExport
 
         public override Type CommandType => typeof(BatchExportCommand);
 
+        public override string RequiredFeature => "tool.batch_export";
+
         public override string Tooltip =>
             "Exporta láminas a PDF o DWG de forma masiva, una carpeta por proyecto y un archivo por lámina.";
 

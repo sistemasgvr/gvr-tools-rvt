@@ -5,7 +5,7 @@ using Swashbuckle.AspNetCore.SwaggerGen;
 namespace GvrLicense.Api.OpenApi;
 
 /// <summary>
-/// Bearer JWT solo en endpoints con <see cref="IAuthorizeData"/> (heartbeat/usage).
+/// Bearer JWT solo en endpoints con <see cref="IAuthorizeData"/> (heartbeat/usage/deactivate).
 /// Sin esto, el candado de Swagger aparece también en activate/updates/health.
 /// </summary>
 public sealed class AuthorizeCheckOperationFilter : IOperationFilter
