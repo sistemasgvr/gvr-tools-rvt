@@ -79,7 +79,7 @@
 <div class="modal fade" id="createReleaseModal" tabindex="-1" aria-labelledby="createReleaseModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
-            <form method="post" enctype="multipart/form-data">
+            <form id="create-release-form" method="post" enctype="multipart/form-data">
                 @Html.AntiForgeryToken()
                 <div class="modal-header">
                     <h5 class="modal-title" id="createReleaseModalLabel">Publicar release</h5>
@@ -89,8 +89,10 @@
                     <div asp-validation-summary="All" class="text-danger mb-2"></div>
                     <div class="mb-3">
                         <label class="form-label">Versión</label>
-                        <input name="Input.Version" class="form-control" placeholder="1.0.0" required />
-                        <div class="form-text">Semver (la misma que AssemblyInformationalVersion del add-in).</div>
+                        <input name="Input.Version" type="text" class="form-control"
+                               pattern="^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$"
+                               placeholder="1.0.0" maxlength="64" required />
+                        <div class="form-text">Formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0 (se permite prefijo v y prerelease).</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tipo</label>
@@ -103,6 +105,11 @@
                         <label class="form-label">Archivo</label>
                         <input name="ArtifactFile" type="file" class="form-control" accept=".exe,.zip,.7z" required />
                         <div class="form-text">Se sube al bucket privado <code>gvr-tools-releases</code> en MinIO.</div>
+                        <div id="upload-progress-container" class="progress mt-2 d-none" role="progressbar"
+                             aria-label="Progreso de subida" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
+                            <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
+                        </div>
+                        <div id="upload-error" class="text-danger small mt-2 d-none" role="alert"></div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Notas de la versión</label>
@@ -111,7 +118,7 @@
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Subir y publicar</button>
+                    <button type="submit" class="btn btn-primary" id="create-release-submit">Subir y publicar</button>
                 </div>
             </form>
         </div>
@@ -132,6 +139,67 @@
       document.execCommand('copy');
       ta.remove();
     }
+  });
+
+  document.getElementById('create-release-form')?.addEventListener('submit', (event) => {
+    if (!window.XMLHttpRequest || !window.FormData) return;
+
+    event.preventDefault();
+    const form = event.currentTarget;
+    const submit = document.getElementById('create-release-submit');
+    const container = document.getElementById('upload-progress-container');
+    const bar = document.getElementById('upload-progress-bar');
+    const error = document.getElementById('upload-error');
+    const xhr = new XMLHttpRequest();
+
+    submit.disabled = true;
+    error.classList.add('d-none');
+    error.textContent = '';
+    container.classList.remove('d-none');
+    bar.style.width = '0%';
+    bar.textContent = '0%';
+    container.setAttribute('aria-valuenow', '0');
+
+    xhr.upload.addEventListener('progress', (progressEvent) => {
+      if (!progressEvent.lengthComputable) return;
+      const percent = Math.min(100, Math.round((progressEvent.loaded / progressEvent.total) * 100));
+      bar.style.width = `${percent}%`;
+      bar.textContent = `${percent}%`;
+      container.setAttribute('aria-valuenow', percent.toString());
+    });
+
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let redirect = '/Admin/Releases';
+        try {
+          redirect = JSON.parse(xhr.responseText).redirect || redirect;
+        } catch {
+          redirect = xhr.responseURL || redirect;
+        }
+        window.location.assign(redirect);
+        return;
+      }
+
+      let message = 'No se pudo publicar el release.';
+      try {
+        message = JSON.parse(xhr.responseText).message || message;
+      } catch { }
+      error.textContent = message;
+      error.classList.remove('d-none');
+      submit.disabled = false;
+      bar.classList.remove('progress-bar-animated');
+    });
+
+    xhr.addEventListener('error', () => {
+      error.textContent = 'La subida falló por un problema de red. Inténtalo de nuevo.';
+      error.classList.remove('d-none');
+      submit.disabled = false;
+      bar.classList.remove('progress-bar-animated');
+    });
+
+    xhr.open('POST', form.action || window.location.href);
+    xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.send(new FormData(form));
   });
 </script>
 
@@ -158,6 +226,15 @@
         { title: 'Publicado', field: 'publishedAtUtc', width: 130, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
         { title: 'Clave MinIO', field: 'artifactLocation', minWidth: 180, responsive: 2 },
         { title: 'Notas', field: 'notes', minWidth: 140, responsive: 3 },
+        {
+          title: 'Acciones',
+          field: 'id',
+          width: 95,
+          headerSort: false,
+          hozAlign: 'center',
+          formatter: (cell) => `<a class="btn btn-outline-primary btn-sm" href="/Admin/Releases/Edit?id=${encodeURIComponent(cell.getValue())}">Editar</a>`,
+          responsive: 0,
+        },
       ],
     });
   });

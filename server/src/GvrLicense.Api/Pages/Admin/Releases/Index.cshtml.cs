@@ -1,5 +1,6 @@
 using System.Security.Cryptography;
 using GvrLicense.Domain.Entities;
+using GvrLicense.Domain.Versioning;
 using GvrLicense.Infrastructure;
 using GvrLicense.Infrastructure.Storage;
 using Microsoft.AspNetCore.Mvc;
@@ -50,27 +51,36 @@ public class IndexModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : 
         if (!artifacts.IsConfigured)
         {
             ModelState.AddModelError(string.Empty, "MinIO no está configurado en el servidor.");
-            await OnGetAsync();
-            return Page();
+            return await InvalidPageAsync();
         }
 
         if (ArtifactFile is null || ArtifactFile.Length == 0)
         {
             ModelState.AddModelError(nameof(ArtifactFile), "Sube el archivo del instalador o del paquete de update.");
-            await OnGetAsync();
-            return Page();
+            return await InvalidPageAsync();
         }
 
-        if (string.IsNullOrWhiteSpace(Input.Version))
+        if (!SemVersion.TryParse(Input.Version, out _))
         {
-            ModelState.AddModelError("Input.Version", "La versión es obligatoria.");
-            await OnGetAsync();
-            return Page();
+            ModelState.AddModelError("Input.Version", "Usa una versión válida con formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0.");
+            return await InvalidPageAsync();
         }
 
+        var version = SemVersion.Normalize(Input.Version);
         var kind = string.Equals(Input.Kind, ReleaseKinds.Update, StringComparison.OrdinalIgnoreCase)
             ? ReleaseKinds.Update
             : ReleaseKinds.Installer;
+
+        var existingVersions = await db.Releases
+            .Where(r => r.Channel == "stable" && r.Kind == kind)
+            .Select(r => r.Version)
+            .ToListAsync();
+        if (existingVersions.Any(existing =>
+                SemVersion.TryParse(existing, out var parsed) && parsed!.ToString() == version))
+        {
+            ModelState.AddModelError("Input.Version", "Ya existe un release estable con esa versión y tipo.");
+            return await InvalidPageAsync();
+        }
 
         await using var buffer = new MemoryStream();
         await ArtifactFile.CopyToAsync(buffer);
@@ -80,7 +90,7 @@ public class IndexModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : 
 
         var objectKey = await artifacts.UploadAsync(
             buffer,
-            Input.Version.Trim(),
+            version,
             ArtifactFile.FileName,
             ArtifactFile.ContentType ?? "application/octet-stream",
             HttpContext.RequestAborted);
@@ -88,7 +98,7 @@ public class IndexModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : 
         db.Releases.Add(new Release
         {
             Id = Guid.NewGuid(),
-            Version = Input.Version.Trim(),
+            Version = version,
             Channel = "stable",
             Kind = kind,
             FileName = Path.GetFileName(ArtifactFile.FileName),
@@ -102,8 +112,33 @@ public class IndexModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : 
 
         TempData["Saved"] = true;
         TempData["PublicUrl"] = $"{Request.Scheme}://{Request.Host}/download";
+        if (IsAjaxRequest())
+        {
+            return new JsonResult(new { redirect = Url.Page("/Admin/Releases/Index") });
+        }
+
         return RedirectToPage();
     }
+
+    private async Task<IActionResult> InvalidPageAsync()
+    {
+        await OnGetAsync();
+        if (!IsAjaxRequest())
+        {
+            return Page();
+        }
+
+        var message = ModelState.Values
+            .SelectMany(value => value.Errors)
+            .Select(error => string.IsNullOrWhiteSpace(error.ErrorMessage)
+                ? "No se pudo publicar el release."
+                : error.ErrorMessage)
+            .FirstOrDefault() ?? "No se pudo publicar el release.";
+        return BadRequest(new { message });
+    }
+
+    private bool IsAjaxRequest() =>
+        string.Equals(Request.Headers["X-Requested-With"], "XMLHttpRequest", StringComparison.OrdinalIgnoreCase);
 
     public sealed record ReleaseRow(
         Guid Id,

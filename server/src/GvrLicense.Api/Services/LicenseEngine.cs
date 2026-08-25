@@ -4,6 +4,7 @@ using System.Text.Json;
 using GvrLicense.Contracts;
 using GvrLicense.Domain.Entities;
 using GvrLicense.Domain.LicenseKeys;
+using GvrLicense.Domain.Versioning;
 using GvrLicense.Infrastructure;
 using GvrLicense.Infrastructure.Signing;
 using GvrLicense.Infrastructure.Storage;
@@ -234,18 +235,40 @@ public sealed class LicenseEngine(
 
     public async Task<UpdateCheckResponse> CheckUpdateAsync(string? currentVersion, string? revitVersion, CancellationToken ct)
     {
-        var latest = await db.Releases
-            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Update)
-            .OrderByDescending(r => r.PublishedAtUtc)
-            .FirstOrDefaultAsync(ct);
+        var stableReleases = await db.Releases
+            .Where(r => r.Channel == "stable"
+                && (r.Kind == ReleaseKinds.Update || r.Kind == ReleaseKinds.Installer))
+            .ToListAsync(ct);
 
-        // Si aún no hay paquetes "update", el instalador publicado sirve como señal de versión.
-        latest ??= await db.Releases
-            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
-            .OrderByDescending(r => r.PublishedAtUtc)
-            .FirstOrDefaultAsync(ct);
+        static (Release Release, SemVersion Version)? LatestValid(
+            IEnumerable<Release> releases,
+            string kind)
+        {
+            return releases
+                .Where(r => r.Kind == kind)
+                .Select(r => SemVersion.TryParse(r.Version, out var version)
+                    ? (Release: r, Version: version!)
+                    : ((Release Release, SemVersion Version)?)null)
+                .Where(candidate => candidate.HasValue)
+                .Select(candidate => candidate!.Value)
+                .OrderByDescending(candidate => candidate.Version)
+                .ThenByDescending(candidate => candidate.Release.PublishedAtUtc)
+                .Cast<(Release Release, SemVersion Version)?>()
+                .FirstOrDefault();
+        }
 
-        if (latest is null || latest.Version == currentVersion)
+        // Se prefieren paquetes update; el instalador solo es fallback si no hay un update válido.
+        var latest = LatestValid(stableReleases, ReleaseKinds.Update)
+            ?? LatestValid(stableReleases, ReleaseKinds.Installer);
+
+        if (latest is null)
+        {
+            return new UpdateCheckResponse { UpdateAvailable = false };
+        }
+
+        var updateAvailable = !SemVersion.TryParse(currentVersion, out var current)
+            || latest.Value.Version.IsGreaterThan(current!);
+        if (!updateAvailable)
         {
             return new UpdateCheckResponse { UpdateAvailable = false };
         }
@@ -253,9 +276,9 @@ public sealed class LicenseEngine(
         return new UpdateCheckResponse
         {
             UpdateAvailable = true,
-            LatestVersion = latest.Version,
-            DownloadUrl = $"/v1/updates/download/{latest.Id}",
-            ReleaseNotes = latest.Notes
+            LatestVersion = latest.Value.Version.ToString(),
+            DownloadUrl = $"/v1/updates/download/{latest.Value.Release.Id}",
+            ReleaseNotes = latest.Value.Release.Notes
         };
     }
 
@@ -279,10 +302,20 @@ public sealed class LicenseEngine(
     /// <summary>Último instalador publicado (kind=installer) para el enlace público /download.</summary>
     public async Task<Release> GetLatestInstallerAsync(CancellationToken ct)
     {
-        var release = await db.Releases
+        var installers = await db.Releases
             .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
-            .OrderByDescending(r => r.PublishedAtUtc)
-            .FirstOrDefaultAsync(ct);
+            .ToListAsync(ct);
+
+        var release = installers
+            .Select(r => SemVersion.TryParse(r.Version, out var version)
+                ? (Release: r, Version: version!)
+                : ((Release Release, SemVersion Version)?)null)
+            .Where(candidate => candidate.HasValue)
+            .Select(candidate => candidate!.Value)
+            .OrderByDescending(candidate => candidate.Version)
+            .ThenByDescending(candidate => candidate.Release.PublishedAtUtc)
+            .Select(candidate => candidate.Release)
+            .FirstOrDefault();
 
         return release ?? throw new LicenseApiException(404, "Aún no hay instalador publicado.");
     }
