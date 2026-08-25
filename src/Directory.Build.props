@@ -5,16 +5,16 @@
 
     ONE knob drives the whole Revit matrix: the `RevitVersion` property. It selects the target
     framework, the Revit API reference package and the REVITxxxx_OR_GREATER compilation symbols,
-    so the same source tree compiles for Revit 2021 through 2025.
+    so the same source tree compiles for Revit 2021 through 2027.
 
       dotnet build src/GvrTools.App -c Release -p:RevitVersion=2025
 
-    Visual Studio users can instead pick a "Debug R25" / "Release R25" configuration; the version
+    Visual Studio users can instead pick a "Debug R27" / "Release R27" configuration; the version
     is inferred from the configuration name below.
   -->
 
   <PropertyGroup>
-    <Configurations>Debug;Release;Debug R21;Release R21;Debug R22;Release R22;Debug R23;Release R23;Debug R24;Release R24;Debug R25;Release R25</Configurations>
+    <Configurations>Debug;Release;Debug R21;Release R21;Debug R22;Release R22;Debug R23;Release R23;Debug R24;Release R24;Debug R25;Release R25;Debug R26;Release R26;Debug R27;Release R27</Configurations>
     <GvrRepoRoot>$(MSBuildThisFileDirectory)..\</GvrRepoRoot>
     <GvrBuildRoot>$(GvrRepoRoot)build\</GvrBuildRoot>
   </PropertyGroup>
@@ -26,15 +26,19 @@
     <RevitVersion Condition="$(Configuration.Contains('R23'))">2023</RevitVersion>
     <RevitVersion Condition="$(Configuration.Contains('R24'))">2024</RevitVersion>
     <RevitVersion Condition="$(Configuration.Contains('R25'))">2025</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R26'))">2026</RevitVersion>
+    <RevitVersion Condition="$(Configuration.Contains('R27'))">2027</RevitVersion>
     <!-- Default target: the oldest supported release, so a plain `dotnet build` always exercises
          the most constrained code path (Revit 2021, which has no native PDF export API). -->
     <RevitVersion Condition="'$(RevitVersion)' == ''">2021</RevitVersion>
   </PropertyGroup>
 
   <PropertyGroup>
-    <!-- Revit 2021-2024 run on .NET Framework 4.8; Revit 2025+ runs on .NET 8. -->
+    <!-- Revit 2021-2024 run on .NET Framework 4.8, Revit 2025-2026 on .NET 8,
+         and Revit 2027 on .NET 10. -->
     <RevitTargetFramework>net48</RevitTargetFramework>
     <RevitTargetFramework Condition="'$(RevitVersion)' &gt;= '2025'">net8.0-windows</RevitTargetFramework>
+    <RevitTargetFramework Condition="'$(RevitVersion)' &gt;= '2027'">net10.0-windows</RevitTargetFramework>
   </PropertyGroup>
 
   <PropertyGroup>
@@ -47,7 +51,7 @@
     <NeutralLanguage>es</NeutralLanguage>
     <Company>GVR</Company>
     <Product>GVR Tools para Revit</Product>
-    <Version>2.0.0</Version>
+    <Version>1.0.0</Version>
     <InformationalVersion>$(Version)</InformationalVersion>
     <AssemblyInformationalVersion>$(Version)</AssemblyInformationalVersion>
     <!-- Revit add-ins load into a host process that already has its own copies of most common

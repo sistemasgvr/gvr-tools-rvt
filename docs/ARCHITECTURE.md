@@ -101,10 +101,11 @@ Un único código fuente, cinco binarios. La propiedad `RevitVersion` es la úni
 dotnet build src/GvrTools.App/GvrTools.App.csproj -c Release -p:RevitVersion=2025
 ```
 
-`src/Directory.Build.props` la resuelve (también desde configuraciones tipo `Release R25`) y
+`src/Directory.Build.props` la resuelve (también desde configuraciones tipo `Release R27`) y
 `src/GvrTools.Revit.props` la traduce a:
 
-- **Framework**: `net48` para 2021–2024, `net8.0-windows` para 2025+.
+- **Framework**: `net48` para 2021–2024, `net8.0-windows` para 2025–2026 y
+  `net10.0-windows` para 2027+.
 - **Paquete de referencia**: `Nice3point.Revit.Api.*` de la versión correspondiente, con
   `ExcludeAssets="runtime"` para no copiar nunca `RevitAPI.dll` junto al complemento.
 - **Símbolos**: `REVIT2024` más `REVIT2021_OR_GREATER` … `REVIT2024_OR_GREATER`. El código usa

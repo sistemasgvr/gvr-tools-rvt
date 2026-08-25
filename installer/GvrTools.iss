@@ -1,5 +1,5 @@
 ; GVR Tools — instalador comercial (Inno Setup 6+)
-; Empaqueta build/2021…2025 en %ProgramData%\GVR\GvrTools\<año>\ y escribe .addin.
+; Empaqueta build/2021…2027 en %ProgramData%\GVR\GvrTools\<año>\ y escribe .addin.
 ; Desarrollo interno: seguir usando scripts/install-addin.ps1
 
 #define MyAppName "GVR Tools"
@@ -22,7 +22,9 @@ PrivilegesRequired=admin
 OutputDir=..\dist
 OutputBaseFilename=GvrTools-Setup-{#MyAppVersion}
 Compression=lzma2
-SolidCompression=yes
+SolidCompression=no
+; PDF24 ya viene comprimido: no recomprimir (ahorra minutos en cada build de prueba).
+; Las DLLs sí usan lzma2.
 WizardStyle=modern
 ArchitecturesAllowed=x64compatible
 ArchitecturesInstallIn64BitMode=x64compatible
@@ -40,6 +42,8 @@ Name: "revit2022"; Description: "Revit 2022"; GroupDescription: "Instalar este a
 Name: "revit2023"; Description: "Revit 2023"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
 Name: "revit2024"; Description: "Revit 2024"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
 Name: "revit2025"; Description: "Revit 2025"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
+Name: "revit2026"; Description: "Revit 2026"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
+Name: "revit2027"; Description: "Revit 2027"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
 
 [Files]
 ; Cada carpeta build/<año> se copia solo si el task correspondiente está marcado.
@@ -48,10 +52,21 @@ Source: "{#PayloadRoot}\2022\*"; DestDir: "{app}\2022"; Flags: ignoreversion rec
 Source: "{#PayloadRoot}\2023\*"; DestDir: "{app}\2023"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2023
 Source: "{#PayloadRoot}\2024\*"; DestDir: "{app}\2024"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2024
 Source: "{#PayloadRoot}\2025\*"; DestDir: "{app}\2025"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2025
+Source: "{#PayloadRoot}\2026\*"; DestDir: "{app}\2026"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2026
+Source: "{#PayloadRoot}\2027\*"; DestDir: "{app}\2027"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2027
+; PDF24 se incluye para que la instalación sea reproducible y no dependa de una descarga.
+Source: "prereqs\pdf24-creator-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall nocompression
+
+[Run]
+; Flags oficiales PDF24 (Inno): silent + sin auto-update + solo impresora PDF (suficiente para Revit 2021).
+Filename: "{tmp}\pdf24-creator-installer.exe"; Parameters: "/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /SP- /NOUPDATE /COMPONENTS=pdfPrinter"; StatusMsg: "Instalando PDF24 Creator..."; Flags: waituntilterminated; Check: ShouldInstallPdf24
 
 [Code]
 var
-  Pdf24Page: TOutputMsgMemoWizardPage;
+  PrereqPage: TWizardPage;
+  PrereqList: TNewMemo;
+  InstallPdf24Check: TNewCheckBox;
+  Pdf24InstalledAtStart: Boolean;
 
 function RevitExeExists(Year: Integer): Boolean;
 begin
@@ -63,68 +78,170 @@ begin
   Result :=
     RegKeyExists(HKLM, 'SOFTWARE\PDF24') or
     RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\PDF24') or
+    FileExists(ExpandConstant('{pf}\PDF24\pdf24-DocTool.exe')) or
+    FileExists(ExpandConstant('{pf32}\PDF24\pdf24-DocTool.exe')) or
     DirExists(ExpandConstant('{pf}\PDF24')) or
     DirExists(ExpandConstant('{pf32}\PDF24'));
+end;
+
+function IsSpanish: Boolean;
+begin
+  Result := ActiveLanguage = 'spanish';
+end;
+
+procedure UpdatePrerequisitePage;
+var
+  RequiredText, FoundText, ActionText: string;
+  Pdf24Required: Boolean;
+begin
+  Pdf24Required := WizardIsTaskSelected('revit2021');
+  Pdf24InstalledAtStart := IsPdf24Installed;
+
+  if Pdf24Required then
+    RequiredText := 'Revit 2021'
+  else if IsSpanish then
+    RequiredText := 'Opcional'
+  else
+    RequiredText := 'Optional';
+
+  if Pdf24InstalledAtStart then
+  begin
+    if IsSpanish then
+    begin
+      FoundText := 'Instalado';
+      ActionText := 'Ya instalado';
+    end
+    else
+    begin
+      FoundText := 'Installed';
+      ActionText := 'Already installed';
+    end;
+  end
+  else
+  begin
+    FoundText := '';
+    if Pdf24Required then
+    begin
+      if IsSpanish then
+        ActionText := 'Debe instalarse'
+      else
+        ActionText := 'Must install';
+    end
+    else
+    begin
+      if IsSpanish then
+        ActionText := 'Disponible'
+      else
+        ActionText := 'Available';
+    end;
+  end;
+
+  PrereqList.Lines.Clear;
+  PrereqList.Lines.Add('Name                    Required          Found             Action');
+  PrereqList.Lines.Add('PDF24 Creator      ' + RequiredText + '      ' + FoundText + '      ' + ActionText);
+
+  InstallPdf24Check.Visible := not Pdf24InstalledAtStart;
+  if not Pdf24InstalledAtStart then
+  begin
+    InstallPdf24Check.Checked := Pdf24Required;
+    InstallPdf24Check.Enabled := not Pdf24Required;
+    if IsSpanish then
+    begin
+      if Pdf24Required then
+        InstallPdf24Check.Caption := 'PDF24 es obligatorio para Revit 2021 y se instalará automáticamente.'
+      else
+        InstallPdf24Check.Caption := 'Instalar PDF24 Creator (opcional para Revit 2022 o posterior).';
+    end
+    else
+    begin
+      if Pdf24Required then
+        InstallPdf24Check.Caption := 'PDF24 is required for Revit 2021 and will be installed automatically.'
+      else
+        InstallPdf24Check.Caption := 'Install PDF24 Creator (optional for Revit 2022 or later).';
+    end;
+  end;
 end;
 
 procedure InitializeWizard;
 var
   Y: Integer;
+  SelectedTasks: string;
 begin
-  for Y := 2021 to 2025 do
+  for Y := 2021 to 2027 do
   begin
     if RevitExeExists(Y) then
     begin
+      if SelectedTasks <> '' then
+        SelectedTasks := SelectedTasks + ',';
       case Y of
-        2021: WizardSelectTasks('revit2021');
-        2022: WizardSelectTasks('revit2022');
-        2023: WizardSelectTasks('revit2023');
-        2024: WizardSelectTasks('revit2024');
-        2025: WizardSelectTasks('revit2025');
+        2021: SelectedTasks := SelectedTasks + 'revit2021';
+        2022: SelectedTasks := SelectedTasks + 'revit2022';
+        2023: SelectedTasks := SelectedTasks + 'revit2023';
+        2024: SelectedTasks := SelectedTasks + 'revit2024';
+        2025: SelectedTasks := SelectedTasks + 'revit2025';
+        2026: SelectedTasks := SelectedTasks + 'revit2026';
+        2027: SelectedTasks := SelectedTasks + 'revit2027';
       end;
     end;
   end;
+  if SelectedTasks <> '' then
+    WizardSelectTasks(SelectedTasks);
 
-  Pdf24Page := CreateOutputMsgMemoPage(
-    wpSelectTasks,
-    'Prerequisito PDF (Revit 2021)',
-    'Revit 2021 no tiene PDF nativo',
-    'Si instalas para Revit 2021 necesitas una impresora PDF silenciosa (recomendado: PDF24 Creator).',
-    'Instala PDF24 desde https://www.pdf24.org y vuelve a ejecutar este instalador si falta.' + #13#10 + #13#10 +
-    'Para Revit 2022+ el PDF es nativo y no hace falta PDF24.');
+  if IsSpanish then
+    PrereqPage := CreateCustomPage(
+      wpSelectTasks, 'Prerequisitos', 'Comprueba los componentes necesarios antes de instalar.')
+  else
+    PrereqPage := CreateCustomPage(
+      wpSelectTasks, 'Prerequisites', 'Review the components needed before installation.');
+
+  PrereqList := TNewMemo.Create(PrereqPage);
+  PrereqList.Parent := PrereqPage.Surface;
+  PrereqList.Left := 0;
+  PrereqList.Top := 0;
+  PrereqList.Width := PrereqPage.SurfaceWidth;
+  PrereqList.Height := ScaleY(112);
+  PrereqList.ReadOnly := True;
+
+  InstallPdf24Check := TNewCheckBox.Create(PrereqPage);
+  InstallPdf24Check.Parent := PrereqPage.Surface;
+  InstallPdf24Check.Left := 0;
+  InstallPdf24Check.Top := PrereqList.Top + PrereqList.Height + ScaleY(16);
+  InstallPdf24Check.Width := PrereqPage.SurfaceWidth;
+  InstallPdf24Check.Height := ScaleY(42);
+
+  Pdf24InstalledAtStart := IsPdf24Installed;
 end;
 
-function ShouldSkipPage(PageID: Integer): Boolean;
+procedure CurPageChanged(CurPageID: Integer);
 begin
-  Result := False;
-  if (Pdf24Page <> nil) and (PageID = Pdf24Page.ID) then
-    Result := not WizardIsTaskSelected('revit2021');
+  if (PrereqPage <> nil) and (CurPageID = PrereqPage.ID) then
+    UpdatePrerequisitePage;
+end;
+
+function ShouldInstallPdf24: Boolean;
+begin
+  Result :=
+    (not Pdf24InstalledAtStart) and
+    (WizardIsTaskSelected('revit2021') or InstallPdf24Check.Checked);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
 begin
   Result := True;
-  if (Pdf24Page <> nil) and (CurPageID = Pdf24Page.ID) then
-  begin
-    if WizardIsTaskSelected('revit2021') and (not IsPdf24Installed) then
-    begin
-      MsgBox(
-        'PDF24 no se detectó en este PC. Instálalo antes de continuar con Revit 2021, ' +
-        'o desmarca Revit 2021 en la lista de versiones.',
-        mbError, MB_OK);
-      Result := False;
-    end;
-  end;
-
   if CurPageID = wpSelectTasks then
   begin
     if (not WizardIsTaskSelected('revit2021')) and
        (not WizardIsTaskSelected('revit2022')) and
        (not WizardIsTaskSelected('revit2023')) and
        (not WizardIsTaskSelected('revit2024')) and
-       (not WizardIsTaskSelected('revit2025')) then
+       (not WizardIsTaskSelected('revit2025')) and
+       (not WizardIsTaskSelected('revit2026')) and
+       (not WizardIsTaskSelected('revit2027')) then
     begin
-      MsgBox('Selecciona al menos una versión de Revit.', mbError, MB_OK);
+      MsgBox(
+        'Selecciona al menos una versión de Revit.' + #13#10 +
+        'Select at least one Revit version.',
+        mbError, MB_OK);
       Result := False;
     end;
   end;
@@ -134,7 +251,10 @@ function WriteAddin(Year: Integer): Boolean;
 var
   AddinDir, AddinPath, AssemblyPath, Content: string;
 begin
-  AddinDir := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Year));
+  if Year >= 2027 then
+    AddinDir := ExpandConstant('{pf}\Autodesk\Revit\Addins\' + IntToStr(Year))
+  else
+    AddinDir := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Year));
   ForceDirectories(AddinDir);
   AssemblyPath := ExpandConstant('{app}\' + IntToStr(Year) + '\GvrTools.App.dll');
   AddinPath := AddinDir + '\GvrTools.addin';
@@ -162,6 +282,8 @@ begin
     if WizardIsTaskSelected('revit2023') then WriteAddin(2023);
     if WizardIsTaskSelected('revit2024') then WriteAddin(2024);
     if WizardIsTaskSelected('revit2025') then WriteAddin(2025);
+    if WizardIsTaskSelected('revit2026') then WriteAddin(2026);
+    if WizardIsTaskSelected('revit2027') then WriteAddin(2027);
   end;
 end;
 
@@ -172,9 +294,12 @@ var
 begin
   if CurUninstallStep = usPostUninstall then
   begin
-    for Y := 2021 to 2025 do
+    for Y := 2021 to 2027 do
     begin
-      AddinPath := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Y) + '\GvrTools.addin');
+      if Y >= 2027 then
+        AddinPath := ExpandConstant('{pf}\Autodesk\Revit\Addins\' + IntToStr(Y) + '\GvrTools.addin')
+      else
+        AddinPath := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Y) + '\GvrTools.addin');
       if FileExists(AddinPath) then
         DeleteFile(AddinPath);
     end;

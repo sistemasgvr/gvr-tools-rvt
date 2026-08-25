@@ -6,7 +6,7 @@ Un solo complemento con una pestaña propia, **GVR Tools**, pensado para ir suma
 código está organizado de modo que agregar una herramienta nueva es crear un proyecto, no modificar
 el complemento. Ver [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
-**Compatible con Revit 2021, 2022, 2023, 2024 y 2025** desde un único código fuente.
+**Compatible con Revit 2021, 2022, 2023, 2024, 2025, 2026 y 2027** desde un único código fuente.
 
 ## Herramientas incluidas
 
@@ -35,7 +35,7 @@ subcarpeta con el nombre del proyecto. Equivalente en alcance a ProSheets / DiRo
 
 ## Requisitos
 
-- **Revit 2021, 2022, 2023, 2024 o 2025**, en cualquier idioma. Windows 10/11 de 64 bits.
+- **Revit 2021 a 2027**, en cualquier idioma. Windows 10/11 de 64 bits.
 - Para exportar **PDF en Revit 2022 o superior**: nada más. Revit tiene exportador de PDF propio y el
   complemento lo usa directamente.
 - Para exportar **PDF en Revit 2021**: una impresora PDF de Windows a la que se le pueda indicar el
@@ -63,10 +63,10 @@ Parámetros útiles:
 
 ```powershell
 # Solo una versión
-.\scripts\install-addin.ps1 -RevitVersion 2025
+.\scripts\install-addin.ps1 -RevitVersion 2027
 
 # Varias versiones a la vez
-.\scripts\install-addin.ps1 -RevitVersion 2021,2025
+.\scripts\install-addin.ps1 -RevitVersion 2021,2027
 
 # Para todos los usuarios del equipo (requiere PowerShell como administrador)
 .\scripts\install-addin.ps1 -AllUsers
@@ -87,13 +87,13 @@ Para una instalación manual, ver los comentarios de [deploy/GvrTools.addin](dep
 
 ```bash
 # Una versión concreta; la salida queda en build/<año>/
-dotnet build src/GvrTools.App/GvrTools.App.csproj -c Release -p:RevitVersion=2025
+dotnet build src/GvrTools.App/GvrTools.App.csproj -c Release -p:RevitVersion=2027
 
 # Pruebas unitarias (no requieren tener Revit instalado)
 dotnet test tests/GvrTools.Core.Tests/GvrTools.Core.Tests.csproj
 ```
 
-En Visual Studio también existen las configuraciones `Debug R21` … `Release R25`, que fijan la
+En Visual Studio también existen las configuraciones `Debug R21` … `Release R27`, que fijan la
 versión sin pasar la propiedad a mano.
 
 ## Uso
@@ -204,8 +204,6 @@ devuelve la herramienta a sus valores por defecto.
   hilo de la API. Con la API nativa (Revit 2022+) esa espera no existe.
 - Los tokens de revisión leen los parámetros estándar de "revisión actual" de la lámina; si el
   proyecto no usa revisiones, quedan vacíos (y su separador desaparece del nombre).
-- Revit 2026 y posteriores todavía no están en la matriz. Agregarlos es una línea en
-  `src/GvrTools.Revit.props` más el año en `SupportedVersions` del script de instalación.
 
 ## Rama de trabajo
 

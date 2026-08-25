@@ -15,10 +15,10 @@ namespace GvrTools.Licensing.Activation
         public AccountLicenseViewModel(LicenseClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
-            Refresh();
             ActivateCommand = new RelayCommand(() => RequestActivate?.Invoke());
             DeactivateCommand = new RelayCommand(async () => await DeactivateAsync(), () => IsLicensed && !IsBusy);
             CloseCommand = new RelayCommand(() => RequestClose?.Invoke());
+            Refresh();
         }
 
         public event Action RequestActivate;

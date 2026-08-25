@@ -33,7 +33,7 @@ La exportación PDF/DWG **sigue en el PC del cliente**: usa la API de Revit en p
 Autodesk publica una API distinta por año. Un solo código fuente (como ya tienes) se compila a **un set de DLLs por versión**:
 
 - Revit 2021–2024 → `net48`
-- Revit 2025+ → `net8.0-windows`
+- Revit 2025–2026 → `net8.0-windows`; Revit 2027+ → `net10.0-windows`
 
 Salida actual: `build/2021/`, `build/2022/`, … (ver [`ARCHITECTURE.md`](ARCHITECTURE.md)). El instalador empaqueta **todas** esas carpetas y solo escribe el `.addin` de las versiones que el usuario marque (y que existan en el PC).
 
@@ -59,7 +59,7 @@ Referencia de mercado (ProSheets v2.x): el wizard detecta prerequisitos (p. ej. 
 - Textos legales: páginas TOS y Privacy hospedadas en tu dominio; el installer solo enlaza y exige checkbox de aceptación (obligatorio antes del primer cliente de pago).
 - License key: formato `GVR-XXXX-XXXX-XXXX` (alfanumérico, checksum en el servidor al emitir). El cliente envía la key tal cual en `/v1/activate`. Generación: `RandomNumberGenerator.GetBytes` (crypto-seguro) → codificar en **Base32 Crockford** (excluye `I/O/0/1`, sin ambigüedad al dictarla por teléfono/soporte) → agrupar en bloques de 4 → añadir un checksum corto (CRC16 o mod-97) sobre el payload, para que el servidor rechace typos sin tocar la base de datos. Se guarda tal cual en Postgres (no es una contraseña; el control real vive en `status`/`valid_until`), así soporte la puede buscar fácil cuando el cliente la manda por correo.
 - Reloj del PC: `offline_until` es instante absoluto firmado por el servidor; sin heartbeat válido no se extiende la gracia (no se confía en la fecha local para renovar).
-- Revit 2026+: al soportar un año nuevo → props + `build/<año>` + checkbox en el installer + release multi-año.
+- Nuevas versiones de Revit: props + `build/<año>` + checkbox en el installer + release multi-año.
 - Entrega de la key: **manual**. Tú copias la key desde el admin y la envías por tu propio correo/WhatsApp al cliente. Sin SMTP ni envío automático en v1 (ni de bienvenida, ni de aviso de vencimiento) — el aviso previo a suspender también es manual.
 ---
 
@@ -77,7 +77,7 @@ Hoy el repo solo tiene **una tool de producto**: Batch Export ([`GvrTools.Tools.
 | Opciones PDF (tamaño, margen, color, calidad) | Incluidas con `format.pdf` | Sub-features solo si más adelante quieres freemium fino |
 | Opciones DWG (versión ACAD, merge, coords, PNG) | Incluidas con `format.dwg` | Idem; `format.dwg_image` si quieres separar el PNG |
 | Progreso / cancelar / log / preferencias locales | Infra, no se licencia | Siempre disponibles si la tool está on |
-| Multi-Revit 2021–2025 | Instalador + builds | Una seat = todos los años en ese PC |
+| Multi-Revit 2021–2027 | Instalador + builds | Una seat = todos los años en ese PC |
 | Prerequisito PDF24 en 2021 | Instalador | Fuera del license server |
 | Tools futuras (`GvrTools.Tools.*`) | Previsto | Nuevo feature code + fila en Plan; ver sección extensibilidad |
 
@@ -434,7 +434,7 @@ flowchart LR
    - Si no está instalado → Action = *Must install* → el wizard lanza el setup embebido/descargado de PDF24 (o abre descarga oficial + re-detecta).
    - Para **solo 2022+**: prerequisito PDF **no obligatorio** (PDF nativo de Revit).
 3. **Términos / privacidad** + checkbox “I agree” (bloquea INSTALL hasta aceptar).
-4. **Install this Add-in for:** checkboxes **Revit 2021…2025** (y 2026+ cuando el código lo soporte).
+4. **Install this Add-in for:** checkboxes **Revit 2021…2027**.
    - Pre-marcar solo las versiones **detectadas** en `Program Files\Autodesk\Revit <año>\Revit.exe` (misma lógica que [`install-addin.ps1`](../scripts/install-addin.ps1)).
    - Permitir desmarcar; no instalar años sin Revit en el disco (aviso).
 5. **INSTALL** → copia `build/<año>/*` a `%ProgramData%\GVR\GvrTools\<año>\` y escribe el `.addin` apuntando a `GvrTools.App.dll`.
@@ -485,7 +485,7 @@ El update firmado del license server descarga un paquete multi-año (o solo los 
 
 | Activo | Por qué importa |
 | --- | --- |
-| Multi-versión en un solo source | Evitas 5 repos; ya compilas 2021–2025 |
+| Multi-versión en un solo source | Evitas repos por año; ya compilas 2021–2027 |
 | PDF 2021 abstraído (`IPdfOutputController`) | Encaja con prerequisito PDF24 como ProSheets |
 | Arquitectura de tools descubribles | Planes pueden habilitar tools sin reescribir el host |
 | Sin runtime NuGet pesado | Menos DLL hell al meter `HttpClient` con cuidado |
@@ -508,7 +508,7 @@ El update firmado del license server descarga un paquete multi-año (o solo los 
 | --- | --- | --- |
 | SmartScreen / antivirus sin firma | Clientes no instalan | Authenticode antes del primer cliente de pago |
 | Licencia de redistribución de PDF24 | Legal | Empaquetar según EULA de PDF24 o “descargar oficial + detectar”; no piratear su setup |
-| Revit 2026+ / cambio de API | Mantenimiento anual | Ya previsto: una línea en props + carpeta `build/<año>` + checkbox en installer |
+| Nueva versión de Revit / cambio de API | Mantenimiento anual | Ya previsto: props + carpeta `build/<año>` + checkbox en installer |
 | Crack del DLL | Pérdida de margen | Servidor manda cuotas + suspensión + updates solo a licenses activas |
 | Cliente 2021 sin impresora silenciosa | Soporte | Wizard obliga prerequisito; mensajes claros en tool (ya hay allow-list) |
 | Cobro manual no escala | Operación | OK en v1 B2B; Stripe/self-service = Fase 4 |
@@ -549,7 +549,7 @@ No vendas el `.exe` a terceros hasta tener:
 
 ### Fase 2 — Instalador profesional + prerequisitos (1–2 semanas)
 
-- [x] Wizard `.exe` (idioma, TOS, checkboxes Revit 2021–2025) — esqueleto Inno Setup en `installer/` (sin Authenticode aún)
+- [x] Wizard `.exe` (idioma, TOS, checkboxes Revit 2021–2027) — esqueleto Inno Setup en `installer/` (sin Authenticode aún)
 - [x] Detección de Revit instalado + copia a `%ProgramData%\GVR\GvrTools\<año>\`
 - [x] Paso prerequisitos: PDF24 (u allow-list) **obligatorio si se instala 2021**
 - [x] Mantener `install-addin.ps1` solo para desarrollo

@@ -3,7 +3,8 @@
   <!--
     Cliente de licenciamiento (docs/LICENSING_PLAN.md, Pieza 2). Referenciado por GvrTools.App y por
     las tools que necesiten consultar entitlements/cuota. Revit-free a propósito, igual que
-    GvrTools.UI: net48 sirve Revit 2021-2024, net8.0-windows sirve Revit 2025+.
+    GvrTools.UI: net48 sirve Revit 2021-2024, net8.0-windows sirve Revit 2025-2026 y
+    net10.0-windows sirve Revit 2027+.
 
     Solo usa HttpClient + System.Security.Cryptography (ECDsa) + System.Text.Json, todos built-in en
     ambos frameworks. Cero NuGet de runtime, misma regla que el resto del add-in (ver
@@ -11,7 +12,7 @@
   -->
 
   <PropertyGroup>
-    <TargetFrameworks>net48;net8.0-windows</TargetFrameworks>
+    <TargetFrameworks>net48;net8.0-windows;net10.0-windows</TargetFrameworks>
     <UseWPF>true</UseWPF>
     <AssemblyName>GvrTools.Licensing</AssemblyName>
     <RootNamespace>GvrTools.Licensing</RootNamespace>

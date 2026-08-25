@@ -1,7 +1,7 @@
 #requires -version 5.1
 <#
 .SYNOPSIS
-  Compila GVR Tools para Revit 2021-2025 y genera el Setup con Inno Setup (si ISCC está en PATH).
+  Compila GVR Tools para Revit 2021-2027 y genera el Setup con Inno Setup (si ISCC está en PATH).
 #>
 param(
     [string]$Configuration = "Release",
@@ -13,7 +13,7 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repoRoot "src\GvrTools.App\GvrTools.App.csproj"
 $iss = Join-Path $PSScriptRoot "GvrTools.iss"
-$versions = @(2021, 2022, 2023, 2024, 2025)
+$versions = @(2021, 2022, 2023, 2024, 2025, 2026, 2027)
 
 if (-not $SkipBuild) {
     foreach ($version in $versions) {
@@ -28,14 +28,15 @@ if (-not $SkipBuild) {
 foreach ($version in $versions) {
     $dll = Join-Path $repoRoot "build\$version\GvrTools.App.dll"
     if (-not (Test-Path $dll)) {
-        throw "Falta $dll — compila antes o quita -SkipBuild"
+        throw "Falta $dll - compila antes o quita -SkipBuild"
     }
 }
 
 if (-not $IsccPath) {
     $candidates = @(
         "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
+        "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+        "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe"
     )
     $IsccPath = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
 }

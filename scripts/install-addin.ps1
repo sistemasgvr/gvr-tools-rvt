@@ -46,7 +46,7 @@ $ErrorActionPreference = "Stop"
 
 # Versiones que el código soporta. Al agregar una nueva, añádela también a <Configurations> y a los
 # símbolos REVITxxxx_OR_GREATER en src\GvrTools.Revit.props.
-$SupportedVersions = @(2021, 2022, 2023, 2024, 2025)
+$SupportedVersions = @(2021, 2022, 2023, 2024, 2025, 2026, 2027)
 
 $AddinFileName = "GvrTools.addin"
 $AssemblyFileName = "GvrTools.App.dll"
@@ -67,8 +67,17 @@ function Get-InstalledRevitVersions {
 }
 
 function Get-AddinDirectory([int]$version) {
-    $root = if ($AllUsers) { $env:ProgramData } else { $env:APPDATA }
-    return Join-Path $root "Autodesk\Revit\Addins\$version"
+    if (-not $AllUsers) {
+        return Join-Path $env:APPDATA "Autodesk\Revit\Addins\$version"
+    }
+
+    # Revit 2027 stopped loading machine-wide manifests from ProgramData. Autodesk's new shared
+    # third-party location is Program Files\Autodesk\Revit\Addins\<año>.
+    if ($version -ge 2027) {
+        return Join-Path $env:ProgramFiles "Autodesk\Revit\Addins\$version"
+    }
+
+    return Join-Path $env:ProgramData "Autodesk\Revit\Addins\$version"
 }
 
 function New-Manifest([string]$assemblyPath) {

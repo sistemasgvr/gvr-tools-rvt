@@ -24,6 +24,8 @@
     <DefineConstants Condition="'$(RevitVersion)' &gt;= '2023'">$(DefineConstants);REVIT2023_OR_GREATER</DefineConstants>
     <DefineConstants Condition="'$(RevitVersion)' &gt;= '2024'">$(DefineConstants);REVIT2024_OR_GREATER</DefineConstants>
     <DefineConstants Condition="'$(RevitVersion)' &gt;= '2025'">$(DefineConstants);REVIT2025_OR_GREATER</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' &gt;= '2026'">$(DefineConstants);REVIT2026_OR_GREATER</DefineConstants>
+    <DefineConstants Condition="'$(RevitVersion)' &gt;= '2027'">$(DefineConstants);REVIT2027_OR_GREATER</DefineConstants>
   </PropertyGroup>
 
   <ItemGroup>

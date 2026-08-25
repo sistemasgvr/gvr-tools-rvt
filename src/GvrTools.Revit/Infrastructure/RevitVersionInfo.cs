@@ -6,7 +6,11 @@ namespace GvrTools.Revit.Infrastructure
     /// </summary>
     public static class RevitVersionInfo
     {
-#if REVIT2025
+#if REVIT2027
+        public const int CompiledFor = 2027;
+#elif REVIT2026
+        public const int CompiledFor = 2026;
+#elif REVIT2025
         public const int CompiledFor = 2025;
 #elif REVIT2024
         public const int CompiledFor = 2024;
@@ -19,7 +23,8 @@ namespace GvrTools.Revit.Infrastructure
 #endif
 
         /// <summary>
-        /// True when Revit exposes a real PDF export API (<c>PDFExportOptions</c>, added in 2022).
+        /// True when Revit exposes a real PDF export API (<c>PDFExportOptions</c>, added in 2022
+        /// and available in every supported release from 2022 through 2027).
         /// When false, PDF has to be plotted through a Windows printer driver instead.
         /// </summary>
 #if REVIT2022_OR_GREATER
