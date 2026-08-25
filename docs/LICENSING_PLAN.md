@@ -234,6 +234,7 @@ Stack recomendado (simple, tuyo, control total):
 - `Release` — versión, canal (`stable`), checksum, URL, notas, firma
 - `AuditLog` — quién activó/renovó/suspendió
 - `AppSettings` — `support_email`, URLs de TOS/Privacy
+- `AdminUser` — usuario + hash de contraseña de quien entra al panel (Pieza 5); no floating, no config
 ### Planes y límites
 
 Ver **Catálogo de features** y tabla Trial / Starter / Pro más arriba. Los números viven en Postgres (JSON del `Plan`); el add-in no hardcodea topes.
@@ -242,9 +243,9 @@ Cada tool del catálogo (`IRevitTool.Id`) se mapea a un feature code estable (`t
 
 ### API mínima (v1)
 
-- `POST /v1/activate` — license key + machine fingerprint → token de sesión + entitlements firmados
-- `POST /v1/heartbeat` — renueva gracia, refresca entitlements/cuotas
-- `POST /v1/usage` — reporta consumos (idempotente por `event_id`)
+- `POST /v1/activate` — license key + machine fingerprint → JWT (`AccessToken`, ES256, 14 días) + entitlements firmados
+- `POST /v1/heartbeat` — requiere `Authorization: Bearer {AccessToken}`; renueva gracia, refresca entitlements/cuotas
+- `POST /v1/usage` — requiere `Authorization: Bearer {AccessToken}`; reporta consumos (idempotente por `event_id`)
 - `GET /v1/updates/check?version=&revit=` — última release permitida
 - `GET /v1/updates/download/{id}` — URL firmada temporal
 - Admin (sesión dueño): CRUD customers/plans/licenses, suspender, renovar `valid_until`, ver uso y devices, forzar logout de seat
@@ -257,6 +258,17 @@ Cada tool del catálogo (`IRevitTool.Id`) se mapea a un feature code estable (`t
 - Sin red: si `now < offline_until` y la firma es válida → funciona con cuotas cacheadas (conservadoras).
 - Pasados 7 días sin heartbeat → tools bloqueadas con mensaje claro (“conectar para renovar licencia”).
 - Heartbeat diario cuando hay internet; si la licencia fue suspendida en admin → bloqueo en el próximo heartbeat (máx. ~24h; en gracia peor caso 7 días — aceptable para cobro manual B2B).
+
+### Sesión del add-in: JWT, no un token casero
+
+`/v1/activate` además devuelve un **JWT (ES256)** como `AccessToken` -- distinto del blob de
+entitlements de arriba, aunque firmado con la misma clave ECDsa P-256. El add-in lo manda como
+`Authorization: Bearer {AccessToken}` en `/v1/heartbeat` y `/v1/usage`; el servidor lo valida con
+el middleware estándar de ASP.NET Core (`AddJwtBearer`), no con código de validación a mano.
+Claims: `license_id`, `device_id`, `iss`/`aud` fijos, `exp` a 14 días. Sin tabla de sesiones: el
+JWT es autocontenido y se revoca de facto en el próximo heartbeat si la licencia se suspende (el
+token sigue siendo válido criptográficamente, pero `LicenseEngine` corta con 403 al ver
+`status != active`).
 
 ### Huella de máquina
 
@@ -331,8 +343,14 @@ Pantallas mínimas:
 - Planes: editar features/límites sin recompilar el add-in
 - Releases: subir artefactos + publicar
 - Audit log
+- Administradores: alta de más usuarios admin
 
-Auth admin: usuario/contraseña fuerte + 2FA TOTP (obligatorio). Solo tú en v1.
+Auth admin: usuario/contraseña fuerte + sesión por cookie tokenizada. Sin 2FA en v1 -- se
+evaluará más adelante si hace falta (decisión explícita: tokenizar la sesión ya es suficiente
+para v1). Los admins viven en la tabla `AdminUser` de Postgres, no en configuración: soporta
+varios administradores sin redeploy. El primero se siembra con
+`server/tools/GenerateAdminBootstrap`; los siguientes se agregan desde `/Admin/Users/Create` ya
+logueado.
 
 ---
 
@@ -528,12 +546,35 @@ No vendas el `.exe` a terceros hasta tener:
 ### Checklist de entregables
 
 - [ ] License API + Postgres + firma ECDsa P-256 y deploy en EasyPanel
+  - [x] Proyectos `GvrLicense.Domain/.Contracts/.Infrastructure/.Api` (`server/`), compilando, con Swagger en `/swagger`
+  - [x] Migración inicial (schema + función `consume_quota` + trigger de auditoría) aplicada y probada contra la base real, no solo local
+  - [x] Firma ECDsa P-256: interoperabilidad servidor (`System.Text.Json`) ↔ cliente (`DataContractJsonSerializer`, net48) verificada de punta a punta con un blob real firmado y verificado
+  - [x] `POST /v1/activate`, `/v1/heartbeat`, `/v1/usage` (idempotente por `EventId`), `GET /v1/updates/check` -- probados por HTTP contra la base real: activar, consumir cuota, bloquear al agotarla, tope de `max_devices`, key con formato inválido
+  - [x] Sesión del add-in vía **JWT real** (ES256, `AddJwtBearer`, no un token casero): `/v1/heartbeat` y `/v1/usage` exigen `Authorization: Bearer`, probado sin token (401), con token válido (200) y con token manipulado (401)
+  - [ ] `GET /v1/updates/download` simplificado (falta URL firmada temporal; depende de la elección de storage de la Pieza 6)
+  - [ ] Deploy real en EasyPanel (dominio, HTTPS, contenedor) -- hoy solo corrió local/ad-hoc contra la base online
 - [ ] `GvrTools.Licensing`: activate/heartbeat/cache firmada + gracia 7 días
+  - [x] Verificador ECDsa + DTOs del cliente (`net48` y `net8.0-windows`, cero NuGet) -- verificado contra blobs reales firmados por el servidor, incluida detección de manipulación
+  - [ ] `LicenseClient` (llamadas HTTP activate/heartbeat/usage), cache en `license.dat`, ventana de activación WPF -- pendiente
 - [ ] Panel admin: customers, plans, licenses, suspend/renew, devices
+  - [x] Login usuario/contraseña + sesión por cookie tokenizada, sin 2FA (decisión explícita), admins en tabla `AdminUser` -- probado con dos administradores reales de principio a fin
+  - [x] Cerrar sesión (`/Admin/Logout`, solo POST) -- probado: limpia la cookie y vuelve a redirigir a Login
+  - [x] Listados: `/Admin/Customers/Index`, `/Admin/Licenses/Index` (suspender/reactivar), `/Admin/Users/Index` (activar/desactivar, con guardia para no desactivarte a ti mismo) -- probados de punta a punta contra la base real
+  - [x] Buscador en vivo (sin dependencias) en los tres listados + formularios de alta como modal de Bootstrap sobre la misma lista, en vez de navegar a una página aparte -- probado creando cliente/licencia/admin desde el modal
+  - [x] `/Admin/Users/Create`: alta de más administradores ya logueado
+  - [x] Customers: crear
+  - [x] Licenses: crear (genera key), suspender/reactivar (auditoría automática vía trigger)
+  - [x] UI con **AdminLTE 4** (Bootstrap 5): código fuente completo clonado en `server/vendor/adminlte/` (referencia para portar más páginas) + assets compilados vendorizados en `wwwroot/lib` (sin CDN en producción). Dashboard con widgets `small-box` (licencias activas/suspendidas/por vencer, clientes) usando datos reales de la base, no de ejemplo
+  - [ ] Plans: crear/editar features desde el admin (hoy solo por script/SQL directo)
+  - [ ] Devices: listar y "kick seat"
+  - [ ] Releases: subir artefactos + publicar
 - [ ] Gates en ribbon y BatchExport + metering de uso reportado al API
 - [ ] Instalador `.exe` multi-versión estilo ProSheets + prerequisito PDF24 para 2021
 - [ ] Canal de updates firmados + reinicio Revit
 - [ ] Obfuscación Release, rate limits, audit log, kick seat, Authenticode
+  - [x] Rate limiting nativo registrado (política por afinar en Fase 3)
+  - [x] Audit log automático vía trigger de Postgres, no a mano en C#
+  - [ ] Obfuscación, kick seat, Authenticode
 - [ ] Runbook operativo + FAQ soporte + backups Postgres
 
 ---

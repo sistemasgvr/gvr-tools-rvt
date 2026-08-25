@@ -1,0 +1,47 @@
+@page
+@model GvrLicense.Api.Pages.Admin.Licenses.CreateModel
+@{
+    ViewData["Title"] = "Nueva licencia";
+}
+
+@if (Model.CreatedKey != null)
+{
+    <div class="card card-success" style="max-width: 40rem">
+        <div class="card-header"><h3 class="card-title"><i class="bi bi-check-circle me-1"></i> Licencia creada</h3></div>
+        <div class="card-body">
+            <p>Copia esta key y envíala manualmente al cliente (docs/LICENSING_PLAN.md, "Entrega de la key: manual"):</p>
+            <p><code style="font-size:1.4em">@Model.CreatedKey</code></p>
+            <a href="/Admin/Index" class="btn btn-primary">Volver al dashboard</a>
+        </div>
+    </div>
+}
+else
+{
+    <div class="card card-primary" style="max-width: 40rem">
+        <div class="card-header"><h3 class="card-title">Nueva licencia</h3></div>
+        <form method="post">
+            <div class="card-body">
+                <div class="mb-3">
+                    <label class="form-label">Cliente</label>
+                    <select asp-for="Input.CustomerId" asp-items="Model.CustomerOptions" class="form-select" required></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Plan</label>
+                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Vence (UTC)</label>
+                    <input asp-for="Input.ValidUntil" type="date" class="form-control" required />
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Máx. dispositivos</label>
+                    <input asp-for="Input.MaxDevices" type="number" min="1" class="form-control" required />
+                </div>
+                <div asp-validation-summary="All" class="text-danger"></div>
+            </div>
+            <div class="card-footer">
+                <button type="submit" class="btn btn-primary">Crear licencia</button>
+            </div>
+        </form>
+    </div>
+}

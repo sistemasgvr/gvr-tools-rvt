@@ -1,8 +1,8 @@
 namespace GvrLicense.Contracts;
 
+/// <summary>El JWT ya no va en el body: viaja como "Authorization: Bearer" (ver ActivateResponse.AccessToken).</summary>
 public sealed class HeartbeatRequest
 {
-    public required string SessionToken { get; init; }
     public required string DeviceFingerprint { get; init; }
 }
 

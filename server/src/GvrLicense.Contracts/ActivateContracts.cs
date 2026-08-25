@@ -9,7 +9,8 @@ public sealed class ActivateRequest
 
 public sealed class ActivateResponse
 {
-    public required string SessionToken { get; init; }
+    /// <summary>JWT (ES256) -- mandar como "Authorization: Bearer {AccessToken}" en /v1/heartbeat y /v1/usage.</summary>
+    public required string AccessToken { get; init; }
     public required string EntitlementJson { get; init; }
     public required string EntitlementSignatureBase64 { get; init; }
 }

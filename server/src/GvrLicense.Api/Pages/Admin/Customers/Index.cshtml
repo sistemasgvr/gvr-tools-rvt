@@ -1,0 +1,84 @@
+@page
+@model GvrLicense.Api.Pages.Admin.Customers.IndexModel
+@{
+    ViewData["Title"] = "Clientes";
+}
+
+<div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title mb-0">Clientes</h3>
+        <div class="d-flex gap-2">
+            <input type="search" class="form-control form-control-sm" style="min-width: 16rem" placeholder="Buscar por empresa, contacto, correo…"
+                   oninput="gvrFilterTable(this, '#customersTable tbody')" />
+            <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createCustomerModal">
+                <i class="bi bi-person-plus me-1"></i> Nuevo cliente
+            </button>
+        </div>
+    </div>
+    <div class="card-body p-0">
+        <table class="table table-striped table-hover mb-0" id="customersTable">
+            <thead>
+                <tr>
+                    <th>Empresa</th>
+                    <th>Contacto</th>
+                    <th>Correo</th>
+                    <th>Notas de pago</th>
+                    <th>Licencias</th>
+                    <th>Alta</th>
+                </tr>
+            </thead>
+            <tbody>
+            @if (Model.Rows.Count == 0)
+            {
+                <tr><td colspan="6" class="text-center text-secondary p-3">Sin clientes todavía -- crea el primero con el botón de arriba.</td></tr>
+            }
+            @foreach (var row in Model.Rows)
+            {
+                <tr data-search-row>
+                    <td>@row.CompanyName</td>
+                    <td>@row.ContactName</td>
+                    <td>@row.ContactEmail</td>
+                    <td class="text-secondary">@row.PaymentNotes</td>
+                    <td><span class="badge text-bg-secondary">@row.LicenseCount</span></td>
+                    <td>@row.CreatedAtUtc.ToString("yyyy-MM-dd")</td>
+                </tr>
+            }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<div class="modal fade" id="createCustomerModal" tabindex="-1" aria-labelledby="createCustomerModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="post" action="/Admin/Customers/Create">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createCustomerModalLabel">Nuevo cliente</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Empresa</label>
+                        <input name="Input.CompanyName" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Contacto</label>
+                        <input name="Input.ContactName" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Correo</label>
+                        <input name="Input.ContactEmail" type="email" class="form-control" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Notas de pago</label>
+                        <textarea name="Input.PaymentNotes" class="form-control"></textarea>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

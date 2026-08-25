@@ -1,11 +1,12 @@
 <Project Sdk="Microsoft.NET.Sdk.Web">
 
-  <!-- Un solo proyecto sirve /v1/* (API, auth API key/JWT) y /admin/* (panel Razor Pages, auth
-       cookie + TOTP): ver docs/LICENSING_PLAN.md, Pieza 1 "Stack recomendado". Un DbContext, un
-       release, menos piezas que mantener en EasyPanel que dos servicios separados. -->
+  <!-- Un solo proyecto sirve /v1/* (add-in: JWT Bearer firmado ES256) y /admin/* (panel Razor
+       Pages: cookie, sin 2FA): ver docs/LICENSING_PLAN.md, Pieza 1 "Stack recomendado" y Pieza 5.
+       Un DbContext, un release, menos piezas que mantener en EasyPanel que dos servicios separados. -->
 
   <ItemGroup>
-    <PackageReference Include="Otp.NET" Version="1.4.0" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="10.0.0" />
+    <PackageReference Include="Swashbuckle.AspNetCore" Version="7.2.0" />
   </ItemGroup>
 
   <ItemGroup>

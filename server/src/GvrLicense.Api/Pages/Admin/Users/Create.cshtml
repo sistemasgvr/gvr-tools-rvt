@@ -1,0 +1,30 @@
+@page
+@model GvrLicense.Api.Pages.Admin.Users.CreateModel
+@{
+    ViewData["Title"] = "Nuevo administrador";
+}
+
+@if (Model.Created)
+{
+    <div class="alert alert-success">Administrador <strong>@Model.Input.Username</strong> creado. Ya puede iniciar sesión con su contraseña.</div>
+}
+
+<div class="card card-primary" style="max-width: 40rem">
+    <div class="card-header"><h3 class="card-title">Nuevo administrador</h3></div>
+    <form method="post">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Usuario</label>
+                <input asp-for="Input.Username" class="form-control" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Contraseña</label>
+                <input asp-for="Input.Password" type="password" class="form-control" required />
+            </div>
+            <div asp-validation-summary="All" class="text-danger"></div>
+        </div>
+        <div class="card-footer">
+            <button type="submit" class="btn btn-primary">Crear</button>
+        </div>
+    </form>
+</div>

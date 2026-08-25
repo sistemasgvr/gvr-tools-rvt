@@ -1,9 +1,11 @@
 namespace GvrTools.Licensing.Http.Dto
 {
-    /// <summary>POST /v1/heartbeat -- renueva offline_until y refresca entitlements/cuotas.</summary>
+    /// <summary>
+    /// POST /v1/heartbeat -- renueva offline_until y refresca entitlements/cuotas. El JWT no va
+    /// aquí: ILicenseApiClient lo manda como header "Authorization: Bearer".
+    /// </summary>
     public sealed class HeartbeatRequest
     {
-        public string SessionToken { get; set; }
         public string DeviceFingerprint { get; set; }
     }
 

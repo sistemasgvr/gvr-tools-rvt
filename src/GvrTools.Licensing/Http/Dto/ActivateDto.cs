@@ -10,7 +10,8 @@ namespace GvrTools.Licensing.Http.Dto
 
     public sealed class ActivateResponse
     {
-        public string SessionToken { get; set; }
+        /// <summary>JWT (ES256) -- mandar como "Authorization: Bearer {AccessToken}" en /v1/heartbeat y /v1/usage.</summary>
+        public string AccessToken { get; set; }
         public string EntitlementJson { get; set; }
         public string EntitlementSignatureBase64 { get; set; }
     }
