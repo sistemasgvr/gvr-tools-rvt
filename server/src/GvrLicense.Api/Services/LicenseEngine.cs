@@ -6,6 +6,7 @@ using GvrLicense.Domain.Entities;
 using GvrLicense.Domain.LicenseKeys;
 using GvrLicense.Infrastructure;
 using GvrLicense.Infrastructure.Signing;
+using GvrLicense.Infrastructure.Storage;
 using Microsoft.EntityFrameworkCore;
 
 namespace GvrLicense.Api.Services;
@@ -16,7 +17,11 @@ namespace GvrLicense.Api.Services;
 /// lanza <see cref="LicenseApiException"/> con el status HTTP correcto en vez de devolver
 /// resultados ambiguos.
 /// </summary>
-public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer, JwtSessionTokenService jwt)
+public sealed class LicenseEngine(
+    LicenseDbContext db,
+    IEntitlementSigner signer,
+    JwtSessionTokenService jwt,
+    IReleaseArtifactStore artifacts)
 {
     // Opciones por defecto (PascalCase, sin naming policy) a propósito: deben coincidir byte a byte
     // con lo que el cliente net48 espera de DataContractJsonSerializer (ver
@@ -228,7 +233,13 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
     public async Task<UpdateCheckResponse> CheckUpdateAsync(string? currentVersion, string? revitVersion, CancellationToken ct)
     {
         var latest = await db.Releases
-            .Where(r => r.Channel == "stable")
+            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Update)
+            .OrderByDescending(r => r.PublishedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        // Si aún no hay paquetes "update", el instalador publicado sirve como señal de versión.
+        latest ??= await db.Releases
+            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
             .OrderByDescending(r => r.PublishedAtUtc)
             .FirstOrDefaultAsync(ct);
 
@@ -247,14 +258,38 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
     }
 
     /// <summary>
-    /// Simplificado a propósito: devuelve la ubicación cruda del artefacto (ArtifactLocation), no
-    /// una URL firmada temporal -- eso depende de la elección de storage (volumen vs S3/MinIO) de
-    /// docs/LICENSING_PLAN.md, Pieza 6, que todavía no se despliega. Se refina en Fase 3.
+    /// Devuelve URL firmada temporal (MinIO) para descargar el artefacto. Si MinIO no está
+    /// configurado, devuelve la object key cruda (solo útil en desarrollo).
     /// </summary>
     public async Task<string> GetDownloadLocationAsync(Guid releaseId, CancellationToken ct)
     {
-        var release = await db.Releases.FindAsync([releaseId], ct);
-        return release?.ArtifactLocation ?? throw new LicenseApiException(404, "Release no encontrado.");
+        var release = await db.Releases.FindAsync([releaseId], ct)
+            ?? throw new LicenseApiException(404, "Release no encontrado.");
+
+        if (artifacts.IsConfigured && !string.IsNullOrWhiteSpace(release.ArtifactLocation))
+        {
+            return await artifacts.CreatePresignedGetUrlAsync(release.ArtifactLocation, ct);
+        }
+
+        return release.ArtifactLocation;
+    }
+
+    /// <summary>Último instalador publicado (kind=installer) para el enlace público /download.</summary>
+    public async Task<Release> GetLatestInstallerAsync(CancellationToken ct)
+    {
+        var release = await db.Releases
+            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
+            .OrderByDescending(r => r.PublishedAtUtc)
+            .FirstOrDefaultAsync(ct);
+
+        return release ?? throw new LicenseApiException(404, "Aún no hay instalador publicado.");
+    }
+
+    /// <summary>URL firmada del último instalador.</summary>
+    public async Task<string> GetLatestInstallerDownloadUrlAsync(CancellationToken ct)
+    {
+        var release = await GetLatestInstallerAsync(ct);
+        return await GetDownloadLocationAsync(release.Id, ct);
     }
 
     /// <summary>

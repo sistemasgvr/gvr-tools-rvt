@@ -343,6 +343,17 @@ namespace GvrLicense.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("checksum");
 
+                    b.Property<string>("FileName")
+                        .HasColumnType("text")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("text")
+                        .HasDefaultValue("installer")
+                        .HasColumnName("kind");
+
                     b.Property<string>("Notes")
                         .HasColumnType("text")
                         .HasColumnName("notes");

@@ -11,6 +11,8 @@ namespace GvrTools.Licensing.Http
     /// </summary>
     public interface ILicenseApiClient
     {
+        string BaseUrl { get; }
+
         Task<ActivateResponse> ActivateAsync(ActivateRequest request, CancellationToken ct);
 
         Task<HeartbeatResponse> HeartbeatAsync(string accessToken, HeartbeatRequest request, CancellationToken ct);
@@ -20,6 +22,9 @@ namespace GvrTools.Licensing.Http
         Task<DeactivateResponse> DeactivateAsync(string accessToken, DeactivateRequest request, CancellationToken ct);
 
         Task<UpdateCheckResponse> CheckForUpdateAsync(string currentVersion, string revitVersion, CancellationToken ct);
+
+        /// <summary>GET /v1/updates/download/{id} → Location (URL firmada MinIO).</summary>
+        Task<UpdateDownloadResponse> GetUpdateDownloadAsync(Guid releaseId, CancellationToken ct);
     }
 
     /// <summary>Error HTTP del License API (ProblemDetails u otro cuerpo).</summary>

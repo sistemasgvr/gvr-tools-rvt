@@ -215,6 +215,66 @@ namespace GvrTools.Licensing
             _usageQueue.ReplaceAll(leftover);
         }
 
+        /// <summary>
+        /// Consulta /v1/updates/check. Devuelve null si no hay red o no hay update.
+        /// </summary>
+        public async Task<UpdateCheckResponse> TryCheckForUpdateAsync(string currentVersion, string revitVersion, CancellationToken ct)
+        {
+            try
+            {
+                var response = await _api.CheckForUpdateAsync(currentVersion, revitVersion, ct).ConfigureAwait(false);
+                if (response == null || !response.UpdateAvailable)
+                    return null;
+                return response;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
+        /// <summary>
+        /// Resuelve una URL absoluta descargable (MinIO firmada) a partir del DownloadUrl del check.
+        /// </summary>
+        public async Task<string> ResolveUpdateDownloadUrlAsync(UpdateCheckResponse update, CancellationToken ct)
+        {
+            if (update == null) return null;
+
+            var raw = update.DownloadUrl;
+            if (string.IsNullOrWhiteSpace(raw))
+                return _api.BaseUrl.TrimEnd('/') + "/download";
+
+            // Absolute already (MinIO or CDN)
+            if (raw.StartsWith("http://", StringComparison.OrdinalIgnoreCase) ||
+                raw.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+                return raw;
+
+            // /v1/updates/download/{guid}
+            var marker = "/v1/updates/download/";
+            var idx = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (idx >= 0)
+            {
+                var idPart = raw.Substring(idx + marker.Length).Trim().Trim('/');
+                var slash = idPart.IndexOf('/');
+                if (slash >= 0) idPart = idPart.Substring(0, slash);
+                if (Guid.TryParse(idPart, out var releaseId))
+                {
+                    var download = await _api.GetUpdateDownloadAsync(releaseId, ct).ConfigureAwait(false);
+                    if (!string.IsNullOrWhiteSpace(download?.Location))
+                        return download.Location;
+                }
+            }
+
+            if (raw.StartsWith("/"))
+                return _api.BaseUrl.TrimEnd('/') + raw;
+
+            return _api.BaseUrl.TrimEnd('/') + "/" + raw.TrimStart('/');
+        }
+
         public void ClearLocal()
         {
             _entitlements.Clear();

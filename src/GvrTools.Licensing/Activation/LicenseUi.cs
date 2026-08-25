@@ -1,5 +1,6 @@
 using System.Windows;
 using System.Windows.Interop;
+using GvrTools.Licensing.Http.Dto;
 
 namespace GvrTools.Licensing.Activation
 {
@@ -20,6 +21,23 @@ namespace GvrTools.Licensing.Activation
             var window = new AccountLicenseWindow(vm);
             AttachOwner(window, ownerHwnd);
             window.ShowDialog();
+        }
+
+        /// <summary>
+        /// Aviso no modal: el usuario puede seguir trabajando en Revit y descargar cuando quiera.
+        /// </summary>
+        public static void ShowUpdateAvailable(
+            UpdateCheckResponse update,
+            string currentVersion,
+            LicenseClient client = null,
+            System.IntPtr ownerHwnd = default)
+        {
+            if (update == null || !update.UpdateAvailable) return;
+
+            var vm = new UpdateAvailableViewModel(client ?? LicenseRuntime.Client, update, currentVersion);
+            var window = new UpdateAvailableWindow(vm);
+            AttachOwner(window, ownerHwnd);
+            window.Show();
         }
 
         private static void AttachOwner(Window window, System.IntPtr ownerHwnd)

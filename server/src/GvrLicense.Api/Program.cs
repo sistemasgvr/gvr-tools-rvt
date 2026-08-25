@@ -3,8 +3,10 @@ using GvrLicense.Api.Services;
 using GvrLicense.Api.Endpoints;
 using GvrLicense.Infrastructure;
 using GvrLicense.Infrastructure.Signing;
+using GvrLicense.Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -16,6 +18,18 @@ var builder = WebApplication.CreateBuilder(args);
 // EasyPanel (docs/LICENSING_PLAN.md, Pieza 6 "Secrets") -- nunca en un archivo del repo.
 builder.Services.AddDbContext<LicenseDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("Postgres")));
+
+builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection(MinioOptions.SectionName));
+builder.Services.AddSingleton<IReleaseArtifactStore, MinioReleaseArtifactStore>();
+
+builder.Services.Configure<FormOptions>(options =>
+{
+    options.MultipartBodyLengthLimit = 524_288_000; // 500 MB
+});
+builder.WebHost.ConfigureKestrel(options =>
+{
+    options.Limits.MaxRequestBodySize = 524_288_000;
+});
 
 builder.Services.AddSingleton<IEntitlementSigner, EcdsaEntitlementSigner>();
 builder.Services.AddSingleton<JwtSessionTokenService>();
@@ -124,6 +138,24 @@ app.MapGet("/health", async (LicenseDbContext db) =>
     .Produces(StatusCodes.Status503ServiceUnavailable)
     .AllowAnonymous()
     .ExcludeFromDescription();
+
+// Enlace estable para el cliente: redirige a URL firmada MinIO del último instalador.
+app.MapGet("/download", async (LicenseEngine engine, CancellationToken ct) =>
+    {
+        try
+        {
+            var url = await engine.GetLatestInstallerDownloadUrlAsync(ct);
+            return Results.Redirect(url);
+        }
+        catch (LicenseApiException ex)
+        {
+            return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+        }
+    })
+    .WithTags("downloads")
+    .WithSummary("Descarga el instalador más reciente")
+    .WithDescription("Público. Redirige a una URL firmada temporal del bucket MinIO gvr-tools-releases (último release kind=installer).")
+    .AllowAnonymous();
 
 app.MapV1Endpoints();
 app.MapRazorPages();

@@ -21,11 +21,16 @@ namespace GvrTools.Licensing.Http
 
         private readonly HttpClient _http;
         private readonly bool _ownsHttp;
+        private readonly string _baseUrl;
+
+        public string BaseUrl => _baseUrl;
 
         public HttpLicenseApiClient(string baseUrl, HttpClient httpClient = null)
         {
             if (string.IsNullOrWhiteSpace(baseUrl))
                 throw new ArgumentException("Base URL requerida.", nameof(baseUrl));
+
+            _baseUrl = TrimSlash(baseUrl);
 
             if (httpClient != null)
             {
@@ -36,7 +41,7 @@ namespace GvrTools.Licensing.Http
             {
                 _http = new HttpClient
                 {
-                    BaseAddress = new Uri(TrimSlash(baseUrl) + "/"),
+                    BaseAddress = new Uri(_baseUrl + "/"),
                     Timeout = TimeSpan.FromSeconds(15)
                 };
                 _ownsHttp = true;
@@ -79,6 +84,19 @@ namespace GvrTools.Licensing.Http
                     throw CreateApiException(response.StatusCode, body);
 
                 return Deserialize<UpdateCheckResponse>(body);
+            }
+        }
+
+        public async Task<UpdateDownloadResponse> GetUpdateDownloadAsync(Guid releaseId, CancellationToken ct)
+        {
+            var path = "v1/updates/download/" + releaseId.ToString("D");
+            using (var response = await _http.GetAsync(path, ct).ConfigureAwait(false))
+            {
+                var body = await response.Content.ReadAsStringAsync().ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                    throw CreateApiException(response.StatusCode, body);
+
+                return Deserialize<UpdateDownloadResponse>(body);
             }
         }
 

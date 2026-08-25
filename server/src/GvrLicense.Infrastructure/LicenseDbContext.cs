@@ -129,6 +129,8 @@ public sealed class LicenseDbContext(DbContextOptions<LicenseDbContext> options)
             e.Property(x => x.Channel).HasColumnName("channel");
             e.Property(x => x.Checksum).HasColumnName("checksum");
             e.Property(x => x.ArtifactLocation).HasColumnName("artifact_location");
+            e.Property(x => x.Kind).HasColumnName("kind").HasDefaultValue(ReleaseKinds.Installer);
+            e.Property(x => x.FileName).HasColumnName("file_name");
             e.Property(x => x.Notes).HasColumnName("notes");
             e.Property(x => x.SignatureBase64).HasColumnName("signature_base64");
             e.Property(x => x.PublishedAtUtc).HasColumnName("published_at_utc");

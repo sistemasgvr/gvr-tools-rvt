@@ -23,10 +23,47 @@ docker compose up -d          # Postgres desechable en localhost:5432
 dotnet build GvrLicense.slnx
 ```
 
-La connection string local va en `appsettings.Development.json` (gitignored, `dotnet user-secrets`
-también sirve) -- nunca en `appsettings.json`, que sí se versiona y solo trae un placeholder vacío.
+La connection string local va en `appsettings.Development.json` (gitignored) -- nunca en
+`appsettings.json`, que sí se versiona y solo trae placeholders vacíos.
+
+### Arranque local rápido
+
+```bash
+cd server
+docker compose up -d          # Postgres en localhost:5432
+cd src/GvrLicense.Api
+dotnet run                    # http://localhost:5299  (admin + /v1 + /download)
+```
+
+`appsettings.Development.json` debe incluir al menos:
+
+- `ConnectionStrings:Postgres` (ver `docker-compose.yml`)
+- `Signing:PrivateKeyPem` — generar con `dotnet run --project tools/GenerateSigningKey` y pegar el PEM (con `\n`). La pública va en `src/GvrTools.Licensing/Crypto/EmbeddedPublicKey.cs`.
+- `Minio:*` (opcional para probar uploads; si falta, el admin de Releases avisa)
 
 ## Deploy
 
 Pieza 6 del plan: un servicio Docker en EasyPanel construido desde `server/Dockerfile`, más
-`postgres` y un volumen para artefactos de update. Dominio, backups y monitoreo documentados ahí.
+`postgres`. Artefactos de release viven en **MinIO** (bucket `gvr-tools-releases`), no en un
+volumen local del API.
+
+### Variables MinIO (EasyPanel)
+
+| Env | Ejemplo |
+| --- | --- |
+| `Minio__Endpoint` | `https://sistemas-gvr-minio.odjkys.easypanel.host` (API, no la consola) |
+| `Minio__AccessKey` | usuario MinIO |
+| `Minio__SecretKey` | secret MinIO |
+| `Minio__Bucket` | `gvr-tools-releases` |
+| `Minio__PresignExpiryMinutes` | `60` (opcional) |
+
+Consola MinIO (solo admin): https://console-sistemas-gvr-minio.odjkys.easypanel.host/browser/gvr-tools-releases
+
+### Descarga del cliente
+
+Tras publicar un release tipo **instalador** en `/Admin/Releases`:
+
+- Enlace estable: `https://<tu-dominio-license>/download`
+- Redirige a una URL firmada temporal del `.exe` en MinIO (bucket privado).
+
+También: `ConnectionStrings__Postgres`, `Signing__PrivateKeyPem`.

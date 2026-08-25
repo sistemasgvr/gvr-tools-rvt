@@ -77,7 +77,7 @@ public static class V1Endpoints
             })
             .AllowAnonymous()
             .WithSummary("Ubicación del artefacto de un release")
-            .WithDescription("Devuelve la ruta/URL del artefacto. En producción se reemplaza por URL firmada temporal (S3/MinIO).")
+            .WithDescription("Devuelve una URL firmada temporal (MinIO) para descargar el artefacto.")
             .Produces<UpdateDownloadResponse>()
             .ProducesProblem(StatusCodes.Status404NotFound);
 

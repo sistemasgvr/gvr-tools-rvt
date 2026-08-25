@@ -556,7 +556,7 @@ No vendas el `.exe` a terceros hasta tener:
 
 ### Fase 3 — Updates + endurecimiento (1 semana)
 
-- [x] Check/download updates en API + admin para publicar releases (metadatos)
+- [x] Check/download updates en API + admin para publicar releases (upload MinIO + URL firmada)
 - [ ] Reemplazo de carpetas por año en el add-in + ofuscación Release pipeline
 - [x] Device limit + kick seat (admin)
 - [x] Audit (trigger + visor admin) + rate limiter registrado
@@ -577,9 +577,10 @@ No vendas el `.exe` a terceros hasta tener:
   - [x] Firma ECDsa P-256: interoperabilidad servidor (`System.Text.Json`) ↔ cliente (`DataContractJsonSerializer`, net48) verificada de punta a punta con un blob real firmado y verificado
   - [x] `POST /v1/activate`, `/v1/heartbeat`, `/v1/usage` (idempotente por `EventId`), `GET /v1/updates/check` -- probados por HTTP contra la base real: activar, consumir cuota, bloquear al agotarla, tope de `max_devices`, key con formato inválido
   - [x] Sesión del add-in vía **JWT real** (ES256, `AddJwtBearer`, no un token casero): `/v1/heartbeat` y `/v1/usage` exigen `Authorization: Bearer`, probado sin token (401), con token válido (200) y con token manipulado (401)
-  - [x] `GET /v1/updates/download/{id}` simplificado (devuelve `ArtifactLocation`; falta URL firmada temporal / storage Pieza 6)
-  - [x] Swagger: documenta los 5 endpoints `/v1/*`; Bearer solo en heartbeat/usage; `/health` fuera del documento OpenAPI
-  - [ ] Deploy real en EasyPanel (dominio, HTTPS, contenedor) -- hoy solo corrió local/ad-hoc contra la base online
+  - [x] `GET /v1/updates/download/{id}` → URL firmada temporal MinIO (`ArtifactLocation` = object key)
+  - [x] Swagger: documenta los endpoints `/v1/*`; Bearer solo en heartbeat/usage/deactivate; `/health` fuera del documento OpenAPI
+  - [x] Publicación de releases con upload a MinIO + enlace público `/download` (último instalador)
+  - [ ] Deploy real en EasyPanel (dominio, HTTPS, contenedor + env Minio__) -- hoy solo corrió local/ad-hoc contra la base online
 - [x] `GvrTools.Licensing`: activate/heartbeat/cache firmada + gracia 7 días
   - [x] Verificador ECDsa + DTOs del cliente (`net48` y `net8.0-windows`, cero NuGet) -- verificado contra blobs reales firmados por el servidor, incluida detección de manipulación
   - [x] `LicenseClient` (llamadas HTTP activate/heartbeat/usage/deactivate), cache en `license.dat`, ventana de activación WPF (key + nombre + correo)
@@ -599,7 +600,8 @@ No vendas el `.exe` a terceros hasta tener:
   - [x] Licenses: crear (genera key + pantalla “Copiar clave”), suspender/reactivar (auditoría automática vía trigger)
   - [x] UI con **AdminLTE 4** (Bootstrap 5): código fuente completo clonado en `server/vendor/adminlte/` (referencia para portar más páginas) + assets compilados vendorizados en `wwwroot/lib` (sin CDN en producción). Dashboard con widgets `small-box` (licencias activas/suspendidas/por vencer, clientes) usando datos reales de la base, no de ejemplo
   - [x] Devices: listar y **kick seat** (“Liberar”) en `/Admin/Licenses/Edit`
-  - [x] Releases: publicar metadatos de release desde `/Admin/Releases` (versión, ruta de artefacto, notas; canal `stable`) -- falta upload binario + URL firmada
+  - [x] Releases: publicar desde `/Admin/Releases` (upload a MinIO bucket `gvr-tools-releases`, kind instalador/update, checksum SHA-256)
+  - [x] Enlace público `/download` → último instalador (URL firmada MinIO)
   - [x] Configuración: `/Admin/Settings` (`AppSettings`: correo soporte, TOS, privacidad)
   - [x] Auditoría: `/Admin/Audit` (visor de `AuditLog`)
   - [x] Uso/cuotas del mes visibles en `/Admin/Licenses/Edit`

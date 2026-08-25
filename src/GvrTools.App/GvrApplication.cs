@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Autodesk.Revit.UI;
 using GvrTools.App.Account;
 using GvrTools.App.Ribbon;
 using GvrTools.Core.Diagnostics;
 using GvrTools.Licensing;
+using GvrTools.Licensing.Activation;
 using GvrTools.Licensing.Entitlements;
 using GvrTools.Revit.Infrastructure;
 using GvrTools.Revit.Ribbon;
@@ -38,8 +40,38 @@ namespace GvrTools.App
                          $"PDF nativo: {RevitVersionInfo.HasNativePdfExport}).");
 
                 LicenseRuntime.EnsureInitialized();
-                // Heartbeat en background: no bloquear la cinta más de ~2.5s (LicenseRuntime.WarmupAsync).
-                Task.Run(() => LicenseRuntime.WarmupAsync());
+                var uiContext = SynchronizationContext.Current;
+
+                // Heartbeat + chequeo de updates en background (no bloquear la cinta).
+                Task.Run(async () =>
+                {
+                    await LicenseRuntime.WarmupAsync().ConfigureAwait(false);
+
+                    var current = AddInVersion.Current;
+                    var update = await LicenseRuntime.TryCheckForUpdateAsync(
+                        current,
+                        RevitVersionInfo.CompiledFor.ToString()).ConfigureAwait(false);
+
+                    if (update == null || !update.UpdateAvailable)
+                        return;
+
+                    void Show()
+                    {
+                        try
+                        {
+                            LicenseUi.ShowUpdateAvailable(update, current, LicenseRuntime.Client);
+                        }
+                        catch (Exception ex)
+                        {
+                            log.Warn("No se pudo mostrar el aviso de actualización: " + ex.Message);
+                        }
+                    }
+
+                    if (uiContext != null)
+                        uiContext.Post(_ => Show(), null);
+                    else
+                        Show();
+                });
 
                 IReadOnlyList<IRevitTool> discovered = ToolCatalog.Discover(application, log);
                 var tools = new List<IRevitTool> { new AccountTool() };

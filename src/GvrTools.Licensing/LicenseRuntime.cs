@@ -2,6 +2,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using GvrTools.Licensing.Entitlements;
+using GvrTools.Licensing.Http.Dto;
 
 namespace GvrTools.Licensing
 {
@@ -65,6 +66,32 @@ namespace GvrTools.Licensing
                 catch (Exception)
                 {
                     // no tumbar OnStartup
+                }
+            }
+        }
+
+        /// <summary>
+        /// Consulta updates tras el arranque. Null si no hay update o falla la red.
+        /// Timeout propio (~4s) para no alargar el startup.
+        /// </summary>
+        public static async Task<UpdateCheckResponse> TryCheckForUpdateAsync(
+            string currentVersion,
+            string revitVersion,
+            CancellationToken externalCt = default)
+        {
+            EnsureInitialized();
+
+            using (var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt))
+            {
+                cts.CancelAfter(TimeSpan.FromSeconds(4));
+                try
+                {
+                    return await _client.TryCheckForUpdateAsync(currentVersion, revitVersion, cts.Token)
+                        .ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    return null;
                 }
             }
         }

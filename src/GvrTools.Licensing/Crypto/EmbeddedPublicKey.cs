@@ -1,17 +1,16 @@
 namespace GvrTools.Licensing.Crypto
 {
     /// <summary>
-    /// Clave pública ECDsa P-256 del License API, en formato SubjectPublicKeyInfo/base64. Se rota
-    /// junto con un update firmado (docs/LICENSING_PLAN.md, "Tokens y gracia offline").
+    /// Clave pública ECDsa P-256 del License API (punto X||Y crudo, 64 bytes, base64).
+    /// Debe coincidir con la privada en Signing:PrivateKeyPem del servidor.
     ///
-    /// NOTA: el valor de abajo es de un par de claves de DESARROLLO generado con
-    /// server/tools/GenerateSigningKey para poder construir y probar este verificador. Antes de
-    /// vender la primera licencia hay que generar el par de producción y reemplazar este valor (la
-    /// privada correspondiente va SOLO en Signing__PrivateKeyPem de EasyPanel, nunca en git).
+    /// Par de DESARROLLO generado con server/tools/GenerateSigningKey. Antes de la primera venta
+    /// genera un par de producción, pon la privada SOLO en EasyPanel (Signing__PrivateKeyPem) y
+    /// reemplaza este valor (nunca subas la privada a git).
     /// </summary>
     public static class EmbeddedPublicKey
     {
         public const string Base64 =
-            "So0DjYjTSlZ3yxlwmgkTj5YA+7MKPMotbrUyFPCX8yQyfnT9hIT8ODkOBUJ9656NBnDtfv4pNOfOq16ySesQZw==";
+            "5hS2t9mYzXWJG0ksI3ZxqaWxjR4G2wSnyttZMH1EzD6OTm2acjPBDDTjS50+3yAwl0bjselEoM1YlycS4qLeDw==";
     }
 }
