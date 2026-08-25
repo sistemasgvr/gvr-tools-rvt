@@ -46,7 +46,7 @@
                 </li>
                 <li class="nav-item d-none d-md-block">
                     <a href="/Admin/Index" class="nav-link">
-                        <i class="bi bi-grid-1x2 me-1" aria-hidden="true"></i> Dashboard
+                        <i class="bi bi-grid-1x2 me-1" aria-hidden="true"></i> Inicio
                     </a>
                 </li>
             </ul>
@@ -113,7 +113,7 @@
                     <li class="nav-item">
                         <a href="/Admin/Index" class="nav-link">
                             <i class="nav-icon bi bi-speedometer"></i>
-                            <p>Dashboard</p>
+                            <p>Inicio</p>
                         </a>
                     </li>
                     <li class="nav-header">LICENCIAS</li>
@@ -185,9 +185,9 @@
                         </ul>
                     </li>
                     <li class="nav-item">
-                        <a href="/swagger" class="nav-link" target="_blank">
+                        <a href="/swagger" class="nav-link" target="_blank" rel="noopener">
                             <i class="nav-icon bi bi-code-slash"></i>
-                            <p>API docs (Swagger)</p>
+                            <p>Avanzado · API</p>
                         </a>
                     </li>
                 </ul>
@@ -205,7 +205,7 @@
                     <div class="col-sm-6">
                         <nav aria-label="breadcrumb">
                             <ol class="breadcrumb float-sm-end">
-                                <li class="breadcrumb-item"><a href="/Admin/Index">Dashboard</a></li>
+                                <li class="breadcrumb-item"><a href="/Admin/Index">Inicio</a></li>
                                 <li class="breadcrumb-item active" aria-current="page">@ViewData["Title"]</li>
                             </ol>
                         </nav>
@@ -255,6 +255,20 @@
         counter: { showing: 'Mostrando', of: 'de', rows: 'filas', pages: 'páginas' },
       },
       headerFilters: { default: 'filtrar columna...' },
+    },
+  };
+
+  // Helpers compartidos (auditoría UX: badges en español, fechas legibles).
+  window.gvrAdmin = {
+    licenseStatusBadge(value) {
+      const colors = { Active: 'success', Suspended: 'warning', Expired: 'danger' };
+      const labels = { Active: 'Activa', Suspended: 'Suspendida', Expired: 'Vencida' };
+      return `<span class="badge text-bg-${colors[value] || 'secondary'}">${labels[value] || value}</span>`;
+    },
+    formatDate(iso) {
+      if (!iso) return '';
+      const parts = String(iso).slice(0, 10).split('-');
+      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(iso).slice(0, 10);
     },
   };
 </script>

@@ -1,7 +1,6 @@
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
-using Microsoft.EntityFrameworkCore;
 
 namespace GvrLicense.Api.Pages.Admin.Plans;
 
@@ -27,7 +26,7 @@ public class EditModel(LicenseDbContext db) : PageModel
         Input = new PlanInput
         {
             DisplayName = plan.DisplayName,
-            FeaturesText = string.Join('\n', plan.Features.Select(f => $"{f.Key}={f.Value}"))
+            Features = PlanFeatureForm.FromDictionary(plan.Features)
         };
         return Page();
     }
@@ -41,7 +40,7 @@ public class EditModel(LicenseDbContext db) : PageModel
         }
 
         plan.DisplayName = Input.DisplayName.Trim();
-        plan.Features = IndexModel.ParseFeatures(Input.FeaturesText);
+        plan.Features = Input.Features.ToDictionary();
         await db.SaveChangesAsync();
 
         Code = plan.Code;
@@ -52,6 +51,6 @@ public class EditModel(LicenseDbContext db) : PageModel
     public sealed class PlanInput
     {
         public string DisplayName { get; set; } = string.Empty;
-        public string? FeaturesText { get; set; }
+        public PlanFeatureForm Features { get; set; } = new();
     }
 }

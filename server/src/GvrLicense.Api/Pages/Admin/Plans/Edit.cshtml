@@ -6,26 +6,41 @@
 
 @if (TempData["Saved"] != null)
 {
-    <div class="alert alert-success">Plan actualizado.</div>
+    <div class="alert alert-success alert-dismissible fade show" role="alert">
+        Plan actualizado. Los clientes verán los cambios en el próximo heartbeat (como máximo un día).
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+    </div>
 }
 
-<div class="card card-primary" style="max-width: 40rem">
-    <div class="card-header"><h3 class="card-title">Editar plan <code>@Model.Code</code></h3></div>
+<div class="card card-primary card-outline">
+    <div class="card-header">
+        <h3 class="card-title">Editar plan <span class="text-body-secondary fw-normal">@Model.Input.DisplayName</span></h3>
+        <div class="card-tools">
+            <span class="badge text-bg-secondary font-monospace">@Model.Code</span>
+        </div>
+    </div>
     <form method="post">
         <div class="card-body">
-            <div class="mb-3">
-                <label class="form-label">Nombre visible</label>
+            <div class="mb-4" style="max-width: 28rem">
+                <label asp-for="Input.DisplayName" class="form-label">Nombre visible</label>
                 <input asp-for="Input.DisplayName" class="form-control" required />
+                <div class="form-text">Así aparece el plan al crear licencias (ej. Starter, Pro).</div>
             </div>
-            <div class="mb-3">
-                <label class="form-label">Features (una por línea, <code>codigo=valor</code>)</label>
-                <textarea asp-for="Input.FeaturesText" class="form-control" rows="12" style="font-family: monospace"></textarea>
-                <div class="form-text">Los cambios afectan a todas las licencias con este plan desde el próximo heartbeat -- no hace falta recompilar el add-in.</div>
-            </div>
+
+            <hr class="my-4" />
+
+            <h5 class="mb-3">Qué incluye este plan</h5>
+            <p class="text-body-secondary small mb-4">
+                Activa o desactiva lo que el add-in permitirá. No hace falta recompilar nada: aplica a todas las licencias de este plan.
+            </p>
+
+            <partial name="_PlanFeaturesEditor" for="Input.Features" />
         </div>
-        <div class="card-footer d-flex gap-2">
-            <button type="submit" class="btn btn-primary">Guardar</button>
-            <a href="/Admin/Plans/Index" class="btn btn-secondary">Volver</a>
+        <div class="card-footer d-flex flex-wrap gap-2">
+            <button type="submit" class="btn btn-primary">
+                <i class="bi bi-check-lg me-1" aria-hidden="true"></i> Guardar cambios
+            </button>
+            <a href="/Admin/Plans/Index" class="btn btn-outline-secondary">Volver a planes</a>
         </div>
     </form>
 </div>

@@ -30,7 +30,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
         Rows = plans
             .Select(p => new PlanRow(
                 p.Id, p.Code, p.DisplayName,
-                string.Join(", ", p.Features.Select(f => $"{f.Key}={f.Value}")),
+                PlanFeatureForm.Summarize(p.Features),
                 p.IsActive, licenseCounts.GetValueOrDefault(p.Id)))
             .ToList();
     }
@@ -52,9 +52,8 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
     }
 
     /// <summary>
-    /// Sin UI dinámica de agregar/quitar filas a propósito: el catálogo de features es texto libre
-    /// (docs/LICENSING_PLAN.md, "El license server no lista tools hardcodeadas"), así que una tool
-    /// nueva no necesita que yo le agregue un campo al formulario -- solo escribes su feature code.
+    /// El catálogo v1 se edita con interruptores/números (<see cref="PlanFeatureForm"/>).
+    /// Códigos nuevos van en “Opciones avanzadas” sin tocar el servidor.
     /// </summary>
     public async Task<IActionResult> OnPostAsync()
     {
@@ -71,7 +70,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             Id = Guid.NewGuid(),
             Code = Input.Code.Trim(),
             DisplayName = Input.DisplayName.Trim(),
-            Features = ParseFeatures(Input.FeaturesText)
+            Features = Input.Features.ToDictionary()
         });
         await db.SaveChangesAsync();
 
@@ -103,6 +102,6 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
     {
         public string Code { get; set; } = string.Empty;
         public string DisplayName { get; set; } = string.Empty;
-        public string? FeaturesText { get; set; }
+        public PlanFeatureForm Features { get; set; } = new();
     }
 }

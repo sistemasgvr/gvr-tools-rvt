@@ -104,11 +104,11 @@
 
     const actionButtons = (cell) => {
       const row = cell.getData();
-      const resetBtn = `<button type="button" class="btn btn-sm btn-outline-secondary reset-password-btn" data-id="${row.id}" data-username="${row.username}">Contraseña</button>`;
-      if (row.isSelf) return `<div class="d-flex gap-1 justify-content-center">${resetBtn}</div>`;
+      const resetBtn = `<button type="button" class="btn btn-sm btn-outline-secondary reset-password-btn" data-id="${row.id}" data-username="${row.username}">Restablecer</button>`;
+      if (row.isSelf) return `<div class="d-flex gap-1 justify-content-center flex-wrap">${resetBtn}</div>`;
       const label = row.isActive ? 'Desactivar' : 'Reactivar';
       const btnClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
-      return `<div class="d-flex gap-1 justify-content-center">
+      return `<div class="d-flex gap-1 justify-content-center flex-wrap">
                 ${resetBtn}
                 <form method="post" action="/Admin/Users/Index?handler=Toggle&userId=${row.id}">
                   <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
@@ -129,11 +129,11 @@
       paginationCounter: 'rows',
       placeholder: 'Sin administradores',
       columns: [
-        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
         { title: 'Usuario', field: 'username', minWidth: 160, formatter: usernameFormatter, responsive: 0 },
+        { title: 'Acciones', field: 'id', formatter: actionButtons, width: 240, hozAlign: 'center', headerSort: false, responsive: 0 },
         { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 1 },
-        { title: '', field: 'id', formatter: actionButtons, width: 240, hozAlign: 'center', headerSort: false, responsive: 2 },
-        { title: 'Alta', field: 'createdAtUtc', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 3 },
+        { title: 'Alta', field: 'createdAtUtc', width: 120, sorter: 'date', formatter: (cell) => window.gvrAdmin.formatDate(cell.getValue()), responsive: 2 },
       ],
     });
 

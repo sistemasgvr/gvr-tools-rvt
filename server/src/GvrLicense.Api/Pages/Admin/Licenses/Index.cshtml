@@ -26,7 +26,25 @@
         </div>
     </div>
     <div class="card-body">
-        <div id="licenses-table"></div>
+        @if (Model.Rows.Count == 0)
+        {
+            <div class="text-center text-secondary py-4">
+                <p class="mb-3">Sin licencias todavía. Necesitas un cliente y un plan activos.</p>
+                <div class="d-flex flex-wrap gap-2 justify-content-center">
+                    <a href="/Admin/Customers/Index" class="btn btn-outline-secondary">Ir a clientes</a>
+                    @if (Model.CustomerOptions.Count > 0 && Model.PlanOptions.Count > 0)
+                    {
+                        <button type="button" class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createLicenseModal">
+                            <i class="bi bi-key me-1" aria-hidden="true"></i> Nueva licencia
+                        </button>
+                    }
+                </div>
+            </div>
+        }
+        else
+        {
+            <div id="licenses-table"></div>
+        }
     </div>
 </div>
 
@@ -42,11 +60,11 @@
                 <div class="modal-body">
                     @if (Model.CustomerOptions.Count == 0)
                     {
-                        <p class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> No hay clientes todavía -- crea uno primero.</p>
+                        <p class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> No hay clientes todavía — <a href="/Admin/Customers/Index">crea uno primero</a>.</p>
                     }
                     @if (Model.PlanOptions.Count == 0)
                     {
-                        <p class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> No hay planes cargados en la base todavía.</p>
+                        <p class="text-warning"><i class="bi bi-exclamation-triangle me-1"></i> No hay planes activos — <a href="/Admin/Plans/Index">revisa Planes</a>.</p>
                     }
                     <div class="mb-3">
                         <label class="form-label">Cliente</label>
@@ -57,48 +75,46 @@
                         <select name="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Vence (UTC)</label>
+                        <label class="form-label">Fecha de vencimiento</label>
                         <input name="Input.ValidUntil" type="date" class="form-control" value="@DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)).ToString("yyyy-MM-dd")" required />
+                        <div class="form-text">El día en que deja de funcionar si no renuevas (fecha del servidor, UTC).</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Máx. usuarios</label>
                         <input name="Input.MaxUsers" type="number" min="1" value="1" class="form-control" required />
+                        <div class="form-text">Personas de la empresa que pueden activar el add-in.</div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
-                    <button type="submit" class="btn btn-primary">Crear licencia</button>
+                    <button type="submit" class="btn btn-primary" @(Model.CustomerOptions.Count == 0 || Model.PlanOptions.Count == 0 ? "disabled" : null)>Crear licencia</button>
                 </div>
             </form>
         </div>
     </div>
 </div>
 
+@if (Model.Rows.Count > 0)
+{
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        Converters = { new JsonStringEnumConverter() } // Status es un enum -- sin esto, System.Text.Json lo manda como 0/1, no "Active"/"Suspended"
+        Converters = { new JsonStringEnumConverter() }
     }));
     const csrfToken = '@Model.AntiForgeryToken';
-
-    const statusBadge = (cell) => {
-      const map = { Active: 'success', Suspended: 'warning', Expired: 'danger' };
-      const value = cell.getValue();
-      return `<span class="badge text-bg-${map[value] || 'secondary'}">${value}</span>`;
-    };
 
     const actionButton = (cell) => {
       const row = cell.getData();
       const isActive = row.status === 'Active';
       const label = isActive ? 'Suspender' : 'Reactivar';
       const btnClass = isActive ? 'btn-outline-warning' : 'btn-outline-success';
-      return `<div class="d-flex gap-1 justify-content-center">
+      return `<div class="d-flex gap-1 justify-content-center flex-wrap">
                 <a href="/Admin/Licenses/Edit?id=${row.id}" class="btn btn-sm btn-outline-secondary">Editar</a>
                 <form method="post" action="/Admin/Licenses/Index?handler=Toggle&licenseId=${row.id}">
                   <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
-                  <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+                  <button type="submit" class="btn btn-sm ${btnClass}" title="${isActive ? 'El cliente no podrá usar el add-in hasta reactivar' : 'Vuelve a permitir el uso'}">${label}</button>
                 </form>
               </div>`;
     };
@@ -113,16 +129,15 @@
       paginationSize: 10,
       paginationSizeSelector: [10, 25, 50, 100],
       paginationCounter: 'rows',
-      placeholder: 'Sin licencias todavía',
       columns: [
-        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
-        { title: 'Key', field: 'key', minWidth: 170, formatter: (cell) => `<code>${cell.getValue()}</code>`, responsive: 0 },
+        { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false, headerTooltip: 'Ver más columnas' },
+        { title: 'Clave', field: 'key', minWidth: 170, formatter: (cell) => `<code>${cell.getValue()}</code>`, responsive: 0 },
+        { title: 'Acciones', field: 'id', formatter: actionButton, width: 200, hozAlign: 'center', headerSort: false, responsive: 0 },
         { title: 'Cliente', field: 'customerName', minWidth: 140, responsive: 1 },
-        { title: 'Estado', field: 'status', formatter: statusBadge, width: 120, hozAlign: 'center', responsive: 2 },
-        { title: '', field: 'id', formatter: actionButton, width: 220, hozAlign: 'center', headerSort: false, responsive: 3 },
-        { title: 'Plan', field: 'planCode', width: 100, responsive: 4 },
-        { title: 'Vence', field: 'validUntil', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 5 },
-        { title: 'Usuarios', field: 'userCount', width: 110, hozAlign: 'center', formatter: (cell) => `${cell.getValue()} / ${cell.getData().maxUsers}`, responsive: 6 },
+        { title: 'Estado', field: 'status', formatter: (cell) => window.gvrAdmin.licenseStatusBadge(cell.getValue()), width: 120, hozAlign: 'center', responsive: 2 },
+        { title: 'Plan', field: 'planCode', width: 100, responsive: 3 },
+        { title: 'Vence', field: 'validUntil', width: 120, sorter: 'date', formatter: (cell) => window.gvrAdmin.formatDate(cell.getValue()), responsive: 4 },
+        { title: 'Usuarios', field: 'userCount', width: 110, hozAlign: 'center', formatter: (cell) => `${cell.getValue()} / ${cell.getData().maxUsers}`, responsive: 5 },
       ],
     });
 
@@ -140,3 +155,4 @@
     });
   });
 </script>
+}

@@ -7,7 +7,25 @@
   float: none;
 }
 
-/* --- Tabulator footer / paginación --- */.tabulator .tabulator-footer {
+/* Filas colapsadas: más legibles en móvil */
+.tabulator .tabulator-responsive-collapse {
+  padding: 0.5rem 0.75rem;
+}
+
+.tabulator .tabulator-responsive-collapse td {
+  padding: 0.35rem 0;
+}
+
+.tabulator .tabulator-responsive-collapse strong,
+.tabulator .tabulator-responsive-collapse .tabulator-responsive-collapse-title {
+  display: inline-block;
+  min-width: 7rem;
+  color: var(--bs-secondary-color);
+  font-weight: 600;
+}
+
+/* --- Tabulator footer / paginación --- */
+.tabulator .tabulator-footer {
   padding: 0.5rem 0.75rem;
 }
 
@@ -43,7 +61,10 @@
 }
 
 @media (max-width: 575.98px) {
-  /* Una sola franja: Filas + botones; el contador debajo (como card-footer AdminLTE). */
+  .tabulator .tabulator-footer .tabulator-page-size {
+    display: none;
+  }
+
   .tabulator .tabulator-footer .tabulator-footer-contents {
     justify-content: center;
   }

@@ -1,7 +1,7 @@
 @page
 @model GvrLicense.Api.Pages.Admin.IndexModel
 @{
-    ViewData["Title"] = "Dashboard";
+    ViewData["Title"] = "Inicio";
 }
 
 <div class="row">
@@ -12,6 +12,9 @@
                 <p>Licencias activas</p>
             </div>
             <i class="bi bi-check-circle small-box-icon"></i>
+            <a href="/Admin/Licenses/Index" class="small-box-footer link-light link-underline-opacity-0">
+                Ver licencias <i class="bi bi-link-45deg"></i>
+            </a>
         </div>
     </div>
     <div class="col-lg-3 col-6">
@@ -21,6 +24,9 @@
                 <p>Suspendidas</p>
             </div>
             <i class="bi bi-pause-circle small-box-icon"></i>
+            <a href="/Admin/Licenses/Index" class="small-box-footer link-dark link-underline-opacity-0">
+                Revisar <i class="bi bi-link-45deg"></i>
+            </a>
         </div>
     </div>
     <div class="col-lg-3 col-6">
@@ -30,6 +36,9 @@
                 <p>Vencen en 30 días</p>
             </div>
             <i class="bi bi-hourglass-split small-box-icon"></i>
+            <a href="/Admin/Licenses/Index" class="small-box-footer link-light link-underline-opacity-0">
+                Renovar a tiempo <i class="bi bi-link-45deg"></i>
+            </a>
         </div>
     </div>
     <div class="col-lg-3 col-6">
@@ -39,20 +48,35 @@
                 <p>Clientes</p>
             </div>
             <i class="bi bi-people small-box-icon"></i>
+            <a href="/Admin/Customers/Index" class="small-box-footer link-light link-underline-opacity-0">
+                Ver clientes <i class="bi bi-link-45deg"></i>
+            </a>
         </div>
     </div>
 </div>
 
+@if (Model.RecentRows.Count == 0 && Model.CustomerCount == 0)
+{
+    <div class="callout callout-info">
+        <h5 class="mb-2">Primeros pasos</h5>
+        <ol class="mb-0 ps-3">
+            <li><a href="/Admin/Customers/Index">Crea un cliente</a> (la empresa que te paga).</li>
+            <li><a href="/Admin/Licenses/Index">Emite una licencia</a> y copia la clave.</li>
+            <li>Envía la clave al cliente para activarla en Revit.</li>
+        </ol>
+    </div>
+}
+
 <div class="card">
-    <div class="card-header d-flex justify-content-between align-items-center">
-        <h3 class="card-title">Licencias recientes</h3>
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h3 class="card-title mb-0">Licencias recientes</h3>
         <a href="/Admin/Licenses/Index" class="btn btn-outline-secondary btn-sm">Ver todas <i class="bi bi-arrow-right"></i></a>
     </div>
-    <div class="card-body p-0">
-        <table class="table table-striped table-hover mb-0">
+    <div class="card-body p-0 table-responsive">
+        <table class="table table-striped table-hover mb-0 align-middle">
             <thead>
                 <tr>
-                    <th>Key</th>
+                    <th>Clave</th>
                     <th>Cliente</th>
                     <th>Plan</th>
                     <th>Estado</th>
@@ -62,7 +86,12 @@
             <tbody>
             @if (Model.RecentRows.Count == 0)
             {
-                <tr><td colspan="5" class="text-center text-secondary p-3">Sin licencias todavía -- <a href="/Admin/Customers/Create">crea un cliente</a> para empezar.</td></tr>
+                <tr>
+                    <td colspan="5" class="text-center text-secondary p-4">
+                        Aún no hay licencias.
+                        <a href="/Admin/Customers/Index">Crea un cliente</a> y luego emite la primera licencia.
+                    </td>
+                </tr>
             }
             @foreach (var row in Model.RecentRows)
             {
@@ -72,12 +101,18 @@
                     GvrLicense.Domain.Entities.LicenseStatus.Suspended => "text-bg-warning",
                     _ => "text-bg-danger"
                 };
+                var statusLabel = row.Status switch
+                {
+                    GvrLicense.Domain.Entities.LicenseStatus.Active => "Activa",
+                    GvrLicense.Domain.Entities.LicenseStatus.Suspended => "Suspendida",
+                    _ => "Vencida"
+                };
                 <tr>
-                    <td><code>@row.Key</code></td>
+                    <td><a href="/Admin/Licenses/Edit?id=@row.Id" class="text-decoration-none"><code>@row.Key</code></a></td>
                     <td>@row.CustomerName</td>
                     <td>@row.PlanCode</td>
-                    <td><span class="badge @badgeClass">@row.Status</span></td>
-                    <td>@row.ValidUntil.ToString("yyyy-MM-dd")</td>
+                    <td><span class="badge @badgeClass">@statusLabel</span></td>
+                    <td>@row.ValidUntil.ToString("dd/MM/yyyy")</td>
                 </tr>
             }
             </tbody>

@@ -40,26 +40,17 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label">Código</label>
-                        <input name="Input.Code" class="form-control" placeholder="ej. pro-plus" required />
+                        <label class="form-label">Código interno</label>
+                        <input name="Input.Code" class="form-control" placeholder="ej. starter, pro" required />
+                        <div class="form-text">No se muestra al cliente final; sirve para identificar el plan.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Nombre visible</label>
-                        <input name="Input.DisplayName" class="form-control" placeholder="ej. Pro Plus" required />
+                        <input name="Input.DisplayName" class="form-control" placeholder="ej. Starter, Pro" required />
                     </div>
-                    <div class="mb-3">
-                        <label class="form-label">Features (una por línea, <code>codigo=valor</code>)</label>
-                        <textarea name="Input.FeaturesText" class="form-control" rows="10" style="font-family: monospace"
-placeholder="tool.batch_export=true
-format.pdf=true
-format.dwg=true
-format.pdf_dwg=true
-quota.sheets_per_month=500
-limit.sheets_per_batch=100
-seat.max_devices_per_user=1
-updates.stable=true"></textarea>
-                        <div class="form-text">Códigos del catálogo (docs/LICENSING_PLAN.md, "Catálogo de features") -- cualquier código nuevo funciona sin tocar el servidor.</div>
-                    </div>
+                    <hr />
+                    <h6 class="mb-3">Qué incluye</h6>
+                    <partial name="_PlanFeaturesEditor" for="Input.Features" />
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
@@ -104,13 +95,13 @@ updates.stable=true"></textarea>
       paginationSizeSelector: [10, 25, 50, 100],
       placeholder: 'Sin planes todavía',
       columns: [
-        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
         { title: 'Código', field: 'code', minWidth: 110, responsive: 0 },
+        { title: 'Acciones', field: 'id', width: 220, hozAlign: 'center', headerSort: false, responsive: 0, formatter: actionButtons },
         { title: 'Nombre', field: 'displayName', minWidth: 130, responsive: 1 },
         { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 2 },
         { title: 'Licencias', field: 'licenseCount', width: 100, hozAlign: 'center', responsive: 3 },
-        { title: 'Features', field: 'featuresSummary', minWidth: 260, responsive: 4 },
-        { title: '', field: 'id', width: 220, hozAlign: 'center', headerSort: false, responsive: 5, formatter: actionButtons },
+        { title: 'Qué incluye', field: 'featuresSummary', minWidth: 280, responsive: 4 },
       ],
     });
 
