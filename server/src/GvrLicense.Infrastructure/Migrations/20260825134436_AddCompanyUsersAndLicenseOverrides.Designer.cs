@@ -3,6 +3,7 @@ using System;
 using GvrLicense.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GvrLicense.Infrastructure.Migrations
 {
     [DbContext(typeof(LicenseDbContext))]
-    partial class LicenseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825134436_AddCompanyUsersAndLicenseOverrides")]
+    partial class AddCompanyUsersAndLicenseOverrides
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -179,10 +182,6 @@ namespace GvrLicense.Infrastructure.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at_utc");
 
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
-
                     b.Property<string>("PaymentNotes")
                         .HasColumnType("text")
                         .HasColumnName("payment_notes");
@@ -308,10 +307,6 @@ namespace GvrLicense.Infrastructure.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("features");
-
-                    b.Property<bool>("IsActive")
-                        .HasColumnType("boolean")
-                        .HasColumnName("is_active");
 
                     b.HasKey("Id");
 

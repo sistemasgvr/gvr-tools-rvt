@@ -31,6 +31,11 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
             throw new LicenseApiException(400, "Formato de license key inválido.");
         }
 
+        if (string.IsNullOrWhiteSpace(request.UserFullName) || string.IsNullOrWhiteSpace(request.UserEmail))
+        {
+            throw new LicenseApiException(400, "Nombre y correo son obligatorios para activar.");
+        }
+
         var normalizedKey = request.LicenseKey.Trim().ToUpperInvariant();
         var license = await db.Licenses
             .Include(l => l.Plan)
@@ -44,19 +49,43 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
 
         EnsureLicenseUsable(license);
 
+        var companyUser = await FindOrCreateCompanyUserAsync(license.CustomerId, request.UserFullName, request.UserEmail, ct);
+
         var device = license.Devices.FirstOrDefault(d => d.Fingerprint == request.DeviceFingerprint);
         if (device is null)
         {
-            if (license.Devices.Count >= license.MaxDevices)
+            var devicesOfThisUser = license.Devices.Where(d => d.CompanyUserId == companyUser.Id).ToList();
+
+            // El seat se cuenta por persona, no por dispositivo (docs/LICENSING_PLAN.md, "Métodos
+            // de suscripción"): si esta persona ya tiene otro dispositivo en la misma licencia, un
+            // dispositivo más no gasta un seat nuevo -- pero sí está topado por cuántos dispositivos
+            // puede tener UNA persona ("un usuario puede usar la licencia en uno o más dispositivos
+            // según lo configuremos"), vía el feature seat.max_devices_per_user (mismo patrón que el
+            // resto del catálogo: por defecto 1 si el plan no lo define, -1 = ilimitado).
+            var maxDevicesPerUser = ParseFeatureInt(GetEffectiveFeatures(license), "seat.max_devices_per_user", defaultValue: 1);
+            if (maxDevicesPerUser != -1 && devicesOfThisUser.Count >= maxDevicesPerUser)
             {
                 throw new LicenseApiException(403,
-                    $"Esta licencia ya tiene {license.MaxDevices} dispositivo(s) activo(s). Desactiva uno antes de activar este PC.");
+                    $"{request.UserEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
+            }
+
+            var distinctUsersExcludingThis = license.Devices
+                .Select(d => d.CompanyUserId)
+                .Where(id => id != companyUser.Id)
+                .Distinct()
+                .Count();
+
+            if (devicesOfThisUser.Count == 0 && distinctUsersExcludingThis >= license.MaxUsers)
+            {
+                throw new LicenseApiException(403,
+                    $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {request.UserEmail}.");
             }
 
             device = new Device
             {
                 Id = Guid.NewGuid(),
                 LicenseId = license.Id,
+                CompanyUserId = companyUser.Id,
                 Fingerprint = request.DeviceFingerprint,
                 DisplayName = request.DeviceName,
                 ActivatedAtUtc = DateTimeOffset.UtcNow,
@@ -66,6 +95,9 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
         }
         else
         {
+            // Mismo PC, persona distinta activando encima: reasigna el dispositivo a quien acaba de
+            // activar -- el dueño de un fingerprint es quien lo usó por última vez.
+            device.CompanyUserId = companyUser.Id;
             device.LastSeenUtc = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(request.DeviceName))
             {
@@ -195,6 +227,41 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
         return release?.ArtifactLocation ?? throw new LicenseApiException(404, "Release no encontrado.");
     }
 
+    /// <summary>
+    /// Empareja por (CustomerId, Email) sin distinguir mayúsculas -- si la persona ya activó antes
+    /// (con otro dispositivo u otra licencia del mismo cliente) reusa el mismo CompanyUser en vez
+    /// de duplicar.
+    /// </summary>
+    private async Task<CompanyUser> FindOrCreateCompanyUserAsync(Guid customerId, string fullName, string email, CancellationToken ct)
+    {
+        var normalizedEmail = email.Trim().ToLowerInvariant();
+
+        var existing = await db.CompanyUsers.FirstOrDefaultAsync(
+            u => u.CustomerId == customerId && u.Email == normalizedEmail, ct);
+
+        if (existing != null)
+        {
+            if (!existing.IsActive)
+            {
+                throw new LicenseApiException(403, $"El usuario {normalizedEmail} está desactivado. Contacta a soporte.");
+            }
+
+            return existing;
+        }
+
+        var created = new CompanyUser
+        {
+            Id = Guid.NewGuid(),
+            CustomerId = customerId,
+            FullName = fullName.Trim(),
+            Email = normalizedEmail,
+            IsActive = true,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        db.CompanyUsers.Add(created);
+        return created;
+    }
+
     private static void EnsureLicenseUsable(License license)
     {
         if (license.Status != LicenseStatus.Active)
@@ -214,13 +281,29 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
         return new DateOnly(nowUtc.Year, nowUtc.Month, 1);
     }
 
+    private static int ParseFeatureInt(Dictionary<string, string> effectiveFeatures, string code, int defaultValue) =>
+        effectiveFeatures.TryGetValue(code, out var raw) && int.TryParse(raw, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed)
+            ? parsed
+            : defaultValue;
+
     private static int RemainingOf(UsageCounter counter) =>
         counter.QuotaLimit == -1 ? -1 : counter.QuotaLimit - counter.Consumed;
+
+    /// <summary>Plan.Features con License.FeatureOverrides encima -- ver comentario en BuildSignedBlobAsync.</summary>
+    private static Dictionary<string, string> GetEffectiveFeatures(License license)
+    {
+        var effective = new Dictionary<string, string>(license.Plan!.Features);
+        foreach (var (code, value) in license.FeatureOverrides)
+        {
+            effective[code] = value;
+        }
+        return effective;
+    }
 
     private async Task EnsureCurrentPeriodCountersAsync(License license, CancellationToken ct)
     {
         var period = CurrentPeriod();
-        var quotaFeatures = license.Plan!.Features.Where(f => f.Key.StartsWith("quota.", StringComparison.Ordinal));
+        var quotaFeatures = GetEffectiveFeatures(license).Where(f => f.Key.StartsWith("quota.", StringComparison.Ordinal));
 
         foreach (var (code, rawValue) in quotaFeatures)
         {
@@ -252,7 +335,7 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
             .ToDictionaryAsync(c => c.FeatureCode, ct);
 
         var features = new List<FeatureEntry>();
-        foreach (var (code, value) in license.Plan!.Features)
+        foreach (var (code, value) in GetEffectiveFeatures(license))
         {
             // Para quota.*, el blob lleva el REMANENTE vivo (limit - consumed), no el tope estático
             // del plan -- así el cliente cachea un número que ya refleja lo gastado este mes.
@@ -266,7 +349,7 @@ public sealed class LicenseEngine(LicenseDbContext db, IEntitlementSigner signer
         var blob = new EntitlementBlob
         {
             LicenseId = license.Id.ToString(),
-            PlanCode = license.Plan.Code,
+            PlanCode = license.Plan!.Code,
             Features = features,
             IssuedAtUtc = DateTimeOffset.UtcNow.ToString("O"),
             OfflineUntilUtc = DateTimeOffset.UtcNow.AddDays(7).ToString("O"),

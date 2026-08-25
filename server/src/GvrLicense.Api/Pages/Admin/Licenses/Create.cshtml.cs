@@ -50,7 +50,7 @@ public class CreateModel(LicenseDbContext db) : PageModel
             PlanId = Input.PlanId,
             Status = LicenseStatus.Active,
             ValidUntil = new DateTimeOffset(Input.ValidUntil, TimeOnly.MaxValue, TimeSpan.Zero),
-            MaxDevices = Input.MaxDevices,
+            MaxUsers = Input.MaxUsers,
             CreatedAtUtc = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync();
@@ -66,7 +66,10 @@ public class CreateModel(LicenseDbContext db) : PageModel
             .Select(c => new SelectListItem(c.CompanyName, c.Id.ToString()))
             .ToListAsync();
 
+        // Solo planes activos: uno descontinuado no debe poder asignarse a licencias nuevas,
+        // aunque las licencias existentes que ya lo usan lo sigan usando igual (Plans/Index.cshtml.cs).
         PlanOptions = await db.Plans
+            .Where(p => p.IsActive)
             .OrderBy(p => p.Code)
             .Select(p => new SelectListItem(p.DisplayName, p.Id.ToString()))
             .ToListAsync();
@@ -77,6 +80,6 @@ public class CreateModel(LicenseDbContext db) : PageModel
         public Guid CustomerId { get; set; }
         public Guid PlanId { get; set; }
         public DateOnly ValidUntil { get; set; } = DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1));
-        public int MaxDevices { get; set; } = 1;
+        public int MaxUsers { get; set; } = 1;
     }
 }

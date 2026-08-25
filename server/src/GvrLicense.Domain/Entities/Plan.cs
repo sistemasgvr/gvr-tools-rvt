@@ -15,4 +15,11 @@ public sealed class Plan
     public string DisplayName { get; set; } = string.Empty;
 
     public Dictionary<string, string> Features { get; set; } = [];
+
+    /// <summary>
+    /// Desactivar en vez de borrar: un plan con licencias ya vendidas no se puede eliminar (rompería
+    /// la FK de License.PlanId), así que "descontinuarlo" es sacarlo del selector de licencias
+    /// nuevas sin tocar las que ya lo usan.
+    /// </summary>
+    public bool IsActive { get; set; } = true;
 }

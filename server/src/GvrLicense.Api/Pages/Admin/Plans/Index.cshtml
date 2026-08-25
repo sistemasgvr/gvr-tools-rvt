@@ -1,0 +1,126 @@
+@page
+@using System.Text.Json
+@model GvrLicense.Api.Pages.Admin.Plans.IndexModel
+@{
+    ViewData["Title"] = "Planes";
+}
+
+<div class="card">
+    <div class="card-header">
+        <div class="row g-2 align-items-center">
+            <div class="col-12 col-md-4">
+                <h3 class="card-title">Planes</h3>
+            </div>
+            <div class="col-12 col-md-8">
+                <div class="d-flex flex-wrap justify-content-md-end gap-2">
+                    <div class="input-group input-group-sm w-auto flex-grow-1 flex-md-grow-0" style="max-width: 16rem">
+                        <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
+                        <input id="plans-filter" type="search" class="form-control" placeholder="Buscar…" aria-label="Buscar" style="min-width: 8rem" />
+                    </div>
+                    <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createPlanModal">
+                        <i class="bi bi-clipboard-plus me-1" aria-hidden="true"></i> Nuevo plan
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="card-body">
+        <div id="plans-table"></div>
+    </div>
+</div>
+
+<div class="modal fade" id="createPlanModal" tabindex="-1" aria-labelledby="createPlanModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="/Admin/Plans/Index">
+                @Html.AntiForgeryToken()
+                <div class="modal-header">
+                    <h5 class="modal-title" id="createPlanModalLabel">Nuevo plan</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Código</label>
+                        <input name="Input.Code" class="form-control" placeholder="ej. pro-plus" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nombre visible</label>
+                        <input name="Input.DisplayName" class="form-control" placeholder="ej. Pro Plus" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Features (una por línea, <code>codigo=valor</code>)</label>
+                        <textarea name="Input.FeaturesText" class="form-control" rows="10" style="font-family: monospace"
+placeholder="tool.batch_export=true
+format.pdf=true
+format.dwg=true
+format.pdf_dwg=true
+quota.sheets_per_month=500
+limit.sheets_per_batch=100
+seat.max_devices_per_user=1
+updates.stable=true"></textarea>
+                        <div class="form-text">Códigos del catálogo (docs/LICENSING_PLAN.md, "Catálogo de features") -- cualquier código nuevo funciona sin tocar el servidor.</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="submit" class="btn btn-primary">Crear plan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const csrfToken = '@Model.AntiForgeryToken';
+
+    const statusBadge = (cell) => {
+      const isActive = cell.getValue();
+      return `<span class="badge text-bg-${isActive ? 'success' : 'secondary'}">${isActive ? 'Activo' : 'Descontinuado'}</span>`;
+    };
+
+    const actionButtons = (cell) => {
+      const row = cell.getData();
+      const label = row.isActive ? 'Descontinuar' : 'Reactivar';
+      const btnClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
+      return `<div class="d-flex gap-1 justify-content-center">
+                <a href="/Admin/Plans/Edit?id=${row.id}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                <form method="post" action="/Admin/Plans/Index?handler=Toggle&planId=${row.id}">
+                  <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
+                  <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+                </form>
+              </div>`;
+    };
+
+    const table = new Tabulator('#plans-table', {
+      data: data,
+      locale: 'es',
+      langs: window.gvrTabulatorLocale,
+      layout: 'fitColumns',
+      responsiveLayout: 'collapse',
+      pagination: true,
+      paginationSize: 10,
+      paginationSizeSelector: [10, 25, 50, 100],
+      placeholder: 'Sin planes todavía',
+      columns: [
+        { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
+        { title: 'Código', field: 'code', minWidth: 110, responsive: 0 },
+        { title: 'Nombre', field: 'displayName', minWidth: 130, responsive: 1 },
+        { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 2 },
+        { title: 'Licencias', field: 'licenseCount', width: 100, hozAlign: 'center', responsive: 3 },
+        { title: 'Features', field: 'featuresSummary', minWidth: 260, responsive: 4 },
+        { title: '', field: 'id', width: 220, hozAlign: 'center', headerSort: false, responsive: 5, formatter: actionButtons },
+      ],
+    });
+
+    document.getElementById('plans-filter').addEventListener('input', (e) => {
+      const value = e.target.value;
+      table.setFilter(value ? [[
+        { field: 'code', type: 'like', value },
+        { field: 'displayName', type: 'like', value },
+        { field: 'featuresSummary', type: 'like', value },
+      ]] : []);
+    });
+  });
+</script>

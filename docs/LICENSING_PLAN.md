@@ -226,15 +226,40 @@ Stack recomendado (simple, tuyo, control total):
 ### Modelo de datos (núcleo)
 
 - `Customer` — empresa, contacto, notas de pago
+- `CompanyUser` — persona dentro de un Customer (nombre + correo). El seat se cuenta por persona, no por dispositivo (ver "Métodos de suscripción" más abajo)
 - `Plan` — código (`starter`, `pro`, …), features JSON, límites
-- `License` — key (`GVR-XXXX-XXXX-XXXX`), customer, plan, status (`active`/`suspended`/`expired`), `valid_until`, max seats/machines
-- `Seat` / `Device` — machine fingerprint, última vista, nombre PC (node-locked; no floating)
+- `License` — key (`GVR-XXXX-XXXX-XXXX`), customer, plan, status (`active`/`suspended`/`expired`), `valid_until`, `max_users` (tope de personas), `feature_overrides` (features propias encima del Plan, para vender extras a un cliente puntual sin crear un Plan nuevo)
+- `Device` — machine fingerprint, última vista, nombre PC, liga a un `CompanyUser` (node-locked por persona; no floating)
 - `Entitlement` — derivado del plan (feature flags + quotas)
 - `UsageEvent` / `UsageCounter` — contadores por **mes calendario UTC** (solo metering de cuotas)
 - `Release` — versión, canal (`stable`), checksum, URL, notas, firma
 - `AuditLog` — quién activó/renovó/suspendió
 - `AppSettings` — `support_email`, URLs de TOS/Privacy
 - `AdminUser` — usuario + hash de contraseña de quien entra al panel (Pieza 5); no floating, no config
+### Métodos de suscripción (multi-usuario por empresa)
+
+Decidido: el seat de una licencia se cuenta por **persona** (`CompanyUser`), no por dispositivo.
+Una persona puede activar en más de un PC (oficina + laptop) sin gastar dos seats -- el tope de
+dispositivos *por persona* es aparte y configurable por plan (`seat.max_devices_per_user`, por
+defecto 1 si el plan no lo define, `-1` = ilimitado). El tope de *personas* por licencia es
+`License.MaxUsers`.
+
+Cómo se identifica a la persona: `/v1/activate` ahora pide `UserFullName` + `UserEmail` además de
+la key y la huella del PC (la ventana de activación del add-in tiene que pedirlos). El servidor
+busca o crea el `CompanyUser` por `(CustomerId, Email)` -- no hay alta manual en v1, nace solo la
+primera vez que alguien activa con ese correo, igual que ya pasaba con `Device`.
+
+Esto habilita los tres métodos de suscripción planeados:
+
+1. **Por usuarios mensual/anual** ("se puede ir sumando más usuarios de manera controlada") --
+   subes `MaxUsers` a mano en el admin cada vez que el cliente paga por un asiento más. Cobro
+   manual, igual que el resto del modelo (sin Stripe en v1).
+2. **Por empresa con tope** (ej. 20 usuarios máximo) -- ya es literalmente `MaxUsers` con un
+   número fijo al crear la licencia.
+3. **De por vida** ("limitando usuarios o uso, con venta de funcionalidades extra") -- licencia sin
+   vencimiento real (`valid_until` muy lejano) + `MaxUsers` fijo; los extras que le vendas a un
+   cliente puntual van en `License.FeatureOverrides`, no en un Plan nuevo.
+
 ### Planes y límites
 
 Ver **Catálogo de features** y tabla Trial / Starter / Pro más arriba. Los números viven en Postgres (JSON del `Plan`); el add-in no hardcodea topes.
@@ -555,7 +580,7 @@ No vendas el `.exe` a terceros hasta tener:
   - [ ] Deploy real en EasyPanel (dominio, HTTPS, contenedor) -- hoy solo corrió local/ad-hoc contra la base online
 - [ ] `GvrTools.Licensing`: activate/heartbeat/cache firmada + gracia 7 días
   - [x] Verificador ECDsa + DTOs del cliente (`net48` y `net8.0-windows`, cero NuGet) -- verificado contra blobs reales firmados por el servidor, incluida detección de manipulación
-  - [ ] `LicenseClient` (llamadas HTTP activate/heartbeat/usage), cache en `license.dat`, ventana de activación WPF -- pendiente
+  - [ ] `LicenseClient` (llamadas HTTP activate/heartbeat/usage), cache en `license.dat`, ventana de activación WPF -- pendiente. La ventana ahora también tiene que pedir nombre y correo (ver "Métodos de suscripción"), no solo la key
 - [ ] Panel admin: customers, plans, licenses, suspend/renew, devices
   - [x] Login usuario/contraseña + sesión por cookie tokenizada, sin 2FA (decisión explícita), admins en tabla `AdminUser` -- probado con dos administradores reales de principio a fin
   - [x] Cerrar sesión (`/Admin/Logout`, solo POST) -- probado: limpia la cookie y vuelve a redirigir a Login
@@ -563,13 +588,22 @@ No vendas el `.exe` a terceros hasta tener:
   - [x] Formularios de alta como modal de Bootstrap sobre la misma lista, en vez de navegar a una página aparte -- probado creando cliente/licencia/admin desde el modal
   - [x] Listados con **Tabulator** (la misma librería que usa `dist/tables/data.html` de la plantilla real, no un buscador casero): paginación real con selector de tamaño de página, buscador, orden por columna -- probado incluyendo un bug real que encontró la prueba (el enum `LicenseStatus` se serializaba como 0/1 en vez de "Active"/"Suspended", corregido con `JsonStringEnumConverter`)
   - [x] Paginación y locale en español (Tabulator no trae uno de fábrica, se definió a mano en `_Layout.cshtml`) + `layout: fitColumns` con `responsiveLayout: collapse` y prioridad por columna, para que las columnas se repartan el ancho de forma pareja y colapsen las de menor prioridad en pantallas angostas -- confirmado visualmente por el usuario en dos rondas
+- [x] Multi-usuario por empresa (`CompanyUser`, seat por persona no por dispositivo, tope de dispositivos por persona configurable, `License.FeatureOverrides` para extras por cliente) -- probado de punta a punta contra la base real: 1ª persona + 2 dispositivos dentro del tope permitido, 3er dispositivo de la misma persona rechazado por el tope por-usuario, 2ª persona distinta consume un seat nuevo, 3ª persona rechazada al llegar a `MaxUsers`
+- [x] Admin: **Planes** (`/Admin/Plans`) crear y editar features desde la UI, ya no solo por SQL -- probado creando y editando un plan de punta a punta
+- [x] Admin: **Miembros por cliente** (`/Admin/Customers/Members`) -- lista personas + sus dispositivos, activar/desactivar -- probado: desactivar a alguien bloquea su próxima activación con 403
   - [x] `/Admin/Users/Create`: alta de más administradores ya logueado
   - [x] Customers: crear
   - [x] Licenses: crear (genera key), suspender/reactivar (auditoría automática vía trigger)
   - [x] UI con **AdminLTE 4** (Bootstrap 5): código fuente completo clonado en `server/vendor/adminlte/` (referencia para portar más páginas) + assets compilados vendorizados en `wwwroot/lib` (sin CDN en producción). Dashboard con widgets `small-box` (licencias activas/suspendidas/por vencer, clientes) usando datos reales de la base, no de ejemplo
-  - [ ] Plans: crear/editar features desde el admin (hoy solo por script/SQL directo)
   - [ ] Devices: listar y "kick seat"
   - [ ] Releases: subir artefactos + publicar
+- [x] Editar + desactivar (soft-delete, nunca borrado real) en todo lo construido hasta ahora, probado de punta a punta contra la base real:
+  - [x] `Customer.IsActive` / `Plan.IsActive` (columnas nuevas, migración `AddCustomerAndPlanIsActive` aplicada) + `/Admin/Customers/Edit` + toggle Activar/Desactivar en Customers e Index
+  - [x] Plans: toggle Activo/Descontinuado en `/Admin/Plans/Index`; un plan descontinuado desaparece del `<select>` de `Licenses/Create` y `Licenses/Index` pero las licencias que ya lo usan lo siguen usando igual
+  - [x] `/Admin/Licenses/Edit`: renovar `ValidUntil`, ajustar `MaxUsers`, cambiar de plan, editar `FeatureOverrides` -- antes solo era posible por SQL directo
+  - [x] `/Admin/Customers/Members`: editar nombre/correo de un `CompanyUser` vía modal
+  - [x] `/Admin/Users/Index`: restablecer contraseña de un administrador vía modal (sin flujo de "olvidé mi contraseña" por correo)
+  - [x] **Bug real encontrado y corregido**: todos los formularios modal con `action="ruta literal"` (crear cliente/plan/licencia/admin, y los dos nuevos de esta pasada) no llevaban el antiforgery token -- el `FormTagHelper` de Razor Pages solo lo inyecta solo en un `<form method="post">` sin `action` o con atributos `asp-*`, nunca con una URL literal. Cada submit real fallaba con 400 aunque la UI se viera bien; nadie lo había notado porque las rondas de revisión anteriores solo miraban capturas de pantalla, sin enviar el formulario. Corregido agregando `@Html.AntiForgeryToken()` explícito en los 6 formularios afectados y verificado por HTTP contra la base real (200/302, no 400)
 - [ ] Gates en ribbon y BatchExport + metering de uso reportado al API
 - [ ] Instalador `.exe` multi-versión estilo ProSheets + prerequisito PDF24 para 2021
 - [ ] Canal de updates firmados + reinicio Revit

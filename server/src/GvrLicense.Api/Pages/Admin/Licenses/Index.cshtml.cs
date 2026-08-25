@@ -32,7 +32,8 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             .Include(l => l.Devices)
             .OrderByDescending(l => l.CreatedAtUtc)
             .Select(l => new LicenseRow(
-                l.Id, l.Key, l.Customer!.CompanyName, l.Plan!.Code, l.Status, l.ValidUntil, l.Devices.Count, l.MaxDevices))
+                l.Id, l.Key, l.Customer!.CompanyName, l.Plan!.Code, l.Status, l.ValidUntil,
+                l.Devices.Select(d => d.CompanyUserId).Distinct().Count(), l.MaxUsers))
             .ToListAsync();
 
         CustomerOptions = await db.Customers
@@ -41,6 +42,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             .ToListAsync();
 
         PlanOptions = await db.Plans
+            .Where(p => p.IsActive)
             .OrderBy(p => p.Code)
             .Select(p => new SelectListItem(p.DisplayName, p.Id.ToString()))
             .ToListAsync();
@@ -64,5 +66,5 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
 
     public sealed record LicenseRow(
         Guid Id, string Key, string CustomerName, string PlanCode, LicenseStatus Status,
-        DateTimeOffset ValidUntil, int DeviceCount, int MaxDevices);
+        DateTimeOffset ValidUntil, int UserCount, int MaxUsers);
 }

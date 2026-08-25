@@ -1,0 +1,44 @@
+@page
+@model GvrLicense.Api.Pages.Admin.Licenses.EditModel
+@{
+    ViewData["Title"] = "Editar licencia";
+}
+
+@if (TempData["Saved"] != null)
+{
+    <div class="alert alert-success">Licencia actualizada.</div>
+}
+
+<div class="card card-primary" style="max-width: 40rem">
+    <div class="card-header">
+        <h3 class="card-title">Editar licencia</h3>
+        <div class="card-tools text-muted">
+            <code>@Model.LicenseKey</code> &middot; @Model.CustomerName
+        </div>
+    </div>
+    <form method="post">
+        <div class="card-body">
+            <div class="mb-3">
+                <label class="form-label">Plan</label>
+                <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Vence (UTC)</label>
+                <input asp-for="Input.ValidUntil" type="date" class="form-control" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Máx. usuarios</label>
+                <input asp-for="Input.MaxUsers" type="number" min="1" class="form-control" required />
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Features extra (una por línea, <code>codigo=valor</code>)</label>
+                <textarea asp-for="Input.FeatureOverridesText" class="form-control" rows="6" style="font-family: monospace"></textarea>
+                <div class="form-text">Se mezclan con las del plan; si un código se repite, gana lo que pongas aquí.</div>
+            </div>
+        </div>
+        <div class="card-footer d-flex gap-2">
+            <button type="submit" class="btn btn-primary">Guardar</button>
+            <a href="/Admin/Licenses/Index" class="btn btn-secondary">Volver</a>
+        </div>
+    </form>
+</div>

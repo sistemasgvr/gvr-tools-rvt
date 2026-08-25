@@ -34,6 +34,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="post" action="/Admin/Licenses/Create">
+                @Html.AntiForgeryToken()
                 <div class="modal-header">
                     <h5 class="modal-title" id="createLicenseModalLabel">Nueva licencia</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -60,8 +61,8 @@
                         <input name="Input.ValidUntil" type="date" class="form-control" value="@DateOnly.FromDateTime(DateTime.UtcNow.AddYears(1)).ToString("yyyy-MM-dd")" required />
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Máx. dispositivos</label>
-                        <input name="Input.MaxDevices" type="number" min="1" value="1" class="form-control" required />
+                        <label class="form-label">Máx. usuarios</label>
+                        <input name="Input.MaxUsers" type="number" min="1" value="1" class="form-control" required />
                     </div>
                 </div>
                 <div class="modal-footer">
@@ -93,10 +94,13 @@
       const isActive = row.status === 'Active';
       const label = isActive ? 'Suspender' : 'Reactivar';
       const btnClass = isActive ? 'btn-outline-warning' : 'btn-outline-success';
-      return `<form method="post" action="/Admin/Licenses/Index?handler=Toggle&licenseId=${row.id}">
-                <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
-                <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
-              </form>`;
+      return `<div class="d-flex gap-1 justify-content-center">
+                <a href="/Admin/Licenses/Edit?id=${row.id}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                <form method="post" action="/Admin/Licenses/Index?handler=Toggle&licenseId=${row.id}">
+                  <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
+                  <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+                </form>
+              </div>`;
     };
 
     const table = new Tabulator('#licenses-table', {
@@ -115,10 +119,10 @@
         { title: 'Key', field: 'key', minWidth: 170, formatter: (cell) => `<code>${cell.getValue()}</code>`, responsive: 0 },
         { title: 'Cliente', field: 'customerName', minWidth: 140, responsive: 1 },
         { title: 'Estado', field: 'status', formatter: statusBadge, width: 120, hozAlign: 'center', responsive: 2 },
-        { title: '', field: 'id', formatter: actionButton, width: 140, hozAlign: 'center', headerSort: false, responsive: 3 },
+        { title: '', field: 'id', formatter: actionButton, width: 220, hozAlign: 'center', headerSort: false, responsive: 3 },
         { title: 'Plan', field: 'planCode', width: 100, responsive: 4 },
         { title: 'Vence', field: 'validUntil', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 5 },
-        { title: 'Devices', field: 'deviceCount', width: 100, hozAlign: 'center', formatter: (cell) => `${cell.getValue()} / ${cell.getData().maxDevices}`, responsive: 6 },
+        { title: 'Usuarios', field: 'userCount', width: 110, hozAlign: 'center', formatter: (cell) => `${cell.getValue()} / ${cell.getData().maxUsers}`, responsive: 6 },
       ],
     });
 

@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using GvrLicense.Domain.Security;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
@@ -39,6 +40,19 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
         if (user != null)
         {
             user.IsActive = !user.IsActive;
+            await db.SaveChangesAsync();
+        }
+
+        return RedirectToPage();
+    }
+
+    /// <summary>Cualquier admin puede resetear la contraseña de otro (incluida la propia) -- no hay flujo de "olvidé mi contraseña" por correo, ver LICENSING_PLAN.md Pieza 5.</summary>
+    public async Task<IActionResult> OnPostResetPasswordAsync(Guid userId, string newPassword)
+    {
+        var user = await db.AdminUsers.FindAsync(userId);
+        if (user != null && !string.IsNullOrWhiteSpace(newPassword))
+        {
+            user.PasswordHash = PasswordHasher.Hash(newPassword);
             await db.SaveChangesAsync();
         }
 

@@ -33,6 +33,7 @@
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="post" action="/Admin/Customers/Create">
+                @Html.AntiForgeryToken()
                 <div class="modal-header">
                     <h5 class="modal-title" id="createCustomerModalLabel">Nuevo cliente</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Cerrar"></button>
@@ -67,6 +68,26 @@
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
+    const csrfToken = '@Model.AntiForgeryToken';
+
+    const statusBadge = (cell) => {
+      const isActive = cell.getValue();
+      return `<span class="badge text-bg-${isActive ? 'success' : 'secondary'}">${isActive ? 'Activo' : 'Desactivado'}</span>`;
+    };
+
+    const actionButtons = (cell) => {
+      const row = cell.getData();
+      const label = row.isActive ? 'Desactivar' : 'Reactivar';
+      const btnClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
+      return `<div class="d-flex gap-1 justify-content-center">
+                <a href="/Admin/Customers/Edit?id=${row.id}" class="btn btn-sm btn-outline-secondary">Editar</a>
+                <a href="/Admin/Customers/Members?customerId=${row.id}" class="btn btn-sm btn-outline-secondary">Miembros</a>
+                <form method="post" action="/Admin/Customers/Index?handler=Toggle&customerId=${row.id}">
+                  <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
+                  <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+                </form>
+              </div>`;
+    };
 
     const table = new Tabulator('#customers-table', {
       data: data,
@@ -83,10 +104,12 @@
         { formatter: 'responsiveCollapse', width: 30, minWidth: 30, hozAlign: 'center', headerSort: false, resizable: false },
         { title: 'Empresa', field: 'companyName', minWidth: 140, responsive: 0 },
         { title: 'Correo', field: 'contactEmail', minWidth: 180, responsive: 1 },
-        { title: 'Licencias', field: 'licenseCount', width: 110, hozAlign: 'center', responsive: 2 },
-        { title: 'Alta', field: 'createdAtUtc', width: 120, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 3 },
-        { title: 'Contacto', field: 'contactName', minWidth: 120, responsive: 4 },
-        { title: 'Notas de pago', field: 'paymentNotes', minWidth: 160, responsive: 5 },
+        { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 120, hozAlign: 'center', responsive: 2 },
+        { title: 'Licencias', field: 'licenseCount', width: 100, hozAlign: 'center', responsive: 3 },
+        { title: 'Alta', field: 'createdAtUtc', width: 110, sorter: 'date', formatter: (cell) => cell.getValue()?.slice(0, 10), responsive: 4 },
+        { title: 'Contacto', field: 'contactName', minWidth: 120, responsive: 5 },
+        { title: 'Notas de pago', field: 'paymentNotes', minWidth: 160, responsive: 6 },
+        { title: '', field: 'id', width: 220, hozAlign: 'center', headerSort: false, responsive: 7, formatter: actionButtons },
       ],
     });
 

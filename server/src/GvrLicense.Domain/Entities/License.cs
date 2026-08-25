@@ -23,8 +23,16 @@ public sealed class License
     public LicenseStatus Status { get; set; }
     public DateTimeOffset ValidUntil { get; set; }
 
-    /// <summary>Node-locked: un seat = un dispositivo. Ver Entities/Device.cs.</summary>
-    public int MaxDevices { get; set; }
+    /// <summary>Tope de personas (CompanyUser) distintas, no de dispositivos. Ver Entities/Device.cs.</summary>
+    public int MaxUsers { get; set; }
+
+    /// <summary>
+    /// Features propias encima del Plan base (docs/LICENSING_PLAN.md, "Métodos de suscripción" --
+    /// plan "de por vida... con venta de funcionalidades extra"). Al armar el blob de entitlements
+    /// se mezcla con Plan.Features; si una key se repite en ambos, gana este override. No hace
+    /// falta crear un Plan nuevo por cada extra que le vendas a un cliente puntual.
+    /// </summary>
+    public Dictionary<string, string> FeatureOverrides { get; set; } = [];
 
     public DateTimeOffset CreatedAtUtc { get; set; }
 

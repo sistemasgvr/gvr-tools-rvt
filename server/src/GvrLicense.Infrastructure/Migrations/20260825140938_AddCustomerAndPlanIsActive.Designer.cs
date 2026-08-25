@@ -3,6 +3,7 @@ using System;
 using GvrLicense.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace GvrLicense.Infrastructure.Migrations
 {
     [DbContext(typeof(LicenseDbContext))]
-    partial class LicenseDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260825140938_AddCustomerAndPlanIsActive")]
+    partial class AddCustomerAndPlanIsActive
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
