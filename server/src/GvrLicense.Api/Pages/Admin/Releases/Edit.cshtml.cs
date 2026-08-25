@@ -11,7 +11,10 @@ namespace GvrLicense.Api.Pages.Admin.Releases;
 
 [RequestFormLimits(MultipartBodyLengthLimit = 524_288_000)]
 [RequestSizeLimit(524_288_000)]
-public class EditModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : PageModel
+public class EditModel(
+    LicenseDbContext db,
+    IReleaseArtifactStore artifacts,
+    ReleaseUploadProgressStore progressStore) : PageModel
 {
     [BindProperty(SupportsGet = true)]
     public Guid Id { get; set; }
@@ -43,6 +46,23 @@ public class EditModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : P
         return Page();
     }
 
+    public IActionResult OnGetUploadProgress(Guid progressId)
+    {
+        var snapshot = progressStore.Get(progressId);
+        if (snapshot is null)
+        {
+            return new JsonResult(new { percent = 0, phase = "Esperando…", done = false, error = (string?)null });
+        }
+
+        return new JsonResult(new
+        {
+            percent = snapshot.Percent,
+            phase = snapshot.Phase,
+            done = snapshot.Done,
+            error = snapshot.Error
+        });
+    }
+
     public async Task<IActionResult> OnPostAsync()
     {
         var release = await db.Releases.FindAsync(Id);
@@ -52,63 +72,125 @@ public class EditModel(LicenseDbContext db, IReleaseArtifactStore artifacts) : P
         }
 
         ExistingFileName = release.FileName;
-        if (!SemVersion.TryParse(Input.Version, out _))
+        var progressId = TryReadProgressId();
+        if (progressId is Guid startedId && ArtifactFile is { Length: > 0 })
         {
-            ModelState.AddModelError("Input.Version", "Usa una versión válida con formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0.");
-            return InvalidEditPage("Usa una versión válida con formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0.");
+            progressStore.Start(startedId);
+            progressStore.Set(startedId, 68, "Archivo recibido. Validando…");
         }
 
-        var version = SemVersion.Normalize(Input.Version);
-        var kind = string.Equals(Input.Kind, ReleaseKinds.Update, StringComparison.OrdinalIgnoreCase)
-            ? ReleaseKinds.Update
-            : ReleaseKinds.Installer;
-
-        var existingVersions = await db.Releases
-            .Where(r => r.Id != Id && r.Channel == "stable" && r.Kind == kind)
-            .Select(r => r.Version)
-            .ToListAsync();
-        if (existingVersions.Any(existing =>
-                SemVersion.TryParse(existing, out var parsed) && parsed!.ToString() == version))
+        try
         {
-            ModelState.AddModelError("Input.Version", "Ya existe un release estable con esa versión y tipo.");
-            return InvalidEditPage("Ya existe un release estable con esa versión y tipo.");
-        }
-
-        if (ArtifactFile is { Length: > 0 })
-        {
-            if (!artifacts.IsConfigured)
+            if (!SemVersion.TryParse(Input.Version, out _))
             {
-                ModelState.AddModelError(nameof(ArtifactFile), "MinIO no está configurado en el servidor.");
-                return InvalidEditPage("MinIO no está configurado en el servidor.");
+                FailProgress(progressId, "Versión SemVer inválida.");
+                ModelState.AddModelError("Input.Version", "Usa una versión válida con formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0.");
+                return InvalidEditPage("Usa una versión válida con formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0.");
             }
 
-            await using var buffer = new MemoryStream();
-            await ArtifactFile.CopyToAsync(buffer);
-            buffer.Position = 0;
-            release.Checksum = Convert.ToHexString(await SHA256.HashDataAsync(buffer)).ToLowerInvariant();
-            buffer.Position = 0;
-            release.ArtifactLocation = await artifacts.UploadAsync(
-                buffer,
-                version,
-                ArtifactFile.FileName,
-                ArtifactFile.ContentType ?? "application/octet-stream",
-                HttpContext.RequestAborted);
-            release.FileName = Path.GetFileName(ArtifactFile.FileName);
+            var version = SemVersion.Normalize(Input.Version);
+            var kind = string.Equals(Input.Kind, ReleaseKinds.Update, StringComparison.OrdinalIgnoreCase)
+                ? ReleaseKinds.Update
+                : ReleaseKinds.Installer;
+
+            var existingVersions = await db.Releases
+                .Where(r => r.Id != Id && r.Channel == "stable" && r.Kind == kind)
+                .Select(r => r.Version)
+                .ToListAsync();
+            if (existingVersions.Any(existing =>
+                    SemVersion.TryParse(existing, out var parsed) && parsed!.ToString() == version))
+            {
+                FailProgress(progressId, "Ya existe un release estable con esa versión y tipo.");
+                ModelState.AddModelError("Input.Version", "Ya existe un release estable con esa versión y tipo.");
+                return InvalidEditPage("Ya existe un release estable con esa versión y tipo.");
+            }
+
+            if (ArtifactFile is { Length: > 0 })
+            {
+                if (!artifacts.IsConfigured)
+                {
+                    FailProgress(progressId, "MinIO no está configurado en el servidor.");
+                    ModelState.AddModelError(nameof(ArtifactFile), "MinIO no está configurado en el servidor.");
+                    return InvalidEditPage("MinIO no está configurado en el servidor.");
+                }
+
+                if (progressId is Guid checksumId)
+                {
+                    progressStore.Set(checksumId, 72, "Calculando checksum…");
+                }
+
+                await using var buffer = new MemoryStream();
+                await ArtifactFile.CopyToAsync(buffer);
+                buffer.Position = 0;
+                release.Checksum = Convert.ToHexString(await SHA256.HashDataAsync(buffer)).ToLowerInvariant();
+                buffer.Position = 0;
+                release.ArtifactLocation = await artifacts.UploadAsync(
+                    buffer,
+                    version,
+                    ArtifactFile.FileName,
+                    ArtifactFile.ContentType ?? "application/octet-stream",
+                    HttpContext.RequestAborted,
+                    CreateMinioProgress(progressId));
+                release.FileName = Path.GetFileName(ArtifactFile.FileName);
+            }
+
+            release.Version = version;
+            release.Kind = kind;
+            release.Notes = string.IsNullOrWhiteSpace(Input.Notes) ? null : Input.Notes.Trim();
+            await db.SaveChangesAsync();
+
+            if (progressId is Guid doneId && ArtifactFile is { Length: > 0 })
+            {
+                progressStore.Complete(doneId);
+            }
+
+            TempData["Saved"] = true;
+            if (IsAjaxRequest())
+            {
+                return new JsonResult(new { redirect = Url.Page("/Admin/Releases/Edit", new { id = Id }) });
+            }
+
+            return RedirectToPage(new { id = Id });
         }
-
-        release.Version = version;
-        release.Kind = kind;
-        release.Notes = string.IsNullOrWhiteSpace(Input.Notes) ? null : Input.Notes.Trim();
-        await db.SaveChangesAsync();
-
-        TempData["Saved"] = true;
-        if (IsAjaxRequest())
+        catch (Exception ex)
         {
-            return new JsonResult(new { redirect = Url.Page("/Admin/Releases/Edit", new { id = Id }) });
+            FailProgress(progressId, ex.Message);
+            throw;
+        }
+    }
+
+    private IProgress<(long Transferred, long Total)>? CreateMinioProgress(Guid? progressId)
+    {
+        if (progressId is not Guid id)
+        {
+            return null;
         }
 
-        return RedirectToPage(new { id = Id });
+        return new Progress<(long Transferred, long Total)>(tuple =>
+        {
+            var (transferred, total) = tuple;
+            var percent = total > 0
+                ? (int)Math.Clamp(Math.Round(100d * transferred / total), 0, 99)
+                : 0;
+            var mb = transferred / (1024d * 1024d);
+            var totalMb = total > 0 ? total / (1024d * 1024d) : 0;
+            var phase = total > 0
+                ? $"Subiendo a MinIO… {mb:0.0}/{totalMb:0.0} MB"
+                : $"Subiendo a MinIO… {mb:0.0} MB";
+            progressStore.Set(id, percent, phase);
+        });
     }
+
+    private void FailProgress(Guid? progressId, string message)
+    {
+        if (progressId is Guid id)
+        {
+            progressStore.Fail(id, message);
+        }
+    }
+
+    private Guid? TryReadProgressId() =>
+        Guid.TryParse(Request.Headers["X-Upload-Progress-Id"], out var id) ? id : null;
 
     private IActionResult InvalidEditPage(string message)
     {

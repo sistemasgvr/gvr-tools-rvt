@@ -51,6 +51,7 @@
                      aria-label="Progreso de subida" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                     <div id="edit-upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
                 </div>
+                <div id="edit-upload-status" class="form-text mt-1"></div>
                 <div id="edit-upload-error" class="text-danger small mt-2 d-none" role="alert"></div>
                 @if (!Model.MinioConfigured)
                 {
@@ -79,7 +80,6 @@
     const form = event.currentTarget;
     const fileInput = form.querySelector('input[type="file"]');
     const hasFile = fileInput?.files?.length > 0;
-    // Solo XHR con barra si hay archivo grande que subir; si no, POST normal.
     if (!hasFile) return;
 
     event.preventDefault();
@@ -87,27 +87,79 @@
     const container = document.getElementById('edit-upload-progress-container');
     const bar = document.getElementById('edit-upload-progress-bar');
     const error = document.getElementById('edit-upload-error');
+    const status = document.getElementById('edit-upload-status');
     const xhr = new XMLHttpRequest();
+    const progressId = (crypto.randomUUID && crypto.randomUUID()) ||
+      `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    let pollTimer = null;
+    const releaseId = new URLSearchParams(window.location.search).get('id') || '';
+
+    const setProgress = (percent, label) => {
+      const pct = Math.max(0, Math.min(100, percent));
+      bar.style.width = `${pct}%`;
+      bar.textContent = `${pct}%`;
+      container.setAttribute('aria-valuenow', pct.toString());
+      if (status) status.textContent = label || '';
+    };
+
+    const stopPoll = () => {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+        pollTimer = null;
+      }
+    };
+
+    const startMinioPoll = () => {
+      stopPoll();
+      pollTimer = setInterval(async () => {
+        try {
+          const url = `/Admin/Releases/Edit?id=${encodeURIComponent(releaseId)}&handler=UploadProgress&progressId=${encodeURIComponent(progressId)}`;
+          const res = await fetch(url, {
+            headers: { 'Accept': 'application/json' },
+            credentials: 'same-origin'
+          });
+          if (!res.ok) return;
+          const data = await res.json();
+          if (typeof data.percent === 'number') {
+            setProgress(data.percent, data.phase || '');
+          }
+          if (data.error) {
+            error.textContent = data.error;
+            error.classList.remove('d-none');
+          }
+          if (data.done) stopPoll();
+        } catch { }
+      }, 400);
+    };
 
     submit.disabled = true;
     error.classList.add('d-none');
     error.textContent = '';
     container.classList.remove('d-none');
-    bar.classList.add('progress-bar-animated');
-    bar.style.width = '0%';
-    bar.textContent = '0%';
-    container.setAttribute('aria-valuenow', '0');
+    bar.classList.add('progress-bar-animated', 'progress-bar-striped');
+    setProgress(0, 'Preparando…');
 
     xhr.upload.addEventListener('progress', (progressEvent) => {
-      if (!progressEvent.lengthComputable) return;
-      const percent = Math.min(100, Math.round((progressEvent.loaded / progressEvent.total) * 100));
-      bar.style.width = `${percent}%`;
-      bar.textContent = `${percent}%`;
-      container.setAttribute('aria-valuenow', percent.toString());
+      if (!progressEvent.lengthComputable || progressEvent.total <= 0) {
+        setProgress(15, 'Enviando al servidor…');
+        return;
+      }
+      const uploaded = progressEvent.loaded / progressEvent.total;
+      const percent = Math.max(1, Math.min(65, Math.round(uploaded * 65)));
+      const mb = (progressEvent.loaded / (1024 * 1024)).toFixed(1);
+      const totalMb = (progressEvent.total / (1024 * 1024)).toFixed(1);
+      setProgress(percent, `Enviando al servidor… ${mb}/${totalMb} MB`);
+    });
+
+    xhr.upload.addEventListener('load', () => {
+      setProgress(68, 'Recibido. Calculando / subiendo a MinIO…');
+      startMinioPoll();
     });
 
     xhr.addEventListener('load', () => {
+      stopPoll();
       if (xhr.status >= 200 && xhr.status < 300) {
+        setProgress(100, 'Listo');
         let redirect = window.location.href;
         try {
           redirect = JSON.parse(xhr.responseText).redirect || redirect;
@@ -126,17 +178,21 @@
       error.classList.remove('d-none');
       submit.disabled = false;
       bar.classList.remove('progress-bar-animated');
+      if (status) status.textContent = '';
     });
 
     xhr.addEventListener('error', () => {
+      stopPoll();
       error.textContent = 'La subida falló por un problema de red. Inténtalo de nuevo.';
       error.classList.remove('d-none');
       submit.disabled = false;
       bar.classList.remove('progress-bar-animated');
+      if (status) status.textContent = '';
     });
 
     xhr.open('POST', form.action || window.location.href);
     xhr.setRequestHeader('X-Requested-With', 'XMLHttpRequest');
+    xhr.setRequestHeader('X-Upload-Progress-Id', progressId);
     xhr.send(new FormData(form));
   });
 </script>

@@ -21,6 +21,7 @@ builder.Services.AddDbContext<LicenseDbContext>(options =>
 
 builder.Services.Configure<MinioOptions>(builder.Configuration.GetSection(MinioOptions.SectionName));
 builder.Services.AddSingleton<IReleaseArtifactStore, MinioReleaseArtifactStore>();
+builder.Services.AddSingleton<ReleaseUploadProgressStore>();
 
 builder.Services.Configure<FormOptions>(options =>
 {

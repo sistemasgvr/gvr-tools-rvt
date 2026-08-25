@@ -9,12 +9,16 @@ public interface IReleaseArtifactStore
     /// Sube el archivo al bucket. Devuelve la object key (ej. releases/1.0.0/setup.exe)
     /// que se guarda en <c>Release.ArtifactLocation</c>.
     /// </summary>
+    /// <param name="progress">
+    /// Bytes enviados a MinIO (Transferred/Total). Null si no hace falta reportar.
+    /// </param>
     Task<string> UploadAsync(
         Stream content,
         string version,
         string fileName,
         string contentType,
-        CancellationToken ct);
+        CancellationToken ct,
+        IProgress<(long Transferred, long Total)>? progress = null);
 
     /// <summary>URL firmada temporal (GET) para un object key del bucket.</summary>
     Task<string> CreatePresignedGetUrlAsync(string objectKey, CancellationToken ct);

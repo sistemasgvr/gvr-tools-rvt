@@ -1,13 +1,18 @@
 using Amazon.S3;
 using Amazon.S3.Model;
+using Amazon.S3.Transfer;
 using Microsoft.Extensions.Options;
 
 namespace GvrLicense.Infrastructure.Storage;
 
 public sealed class MinioReleaseArtifactStore : IReleaseArtifactStore, IDisposable
 {
+    private const long MultipartThresholdBytes = 16 * 1024 * 1024; // 16 MB
+    private const long MultipartPartSizeBytes = 16 * 1024 * 1024;
+
     private readonly MinioOptions _options;
     private readonly IAmazonS3? _s3;
+    private readonly TransferUtility? _transfer;
 
     public MinioReleaseArtifactStore(IOptions<MinioOptions> options)
     {
@@ -18,9 +23,14 @@ public sealed class MinioReleaseArtifactStore : IReleaseArtifactStore, IDisposab
             {
                 ServiceURL = _options.Endpoint.TrimEnd('/'),
                 ForcePathStyle = true,
-                AuthenticationRegion = "us-east-1"
+                AuthenticationRegion = "us-east-1",
+                // PutObject simple de ~400 MB suele cortarse (~100s por defecto) y el SDK
+                // reintenta desde 0: eso se ve como "la carga se reinicia".
+                Timeout = TimeSpan.FromHours(2),
+                MaxErrorRetry = 1
             };
             _s3 = new AmazonS3Client(_options.AccessKey, _options.SecretKey, config);
+            _transfer = new TransferUtility(_s3);
         }
     }
 
@@ -47,7 +57,8 @@ public sealed class MinioReleaseArtifactStore : IReleaseArtifactStore, IDisposab
         string version,
         string fileName,
         string contentType,
-        CancellationToken ct)
+        CancellationToken ct,
+        IProgress<(long Transferred, long Total)>? progress = null)
     {
         EnsureClient();
         await EnsureBucketAsync(ct);
@@ -55,18 +66,59 @@ public sealed class MinioReleaseArtifactStore : IReleaseArtifactStore, IDisposab
         var safeVersion = SanitizeSegment(version);
         var safeName = SanitizeFileName(fileName);
         var objectKey = $"releases/{safeVersion}/{safeName}";
+        var contentTypeValue = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType;
+        var totalHint = content.CanSeek ? content.Length : 0L;
 
-        var request = new PutObjectRequest
+        // Archivos grandes: multipart (partes de 16 MB). Evita timeout/reinicio del PutObject único.
+        if (totalHint >= MultipartThresholdBytes)
         {
-            BucketName = _options.Bucket,
-            Key = objectKey,
-            InputStream = content,
-            ContentType = string.IsNullOrWhiteSpace(contentType) ? "application/octet-stream" : contentType,
-            AutoCloseStream = false,
-            DisablePayloadSigning = true // MinIO path-style a menudo no soporta STREAMING-AWS4-HMAC
-        };
+            var uploadRequest = new TransferUtilityUploadRequest
+            {
+                BucketName = _options.Bucket,
+                Key = objectKey,
+                InputStream = content,
+                ContentType = contentTypeValue,
+                AutoCloseStream = false,
+                PartSize = MultipartPartSizeBytes,
+                DisablePayloadSigning = true
+            };
 
-        await _s3!.PutObjectAsync(request, ct);
+            if (progress is not null)
+            {
+                uploadRequest.UploadProgressEvent += (_, args) =>
+                {
+                    var total = args.TotalBytes > 0 ? args.TotalBytes : totalHint;
+                    progress.Report((args.TransferredBytes, total));
+                };
+            }
+
+            await _transfer!.UploadAsync(uploadRequest, ct);
+        }
+        else
+        {
+            var request = new PutObjectRequest
+            {
+                BucketName = _options.Bucket,
+                Key = objectKey,
+                InputStream = content,
+                ContentType = contentTypeValue,
+                AutoCloseStream = false,
+                DisablePayloadSigning = true
+            };
+
+            if (progress is not null)
+            {
+                request.StreamTransferProgress += (_, args) =>
+                {
+                    var total = args.TotalBytes > 0 ? args.TotalBytes : totalHint;
+                    progress.Report((args.TransferredBytes, total));
+                };
+            }
+
+            await _s3!.PutObjectAsync(request, ct);
+        }
+
+        progress?.Report((totalHint > 0 ? totalHint : 1, totalHint > 0 ? totalHint : 1));
         return objectKey;
     }
 
@@ -87,7 +139,11 @@ public sealed class MinioReleaseArtifactStore : IReleaseArtifactStore, IDisposab
         return Task.FromResult(url);
     }
 
-    public void Dispose() => _s3?.Dispose();
+    public void Dispose()
+    {
+        _transfer?.Dispose();
+        _s3?.Dispose();
+    }
 
     private void EnsureClient()
     {
