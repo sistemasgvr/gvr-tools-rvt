@@ -41,6 +41,8 @@ dotnet run                    # http://localhost:5299  (admin + /v1 + /download)
 - `Signing:PrivateKeyPem` — generar con `dotnet run --project tools/GenerateSigningKey` y pegar el PEM (con `\n`). La pública va en `src/GvrTools.Licensing/Crypto/EmbeddedPublicKey.cs`.
 - `Minio:*` (opcional para probar uploads; si falta, el admin de Releases avisa)
 
+**Migrations:** en Development, `Program.cs` llama a `Database.Migrate()` al arrancar. En Production/EasyPanel no hay auto-migrate: aplica a mano con `dotnet ef database update` apuntando a `ConnectionStrings__Postgres`.
+
 ## Deploy
 
 Pieza 6 del plan: un servicio Docker en EasyPanel construido desde `server/Dockerfile`, más

@@ -71,6 +71,20 @@ namespace GvrTools.Licensing
 
         public string SupportEmailHint { get; set; } = "soporte@gvr.tools";
 
+        /// <summary>
+        /// True tras 401/403 (sesión expirada, device kick, licencia suspendida).
+        /// El host debe pedir reactivación con la clave GVR-….
+        /// </summary>
+        public bool NeedsReactivation { get; private set; }
+
+        public string ReactivationReason { get; private set; }
+
+        public void ClearReactivationFlag()
+        {
+            NeedsReactivation = false;
+            ReactivationReason = null;
+        }
+
         public void LoadFromDisk()
         {
             if (!_cache.TryLoadEnvelope(out var envelope))
@@ -117,12 +131,13 @@ namespace GvrTools.Licensing
             }, ct).ConfigureAwait(false);
 
             ApplyServerEntitlements(response.AccessToken, response.EntitlementJson, response.EntitlementSignatureBase64);
+            ClearReactivationFlag();
             await FlushUsageQueueAsync(ct).ConfigureAwait(false);
         }
 
         /// <summary>
-        /// Renueva gracia. Devuelve true si se actualizó el cache. No lanza ante fallo de red
-        /// (el llamador usa cache); sí lanza LicenseApiClientException 401/403 (suspendida).
+        /// Renueva JWT + gracia. Devuelve true si se actualizó el cache. No lanza ante fallo de red
+        /// (el llamador usa cache); sí lanza LicenseApiClientException 401/403 (sesión/licencia).
         /// </summary>
         public async Task<bool> TryHeartbeatAsync(CancellationToken ct)
         {
@@ -137,13 +152,16 @@ namespace GvrTools.Licensing
                     DeviceFingerprint = _fingerprint.GetFingerprint()
                 }, ct).ConfigureAwait(false);
 
-                ApplyServerEntitlements(token, response.EntitlementJson, response.EntitlementSignatureBase64);
+                // Servidor renueva el AccessToken en cada heartbeat (sliding expiry 14 días).
+                var nextToken = string.IsNullOrEmpty(response.AccessToken) ? token : response.AccessToken;
+                ApplyServerEntitlements(nextToken, response.EntitlementJson, response.EntitlementSignatureBase64);
+                ClearReactivationFlag();
                 await FlushUsageQueueAsync(ct).ConfigureAwait(false);
                 return true;
             }
             catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
             {
-                // Licencia inválida / device kick / suspendida: limpiar para forzar reactivación.
+                MarkNeedsReactivation(ex.Message);
                 ClearLocal();
                 throw;
             }
@@ -203,6 +221,13 @@ namespace GvrTools.Licensing
                     var response = await _api.ReportUsageAsync(token, item, ct).ConfigureAwait(false);
                     if (response?.Remaining != null)
                         _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
+                }
+                catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
+                {
+                    MarkNeedsReactivation(ex.Message);
+                    ClearLocal();
+                    leftover.Clear();
+                    break;
                 }
                 catch (Exception)
                 {
@@ -287,6 +312,14 @@ namespace GvrTools.Licensing
         {
             if (_ownsApi && _api is IDisposable disposable)
                 disposable.Dispose();
+        }
+
+        private void MarkNeedsReactivation(string serverMessage)
+        {
+            NeedsReactivation = true;
+            ReactivationReason = string.IsNullOrWhiteSpace(serverMessage)
+                ? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-…."
+                : serverMessage.Trim();
         }
 
         private void ApplyServerEntitlements(string accessToken, string entitlementJson, string signatureBase64)

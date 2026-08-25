@@ -42,10 +42,35 @@ namespace GvrTools.App
                 LicenseRuntime.EnsureInitialized();
                 var uiContext = SynchronizationContext.Current;
 
-                // Heartbeat + chequeo de updates en background (no bloquear la cinta).
+                // Heartbeat (renueva JWT) + sesión expirada / updates en background.
                 Task.Run(async () =>
                 {
                     await LicenseRuntime.WarmupAsync().ConfigureAwait(false);
+
+                    if (LicenseRuntime.NeedsReactivation)
+                    {
+                        var reason = LicenseRuntime.ReactivationReason
+                            ?? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-….";
+
+                        void ShowReactivate()
+                        {
+                            try
+                            {
+                                LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
+                            }
+                            catch (Exception ex)
+                            {
+                                log.Warn("No se pudo mostrar reactivación: " + ex.Message);
+                            }
+                        }
+
+                        if (uiContext != null)
+                            uiContext.Post(_ => ShowReactivate(), null);
+                        else
+                            ShowReactivate();
+
+                        return;
+                    }
 
                     var current = AddInVersion.Current;
                     var update = await LicenseRuntime.TryCheckForUpdateAsync(
@@ -55,7 +80,7 @@ namespace GvrTools.App
                     if (update == null || !update.UpdateAvailable)
                         return;
 
-                    void Show()
+                    void ShowUpdate()
                     {
                         try
                         {
@@ -68,9 +93,9 @@ namespace GvrTools.App
                     }
 
                     if (uiContext != null)
-                        uiContext.Post(_ => Show(), null);
+                        uiContext.Post(_ => ShowUpdate(), null);
                     else
-                        Show();
+                        ShowUpdate();
                 });
 
                 IReadOnlyList<IRevitTool> discovered = ToolCatalog.Discover(application, log);

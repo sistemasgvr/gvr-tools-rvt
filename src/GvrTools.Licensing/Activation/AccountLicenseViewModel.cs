@@ -38,12 +38,19 @@ namespace GvrTools.Licensing.Activation
 
         public bool IsLicensed => _client.IsLicensed;
 
-        public string StatusHeadline => IsLicensed ? "Licencia activa" : "Sin licencia válida";
+        public string StatusHeadline =>
+            IsLicensed
+                ? "Licencia activa"
+                : (_client.NeedsReactivation
+                    ? "Sesión expirada — reactiva"
+                    : "Sin licencia válida");
 
         public string PlanSummary =>
             IsLicensed
                 ? ("Plan: " + (_client.PlanCode ?? "—"))
-                : "Activa una clave GVR-… para usar las herramientas.";
+                : (!string.IsNullOrWhiteSpace(_client.ReactivationReason)
+                    ? _client.ReactivationReason
+                    : "Activa una clave GVR-… para usar las herramientas.");
 
         public string GraceSummary
         {

@@ -11,9 +11,11 @@ namespace GvrTools.Licensing.Activation
         private readonly LicenseClient _client;
         private CancellationTokenSource _cts;
 
-        public ActivateLicenseViewModel(LicenseClient client)
+        public ActivateLicenseViewModel(LicenseClient client, string initialMessage = null)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            if (!string.IsNullOrWhiteSpace(initialMessage))
+                _statusMessage = initialMessage.Trim();
             ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy);
             CancelCommand = new RelayCommand(() => RequestClose?.Invoke(false));
         }

@@ -28,6 +28,10 @@ namespace GvrTools.Licensing
 
         public static bool IsLicensed => Client.IsLicensed;
 
+        public static bool NeedsReactivation => _client != null && _client.NeedsReactivation;
+
+        public static string ReactivationReason => _client?.ReactivationReason;
+
         public static void EnsureInitialized()
         {
             if (Interlocked.CompareExchange(ref _initialized, 1, 0) != 0)
@@ -41,8 +45,8 @@ namespace GvrTools.Licensing
         }
 
         /// <summary>
-        /// Heartbeat con timeout corto (~2.5s). Nunca tumba el add-in: excepciones de red se
-        /// tragan; 401/403 limpian la licencia local.
+        /// Heartbeat con timeout corto (~2.5s). Renueva JWT + gracia. Nunca tumba el add-in:
+        /// fallos de red se tragan; 401/403 limpian cache y marcan NeedsReactivation.
         /// </summary>
         public static async Task WarmupAsync(CancellationToken externalCt = default)
         {
@@ -61,7 +65,7 @@ namespace GvrTools.Licensing
                 }
                 catch (Http.LicenseApiClientException)
                 {
-                    // ya limpió cache en TryHeartbeatAsync
+                    // ya limpió cache + NeedsReactivation en TryHeartbeatAsync
                 }
                 catch (Exception)
                 {

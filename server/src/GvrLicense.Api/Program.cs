@@ -63,7 +63,29 @@ builder.Services
             ValidAudience = JwtSessionTokenService.Audience,
             ValidateLifetime = true,
             ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new ECDsaSecurityKey(jwtValidationKey)
+            IssuerSigningKey = new ECDsaSecurityKey(jwtValidationKey),
+            ClockSkew = TimeSpan.FromMinutes(2)
+        };
+        options.Events = new JwtBearerEvents
+        {
+            OnChallenge = async context =>
+            {
+                // Evita el challenge vacío por defecto; el add-in lee el cuerpo ProblemDetails.
+                context.HandleResponse();
+                context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+                context.Response.ContentType = "application/problem+json";
+
+                var detail = context.AuthenticateFailure is SecurityTokenExpiredException
+                    ? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-…."
+                    : "Token inválido o ausente. Vuelve a activar la licencia.";
+
+                await context.Response.WriteAsJsonAsync(new
+                {
+                    title = "Unauthorized",
+                    status = 401,
+                    detail
+                });
+            }
         };
     });
 
@@ -111,6 +133,25 @@ builder.Services.AddRateLimiter(options =>
 });
 
 var app = builder.Build();
+
+// Development only: apply pending EF migrations so schema drifts (e.g. missing columns)
+// fail fast at startup instead of as Postgres 42703 at runtime. Production/EasyPanel
+// must use `dotnet ef database update` explicitly -- never auto-migrate there.
+if (app.Environment.IsDevelopment())
+{
+    try
+    {
+        using var scope = app.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<LicenseDbContext>();
+        db.Database.Migrate();
+    }
+    catch (Exception ex)
+    {
+        var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        logger.LogError(ex, "Failed to apply EF migrations in Development. Stop the running API if files are locked, then fix the DB or run: dotnet ef database update --project ../GvrLicense.Infrastructure");
+        throw;
+    }
+}
 
 app.UseRateLimiter();
 

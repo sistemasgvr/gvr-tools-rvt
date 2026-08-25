@@ -156,9 +156,11 @@ public sealed class LicenseEngine(
         await db.SaveChangesAsync(ct);
 
         var (json, signature) = await BuildSignedBlobAsync(license, device, ct);
+        var accessToken = jwt.Issue(license.Id, device.Id);
 
         return new HeartbeatResponse
         {
+            AccessToken = accessToken,
             EntitlementJson = json,
             EntitlementSignatureBase64 = Convert.ToBase64String(signature)
         };

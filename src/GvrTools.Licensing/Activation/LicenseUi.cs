@@ -7,9 +7,12 @@ namespace GvrTools.Licensing.Activation
     /// <summary>Helpers para abrir las ventanas de licencia desde comandos Revit (owner HWND).</summary>
     public static class LicenseUi
     {
-        public static bool? ShowActivate(LicenseClient client, System.IntPtr ownerHwnd = default)
+        public static bool? ShowActivate(
+            LicenseClient client,
+            System.IntPtr ownerHwnd = default,
+            string initialMessage = null)
         {
-            var vm = new ActivateLicenseViewModel(client ?? LicenseRuntime.Client);
+            var vm = new ActivateLicenseViewModel(client ?? LicenseRuntime.Client, initialMessage);
             var window = new ActivateLicenseWindow(vm);
             AttachOwner(window, ownerHwnd);
             return window.ShowDialog();

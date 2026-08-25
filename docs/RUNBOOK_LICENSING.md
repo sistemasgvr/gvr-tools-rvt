@@ -29,6 +29,10 @@ Extras puntuales (más cuota, DWG en Starter, etc.): edita la licencia → **ove
 - **PC atascado / cambio de máquina**: en la licencia, **Liberar** el device; o el usuario usa **Desactivar este PC**.
 - **Colaborador que se va**: **Miembros** del cliente → desactivar esa persona.
 
+## Esquema (Postgres)
+
+En **Development**, la API aplica migraciones EF al arrancar (`Database.Migrate()`). En **Production**, no: usa `dotnet ef database update` con `ConnectionStrings__Postgres` (ver `server/README.md`).
+
 ## Qué no hace el sistema (a propósito)
 
 - No cobra solo.

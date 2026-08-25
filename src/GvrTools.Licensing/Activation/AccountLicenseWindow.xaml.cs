@@ -17,7 +17,10 @@ namespace GvrTools.Licensing.Activation
 
         private void OpenActivate()
         {
-            var activateVm = new ActivateLicenseViewModel(LicenseRuntime.Client);
+            var reason = LicenseRuntime.Client.NeedsReactivation
+                ? LicenseRuntime.Client.ReactivationReason
+                : null;
+            var activateVm = new ActivateLicenseViewModel(LicenseRuntime.Client, reason);
             var dialog = new ActivateLicenseWindow(activateVm) { Owner = this };
             if (dialog.ShowDialog() == true)
                 _viewModel.Refresh();
