@@ -61,6 +61,13 @@ O usa el helper:
    para Revit 2021–2026 o en `%ProgramFiles%\Autodesk\Revit\Addins\2027` para Revit 2027  
 6. Tras instalar: abrir Revit → **Cuenta / Licencia** → pegar key  
 
+## Branding
+
+El wizard usa el escudo GVR (mismo logo de las ventanas del add-in) como ícono del `.exe`, panel
+lateral de Bienvenida/Fin y logo de esquina en cada página -- ver
+[`installer/assets/README.md`](assets/README.md) para los tamaños exactos y cómo regenerarlos si
+el logo cambia.
+
 ## Prerrequisito PDF24
 
 El ejecutable incluido se lanza con:

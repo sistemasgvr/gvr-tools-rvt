@@ -33,6 +33,12 @@ ArchitecturesInstallIn64BitMode=x64compatible
 UninstallDisplayName={#MyAppName}
 LicenseFile=assets\TOS.txt
 ShowLanguageDialog=yes
+; Escudo GVR (src/GvrTools.UI/Icons/Escudo_GVR.png) exportado a los formatos que pide Inno --
+; ver installer/assets/README.md para cómo se generaron y cómo regenerarlos si el logo cambia.
+SetupIconFile=assets\SetupIcon.ico
+WizardImageFile=assets\WizardImage.bmp
+WizardSmallImageFile=assets\WizardSmallImage.bmp
+UninstallDisplayIcon={app}\SetupIcon.ico
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -58,6 +64,9 @@ Source: "{#PayloadRoot}\2026\*"; DestDir: "{app}\2026"; Flags: ignoreversion rec
 Source: "{#PayloadRoot}\2027\*"; DestDir: "{app}\2027"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2027
 ; PDF24 se incluye para que la instalación sea reproducible y no dependa de una descarga.
 Source: "prereqs\pdf24-creator-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall nocompression
+; Copia del ícono para que UninstallDisplayIcon (abajo) apunte a un archivo real tras instalar --
+; sin esto, Agregar o quitar programas usa un ícono genérico de Windows.
+Source: "assets\SetupIcon.ico"; DestDir: "{app}"; Flags: ignoreversion
 
 [Run]
 ; Flags oficiales PDF24 (Inno): silent + sin auto-update + solo impresora PDF (suficiente para Revit 2021).
