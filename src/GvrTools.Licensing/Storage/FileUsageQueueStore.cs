@@ -42,6 +42,33 @@ namespace GvrTools.Licensing.Storage
             }
         }
 
+        /// <summary>Devuelve todos los eventos pendientes y vacía la cola de forma atómica.</summary>
+        public List<UsageEventDto> TakeAll()
+        {
+            lock (_gate)
+            {
+                var list = Load();
+                Save(new List<UsageEventDto>());
+                return list;
+            }
+        }
+
+        /// <summary>Inserta eventos al inicio de la cola (p. ej. reintento tras fallo de red).</summary>
+        public void PrependAll(IReadOnlyList<UsageEventDto> items)
+        {
+            if (items == null || items.Count == 0)
+                return;
+
+            lock (_gate)
+            {
+                var current = Load();
+                var merged = new List<UsageEventDto>(items.Count + current.Count);
+                merged.AddRange(items);
+                merged.AddRange(current);
+                Save(merged);
+            }
+        }
+
         public void ReplaceAll(List<UsageEventDto> remaining)
         {
             lock (_gate)

@@ -1,5 +1,4 @@
-using GvrLicense.Domain.Entities;
-using GvrLicense.Domain.Versioning;
+using GvrLicense.Api.Services;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -10,7 +9,7 @@ namespace GvrLicense.Api.Pages;
 /// Landing pública en "/download" (template <c>_PublicLayout</c>).
 /// La descarga real del .exe sigue en GET /download/file (redirect MinIO firmado).
 /// </summary>
-public class DownloadModel(LicenseDbContext db) : PageModel
+public class DownloadModel(LicenseDbContext db, LicenseEngine engine) : PageModel
 {
     public bool HasInstaller { get; private set; }
     public string? LatestVersion { get; private set; }
@@ -27,21 +26,7 @@ public class DownloadModel(LicenseDbContext db) : PageModel
         TosUrl = settings?.TermsOfServiceUrl;
         PrivacyUrl = settings?.PrivacyPolicyUrl;
 
-        var installers = await db.Releases
-            .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
-            .ToListAsync();
-
-        var latest = installers
-            .Select(r => SemVersion.TryParse(r.Version, out var version)
-                ? (Release: r, Version: version!)
-                : ((Release Release, SemVersion Version)?)null)
-            .Where(candidate => candidate.HasValue)
-            .Select(candidate => candidate!.Value)
-            .OrderByDescending(candidate => candidate.Version)
-            .ThenByDescending(candidate => candidate.Release.PublishedAtUtc)
-            .Select(candidate => candidate.Release)
-            .FirstOrDefault();
-
+        var latest = await engine.TryGetLatestInstallerAsync(HttpContext.RequestAborted);
         if (latest is null)
             return;
 

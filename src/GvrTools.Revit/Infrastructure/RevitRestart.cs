@@ -46,7 +46,17 @@ namespace GvrTools.Revit.Infrastructure
             PendingDocumentPath = null;
 
             if (!string.IsNullOrEmpty(revitExe))
+            {
                 ScheduleRestart(revitExe, documentPath);
+            }
+            else
+            {
+                TaskDialog.Show(
+                    "GVR Tools · Reiniciar Revit",
+                    "La licencia se activó, pero no se pudo localizar Revit.exe para reabrirlo automáticamente "
+                    + "(instalación fuera de la ruta habitual).\n\n"
+                    + "Revit se cerrará. Ábrelo de nuevo manualmente desde el acceso que uses en este PC.");
+            }
 
             ScheduleExit();
         }
@@ -117,6 +127,21 @@ namespace GvrTools.Revit.Infrastructure
 
         private static string ResolveRevitExecutable()
         {
+            try
+            {
+                string host = Process.GetCurrentProcess().MainModule?.FileName;
+                if (!string.IsNullOrWhiteSpace(host)
+                    && host.EndsWith("Revit.exe", StringComparison.OrdinalIgnoreCase)
+                    && File.Exists(host))
+                {
+                    return host;
+                }
+            }
+            catch
+            {
+                // MainModule puede fallar por permisos; caemos al path por defecto.
+            }
+
             string path = Path.Combine(
                 Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
                 "Autodesk",

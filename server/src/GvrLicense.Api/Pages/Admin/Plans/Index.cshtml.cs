@@ -79,7 +79,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
 
     internal static Dictionary<string, string> ParseFeatures(string? text)
     {
-        var features = new Dictionary<string, string>();
+        var features = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         if (string.IsNullOrWhiteSpace(text))
         {
             return features;
@@ -90,7 +90,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             var parts = line.Split('=', 2);
             if (parts.Length == 2 && !string.IsNullOrWhiteSpace(parts[0]))
             {
-                features[parts[0].Trim()] = parts[1].Trim();
+                features[parts[0].Trim().ToLowerInvariant()] = parts[1].Trim();
             }
         }
         return features;

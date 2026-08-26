@@ -103,7 +103,37 @@ public sealed class LicenseEngine(
         {
             // Mismo PC, persona distinta activando encima: reasigna el dispositivo a quien acaba de
             // activar -- el dueño de un fingerprint es quien lo usó por última vez.
-            device.CompanyUserId = companyUser.Id;
+            // Misma regla de seats que al crear un device nuevo (MaxUsers + max_devices_per_user).
+            if (device.CompanyUserId != companyUser.Id)
+            {
+                var devicesOfThisUser = license.Devices
+                    .Where(d => d.Id != device.Id && d.CompanyUserId == companyUser.Id)
+                    .ToList();
+
+                var maxDevicesPerUser = ParseFeatureInt(
+                    GetEffectiveFeatures(license), "seat.max_devices_per_user", defaultValue: 1);
+                if (maxDevicesPerUser != -1 && devicesOfThisUser.Count >= maxDevicesPerUser)
+                {
+                    throw new LicenseApiException(403,
+                        $"{request.UserEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
+                }
+
+                var distinctUsersAfterReassign = license.Devices
+                    .Where(d => d.Id != device.Id)
+                    .Select(d => d.CompanyUserId)
+                    .Append(companyUser.Id)
+                    .Distinct()
+                    .Count();
+
+                if (distinctUsersAfterReassign > license.MaxUsers)
+                {
+                    throw new LicenseApiException(403,
+                        $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {request.UserEmail}.");
+                }
+
+                device.CompanyUserId = companyUser.Id;
+            }
+
             device.LastSeenUtc = DateTimeOffset.UtcNow;
             if (!string.IsNullOrWhiteSpace(request.DeviceName))
             {
@@ -301,14 +331,14 @@ public sealed class LicenseEngine(
         return release.ArtifactLocation;
     }
 
-    /// <summary>Último instalador publicado (kind=installer) para el enlace público /download.</summary>
-    public async Task<Release> GetLatestInstallerAsync(CancellationToken ct)
+    /// <summary>Último instalador publicado (kind=installer), o null si el catálogo está vacío.</summary>
+    public async Task<Release?> TryGetLatestInstallerAsync(CancellationToken ct)
     {
         var installers = await db.Releases
             .Where(r => r.Channel == "stable" && r.Kind == ReleaseKinds.Installer)
             .ToListAsync(ct);
 
-        var release = installers
+        return installers
             .Select(r => SemVersion.TryParse(r.Version, out var version)
                 ? (Release: r, Version: version!)
                 : ((Release Release, SemVersion Version)?)null)
@@ -318,9 +348,12 @@ public sealed class LicenseEngine(
             .ThenByDescending(candidate => candidate.Release.PublishedAtUtc)
             .Select(candidate => candidate.Release)
             .FirstOrDefault();
-
-        return release ?? throw new LicenseApiException(404, "Aún no hay instalador publicado.");
     }
+
+    /// <summary>Último instalador publicado (kind=installer) para el enlace público /download.</summary>
+    public async Task<Release> GetLatestInstallerAsync(CancellationToken ct) =>
+        await TryGetLatestInstallerAsync(ct)
+        ?? throw new LicenseApiException(404, "Aún no hay instalador publicado.");
 
     /// <summary>URL firmada del último instalador.</summary>
     public async Task<string> GetLatestInstallerDownloadUrlAsync(CancellationToken ct)
@@ -394,38 +427,38 @@ public sealed class LicenseEngine(
     /// <summary>Plan.Features con License.FeatureOverrides encima -- ver comentario en BuildSignedBlobAsync.</summary>
     private static Dictionary<string, string> GetEffectiveFeatures(License license)
     {
-        var effective = new Dictionary<string, string>(license.Plan!.Features);
+        // Misma sensibilidad que PlanFeatureForm.Merge (admin): códigos case-insensitive.
+        var effective = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var (code, value) in license.Plan!.Features)
+        {
+            effective[code] = value;
+        }
+
         foreach (var (code, value) in license.FeatureOverrides)
         {
             effective[code] = value;
         }
+
         return effective;
     }
 
     private async Task EnsureCurrentPeriodCountersAsync(License license, CancellationToken ct)
     {
         var period = CurrentPeriod();
-        var quotaFeatures = GetEffectiveFeatures(license).Where(f => f.Key.StartsWith("quota.", StringComparison.Ordinal));
+        var quotaFeatures = GetEffectiveFeatures(license).Where(f => f.Key.StartsWith("quota.", StringComparison.OrdinalIgnoreCase));
 
         foreach (var (code, rawValue) in quotaFeatures)
         {
-            var exists = await db.UsageCounters.AnyAsync(
-                c => c.LicenseId == license.Id && c.FeatureCode == code && c.Period == period, ct);
-            if (exists)
-            {
-                continue;
-            }
-
+            var featureCode = code.Trim().ToLowerInvariant();
             var limit = int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
-            db.UsageCounters.Add(new UsageCounter
-            {
-                Id = Guid.NewGuid(),
-                LicenseId = license.Id,
-                FeatureCode = code,
-                Period = period,
-                QuotaLimit = limit,
-                Consumed = 0
-            });
+            var id = Guid.NewGuid();
+
+            // INSERT ... ON CONFLICT DO NOTHING: dos heartbeats al cambiar de mes no deben 500.
+            await db.Database.ExecuteSqlInterpolatedAsync($"""
+                insert into usage_counter (id, license_id, feature_code, period, quota_limit, consumed)
+                values ({id}, {license.Id}, {featureCode}, {period}, {limit}, {0})
+                on conflict (license_id, feature_code, period) do nothing
+                """, ct);
         }
     }
 
@@ -434,18 +467,22 @@ public sealed class LicenseEngine(
         var period = CurrentPeriod();
         var counters = await db.UsageCounters
             .Where(c => c.LicenseId == license.Id && c.Period == period)
-            .ToDictionaryAsync(c => c.FeatureCode, ct);
+            .ToDictionaryAsync(c => c.FeatureCode, StringComparer.OrdinalIgnoreCase, ct);
 
         var features = new List<FeatureEntry>();
         foreach (var (code, value) in GetEffectiveFeatures(license))
         {
             // Para quota.*, el blob lleva el REMANENTE vivo (limit - consumed), no el tope estático
             // del plan -- así el cliente cachea un número que ya refleja lo gastado este mes.
-            var effectiveValue = code.StartsWith("quota.", StringComparison.Ordinal) && counters.TryGetValue(code, out var counter)
+            var effectiveValue = code.StartsWith("quota.", StringComparison.OrdinalIgnoreCase) && counters.TryGetValue(code, out var counter)
                 ? RemainingOf(counter).ToString(CultureInfo.InvariantCulture)
                 : value;
 
-            features.Add(new FeatureEntry { Code = code, Value = effectiveValue });
+            features.Add(new FeatureEntry
+            {
+                Code = code.Trim().ToLowerInvariant(),
+                Value = effectiveValue
+            });
         }
 
         var blob = new EntitlementBlob

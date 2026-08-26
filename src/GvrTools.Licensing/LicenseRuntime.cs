@@ -44,13 +44,16 @@ namespace GvrTools.Licensing
 
         public static void EnsureInitialized()
         {
-            if (Interlocked.CompareExchange(ref _initialized, 1, 0) != 0)
+            if (_client != null)
                 return;
 
             lock (Gate)
             {
-                if (_client != null) return;
+                if (_client != null)
+                    return;
+
                 _client = new LicenseClient();
+                Interlocked.Exchange(ref _initialized, 1);
             }
         }
 

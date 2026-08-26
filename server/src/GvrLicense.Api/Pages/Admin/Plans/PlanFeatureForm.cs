@@ -56,19 +56,25 @@ public sealed class PlanFeatureForm
 
     public static PlanFeatureForm FromDictionary(IReadOnlyDictionary<string, string> features)
     {
+        var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var kv in features)
+        {
+            map[kv.Key] = kv.Value;
+        }
+
         var form = new PlanFeatureForm
         {
-            ToolBatchExport = IsTrue(features, "tool.batch_export", defaultValue: true),
-            FormatPdf = IsTrue(features, "format.pdf", defaultValue: true),
-            FormatDwg = IsTrue(features, "format.dwg"),
-            FormatPdfDwg = IsTrue(features, "format.pdf_dwg"),
-            UpdatesStable = IsTrue(features, "updates.stable", defaultValue: true),
-            SheetsPerBatch = ReadInt(features, "limit.sheets_per_batch", 100),
-            MaxDevicesPerUser = ReadInt(features, "seat.max_devices_per_user",
+            ToolBatchExport = IsTrue(map, "tool.batch_export", defaultValue: true),
+            FormatPdf = IsTrue(map, "format.pdf", defaultValue: true),
+            FormatDwg = IsTrue(map, "format.dwg"),
+            FormatPdfDwg = IsTrue(map, "format.pdf_dwg"),
+            UpdatesStable = IsTrue(map, "updates.stable", defaultValue: true),
+            SheetsPerBatch = ReadInt(map, "limit.sheets_per_batch", 100),
+            MaxDevicesPerUser = ReadInt(map, "seat.max_devices_per_user",
                 fallbackKey: "seat.max_devices", defaultValue: 1),
         };
 
-        var quota = ReadInt(features, "quota.sheets_per_month", 500);
+        var quota = ReadInt(map, "quota.sheets_per_month", 500);
         if (quota < 0)
         {
             form.SheetsPerMonthUnlimited = true;
@@ -79,9 +85,9 @@ public sealed class PlanFeatureForm
             form.SheetsPerMonth = quota;
         }
 
-        var extras = features
+        var extras = map
             .Where(kv => !KnownCodes.Contains(kv.Key))
-            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .OrderBy(kv => kv.Key, StringComparer.OrdinalIgnoreCase)
             .Select(kv => $"{kv.Key}={kv.Value}");
         form.ExtraFeaturesText = string.Join('\n', extras);
 
@@ -90,7 +96,7 @@ public sealed class PlanFeatureForm
 
     public Dictionary<string, string> ToDictionary()
     {
-        var features = new Dictionary<string, string>(StringComparer.Ordinal)
+        var features = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase)
         {
             ["tool.batch_export"] = Bool(ToolBatchExport),
             ["format.pdf"] = Bool(FormatPdf),
@@ -109,7 +115,7 @@ public sealed class PlanFeatureForm
                 continue; // el formulario ya manda estos
             }
 
-            features[kv.Key] = kv.Value;
+            features[kv.Key.Trim().ToLowerInvariant()] = kv.Value;
         }
 
         return features;
@@ -176,7 +182,7 @@ public sealed class PlanFeatureForm
     {
         var planNorm = FromDictionary(plan).ToDictionary();
         var desiredNorm = FromDictionary(desiredEffective).ToDictionary();
-        var overrides = new Dictionary<string, string>(StringComparer.Ordinal);
+        var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 
         foreach (var kv in desiredNorm)
         {

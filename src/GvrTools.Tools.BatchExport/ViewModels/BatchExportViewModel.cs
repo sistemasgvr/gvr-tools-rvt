@@ -218,14 +218,13 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 (entitlements.CanUse(FeatureCodes.FormatPdf) && entitlements.CanUse(FeatureCodes.FormatDwg)))
                 list.Add(ChoiceItem.Of(FormatMode.PdfAndDwg, "PDF + DWG"));
 
-            if (list.Count == 0)
-                list.Add(ChoiceItem.Of(FormatMode.Pdf, "PDF"));
-
             return list;
         }
 
         private void EnsureSelectedFormatAllowed()
         {
+            if (FormatChoices.Count == 0)
+                return;
             if (FormatChoices.Any(c => Equals(c.Value, _selectedFormatMode))) return;
             _selectedFormatMode = FormatChoices[0].Value;
         }
@@ -452,6 +451,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public bool CanExport =>
             !IsExporting &&
+            FormatChoices.Count > 0 &&
             SelectedCount > 0 &&
             !string.IsNullOrWhiteSpace(OutputFolder) &&
             !(ShowPdfOptions && IsPdfPrinterMissing);
@@ -584,6 +584,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 return false;
             }
 
+            if (!IsFormatEntitled(_selectedFormatMode, entitlements))
+            {
+                error = "Tu plan no incluye el formato seleccionado. Revisa Cuenta / Licencia o elige otro formato.";
+                return false;
+            }
+
             int batchLimit = entitlements.Remaining(FeatureCodes.LimitSheetsPerBatch);
             // Remaining() sobre un feature no-quota: el valor del plan es el tope (no remanente).
             // Si no existe, Remaining devuelve 0 — tratar 0 sin feature como “sin tope” no aplica;
@@ -606,6 +612,22 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
 
             return true;
+        }
+
+        private static bool IsFormatEntitled(FormatMode mode, IEntitlementService entitlements)
+        {
+            switch (mode)
+            {
+                case FormatMode.Pdf:
+                    return entitlements.CanUse(FeatureCodes.FormatPdf);
+                case FormatMode.Dwg:
+                    return entitlements.CanUse(FeatureCodes.FormatDwg);
+                case FormatMode.PdfAndDwg:
+                    return entitlements.CanUse(FeatureCodes.FormatPdfDwg)
+                        || (entitlements.CanUse(FeatureCodes.FormatPdf) && entitlements.CanUse(FeatureCodes.FormatDwg));
+                default:
+                    return false;
+            }
         }
 
         private void LaunchFormat(ExportFormat format, List<SheetSnapshot> sheets)

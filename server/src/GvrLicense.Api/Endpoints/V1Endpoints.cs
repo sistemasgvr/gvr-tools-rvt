@@ -71,10 +71,10 @@ public static class V1Endpoints
             .Produces<UpdateCheckResponse>();
 
         v1.MapGet("/updates/download/{id:guid}", async (Guid id, LicenseEngine engine, CancellationToken ct) =>
-            {
-                var location = await engine.GetDownloadLocationAsync(id, ct);
-                return Results.Ok(new UpdateDownloadResponse { Location = location });
-            })
+                await RunAsync(async () => new UpdateDownloadResponse
+                {
+                    Location = await engine.GetDownloadLocationAsync(id, ct)
+                }))
             .AllowAnonymous()
             .WithSummary("Ubicación del artefacto de un release")
             .WithDescription("Devuelve una URL firmada temporal (MinIO) para descargar el artefacto.")

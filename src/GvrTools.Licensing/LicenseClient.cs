@@ -28,6 +28,7 @@ namespace GvrTools.Licensing
         private readonly EntitlementService _entitlements;
         private readonly IEntitlementSignatureVerifier _verifier;
         private readonly bool _ownsApi;
+        private readonly SemaphoreSlim _usageFlushGate = new SemaphoreSlim(1, 1);
 
         private string _accessToken;
         private readonly object _gate = new object();
@@ -221,43 +222,53 @@ namespace GvrTools.Licensing
 
         public async Task FlushUsageQueueAsync(CancellationToken ct)
         {
-            string token;
-            lock (_gate) token = _accessToken;
-            if (string.IsNullOrEmpty(token)) return;
-
-            var pending = _usageQueue.PeekAll();
-            if (pending.Count == 0) return;
-
-            var leftover = new List<UsageEventDto>();
-            for (var i = 0; i < pending.Count; i++)
+            await _usageFlushGate.WaitAsync(ct).ConfigureAwait(false);
+            try
             {
-                ct.ThrowIfCancellationRequested();
-                var item = pending[i];
-                try
-                {
-                    if (string.IsNullOrEmpty(item.DeviceFingerprint))
-                        item.DeviceFingerprint = _fingerprint.GetFingerprint();
+                string token;
+                lock (_gate) token = _accessToken;
+                if (string.IsNullOrEmpty(token)) return;
 
-                    var response = await _api.ReportUsageAsync(token, item, ct).ConfigureAwait(false);
-                    if (response?.Remaining != null)
-                        _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
-                }
-                catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
+                // Drena atómicamente: evita que un ReplaceAll concurrente borre eventos nuevos.
+                var pending = _usageQueue.TakeAll();
+                if (pending.Count == 0) return;
+
+                var leftover = new List<UsageEventDto>();
+                for (var i = 0; i < pending.Count; i++)
                 {
-                    MarkNeedsReactivation(ex.Message);
-                    ClearLocal();
-                    leftover.Clear();
-                    break;
+                    ct.ThrowIfCancellationRequested();
+                    var item = pending[i];
+                    try
+                    {
+                        if (string.IsNullOrEmpty(item.DeviceFingerprint))
+                            item.DeviceFingerprint = _fingerprint.GetFingerprint();
+
+                        var response = await _api.ReportUsageAsync(token, item, ct).ConfigureAwait(false);
+                        if (response?.Remaining != null)
+                            _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
+                    }
+                    catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
+                    {
+                        MarkNeedsReactivation(ex.Message);
+                        ClearLocal();
+                        leftover.Clear();
+                        break;
+                    }
+                    catch (Exception)
+                    {
+                        for (var j = i; j < pending.Count; j++)
+                            leftover.Add(pending[j]);
+                        break;
+                    }
                 }
-                catch (Exception)
-                {
-                    for (var j = i; j < pending.Count; j++)
-                        leftover.Add(pending[j]);
-                    break;
-                }
+
+                if (leftover.Count > 0)
+                    _usageQueue.PrependAll(leftover);
             }
-
-            _usageQueue.ReplaceAll(leftover);
+            finally
+            {
+                _usageFlushGate.Release();
+            }
         }
 
         /// <summary>
@@ -330,6 +341,7 @@ namespace GvrTools.Licensing
 
         public void Dispose()
         {
+            _usageFlushGate.Dispose();
             if (_ownsApi && _api is IDisposable disposable)
                 disposable.Dispose();
         }

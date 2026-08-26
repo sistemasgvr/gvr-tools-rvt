@@ -184,7 +184,7 @@ namespace GvrTools.Licensing.Entitlements
             if (_blob?.Features == null) return;
             foreach (var entry in _blob.Features)
             {
-                if (string.Equals(entry.Code, code, StringComparison.Ordinal))
+                if (string.Equals(entry.Code, code, StringComparison.OrdinalIgnoreCase))
                 {
                     entry.Value = value;
                     return;
@@ -194,7 +194,7 @@ namespace GvrTools.Licensing.Entitlements
 
         private static Dictionary<string, string> ToDictionary(EntitlementBlob blob)
         {
-            var map = new Dictionary<string, string>(StringComparer.Ordinal);
+            var map = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
             if (blob.Features == null) return map;
             foreach (var entry in blob.Features)
             {
