@@ -203,7 +203,7 @@ namespace GvrTools.Licensing
                 return;
 
             var reason = ReactivationReason
-                ?? "Este PC fue desvinculado o la licencia ya no es válida. Activa de nuevo con tu clave GVR-….";
+                ?? "Este PC fue desvinculado o la licencia ya no es válida. Activa de nuevo con tu clave de licencia.";
             var callback = _onSessionRevokedUi;
             if (callback == null)
                 return;

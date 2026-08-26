@@ -27,7 +27,7 @@
         </StackPanel>
 
         <StackPanel Grid.Row="1">
-            <TextBlock Text="Clave (GVR-…)" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
+            <TextBlock Text="Clave de licencia" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
             <TextBox Style="{StaticResource Gvr.TextBox}" Text="{Binding LicenseKey, UpdateSourceTrigger=PropertyChanged}"
                      Margin="0,0,0,12"/>
 

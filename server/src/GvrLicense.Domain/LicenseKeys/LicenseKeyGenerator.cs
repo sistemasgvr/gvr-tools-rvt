@@ -4,7 +4,7 @@ using System.Text;
 namespace GvrLicense.Domain.LicenseKeys;
 
 /// <summary>
-/// Genera y valida el formato GVR-XXXX-XXXX-XXXX (docs/LICENSING_PLAN.md, "Decisiones fijadas"):
+/// Genera y valida claves aleatorias XXXX-XXXX-XXXX:
 /// 10 símbolos de payload aleatorio + 2 símbolos de checksum (CRC-16/CCITT-FALSE), todo en Crockford
 /// Base32. El checksum deja rechazar un typo del cliente sin tocar la base de datos; no es
 /// criptográfico, solo detección de error.
@@ -24,11 +24,11 @@ public static class LicenseKeyGenerator
         var body = EncodeBase32(payload)[..PayloadLength];
         var checksum = ComputeChecksum(body);
 
-        return $"GVR-{body[..4]}-{body[4..8]}-{body[8..10]}{checksum}";
+        return $"{body[..4]}-{body[4..8]}-{body[8..10]}{checksum}";
     }
 
     /// <summary>
-    /// Normaliza lo que pega el usuario (espacios, minúsculas) a GVR-XXXX-XXXX-XXXX.
+    /// Normaliza lo que pega el usuario (espacios, minúsculas) a XXXX-XXXX-XXXX.
     /// </summary>
     public static string Normalize(string? key)
     {
@@ -43,6 +43,12 @@ public static class LicenseKeyGenerator
             normalized = normalized.Replace("--", "-", StringComparison.Ordinal);
         }
 
+        // Compat: claves antiguas con prefijo de marca.
+        if (normalized.StartsWith("GVR-", StringComparison.Ordinal))
+        {
+            normalized = normalized["GVR-".Length..];
+        }
+
         return normalized;
     }
 
@@ -54,13 +60,7 @@ public static class LicenseKeyGenerator
             return false;
         }
 
-        var compact = Normalize(key);
-        if (compact.StartsWith("GVR-", StringComparison.Ordinal))
-        {
-            compact = compact["GVR-".Length..];
-        }
-
-        compact = compact.Replace("-", string.Empty).Replace(" ", string.Empty);
+        var compact = Normalize(key).Replace("-", string.Empty).Replace(" ", string.Empty);
 
         if (compact.Length != PayloadLength + 2)
         {

@@ -74,7 +74,7 @@ namespace GvrTools.Licensing
 
         /// <summary>
         /// True tras 401/403 (sesión expirada, device kick, licencia suspendida).
-        /// El host debe pedir reactivación con la clave GVR-….
+        /// El host debe pedir reactivación con la clave de licencia.
         /// </summary>
         public bool NeedsReactivation { get; private set; }
 
@@ -350,7 +350,7 @@ namespace GvrTools.Licensing
         {
             NeedsReactivation = true;
             ReactivationReason = string.IsNullOrWhiteSpace(serverMessage)
-                ? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-…."
+                ? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia."
                 : serverMessage.Trim();
             try
             {

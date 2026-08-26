@@ -8,12 +8,11 @@ namespace GvrTools.Licensing.Config
 {
     /// <summary>
     /// Base URL del License API. Override en %APPDATA%\GVR\GvrTools\license-config.json
-    /// para apuntar a un servidor local sin redeploy. DefaultBaseUrl es solo un placeholder;
-    /// en desarrollo se requiere el override local (http://localhost:5299).
+    /// para apuntar a un servidor local sin redeploy (p. ej. http://localhost:5299).
     /// </summary>
     public static class LicenseApiSettings
     {
-        public const string DefaultBaseUrl = "https://license.tudominio.com";
+        public const string DefaultBaseUrl = "https://tools.proyectosgvr.com";
 
         public static string ResolveBaseUrl()
         {

@@ -295,10 +295,22 @@ begin
   Result := SaveStringToFile(AddinPath, Content, False);
 end;
 
+procedure WriteLicenseConfig;
+var
+  Dir, Path: string;
+begin
+  Dir := ExpandConstant('{userappdata}\GVR\GvrTools');
+  if not ForceDirectories(Dir) then
+    Exit;
+  Path := Dir + '\license-config.json';
+  SaveStringToFile(Path, '{"BaseUrl":"https://tools.proyectosgvr.com"}', False);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    WriteLicenseConfig;
     if WizardIsTaskSelected('revit2021') then WriteAddin(2021);
     if WizardIsTaskSelected('revit2022') then WriteAddin(2022);
     if WizardIsTaskSelected('revit2023') then WriteAddin(2023);

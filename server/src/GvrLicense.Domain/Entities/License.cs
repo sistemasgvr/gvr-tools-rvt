@@ -11,7 +11,7 @@ public sealed class License
 {
     public Guid Id { get; set; }
 
-    /// <summary>Formato GVR-XXXX-XXXX-XXXX (ver LICENSING_PLAN.md, "Decisiones fijadas" -- generación por Base32 Crockford + checksum).</summary>
+    /// <summary>Formato XXXX-XXXX-XXXX (Base32 Crockford aleatorio + checksum).</summary>
     public string Key { get; set; } = string.Empty;
 
     public Guid CustomerId { get; set; }

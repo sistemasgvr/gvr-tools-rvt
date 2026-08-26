@@ -78,7 +78,7 @@ namespace GvrTools.App
                     if (LicenseRuntime.NeedsReactivation)
                     {
                         var reason = LicenseRuntime.ReactivationReason
-                            ?? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-….";
+                            ?? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia.";
 
                         void ShowReactivate()
                         {

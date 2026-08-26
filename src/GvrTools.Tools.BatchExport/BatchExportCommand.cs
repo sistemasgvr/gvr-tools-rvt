@@ -54,7 +54,7 @@ namespace GvrTools.Tools.BatchExport
             {
                 var hwnd = commandData.Application.MainWindowHandle;
                 TaskDialog.Show(DialogTitle,
-                    "No hay una licencia válida para Exportar láminas. Activa tu clave GVR-… en Cuenta / Licencia.");
+                    "No hay una licencia válida para Exportar láminas. Activa tu clave en Cuenta / Licencia.");
                 RevitRestart.PendingDocumentPath = uiDocument.Document.PathName;
                 bool? accepted = LicenseUi.ShowActivate(LicenseRuntime.Client, hwnd);
                 if (!LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))

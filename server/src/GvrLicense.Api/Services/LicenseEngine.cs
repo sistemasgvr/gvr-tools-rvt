@@ -176,7 +176,7 @@ public sealed class LicenseEngine(
         if (device is null)
         {
             throw new LicenseApiException(401,
-                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave GVR-….");
+                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave de licencia.");
         }
 
         // Suspendida/vencida se corta aquí, no esperando a que se agote la gracia offline
@@ -205,7 +205,7 @@ public sealed class LicenseEngine(
         if (!deviceExists)
         {
             throw new LicenseApiException(401,
-                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave GVR-….");
+                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave de licencia.");
         }
 
         var receivedAtUtc = DateTimeOffset.UtcNow;

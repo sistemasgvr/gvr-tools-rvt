@@ -81,7 +81,7 @@ builder.Services
                 context.Response.ContentType = "application/problem+json";
 
                 var detail = context.AuthenticateFailure is SecurityTokenExpiredException
-                    ? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-…."
+                    ? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia."
                     : "Token inválido o ausente. Vuelve a activar la licencia.";
 
                 await context.Response.WriteAsJsonAsync(new

@@ -50,7 +50,7 @@ namespace GvrTools.Licensing.Activation
                 ? ("Plan: " + (_client.PlanCode ?? "—"))
                 : (!string.IsNullOrWhiteSpace(_client.ReactivationReason)
                     ? _client.ReactivationReason
-                    : "Activa una clave GVR-… para usar las herramientas.");
+                    : "Activa una clave de licencia para usar las herramientas.");
 
         public string GraceSummary
         {
