@@ -18,8 +18,9 @@ namespace GvrTools.Licensing.Http.Dto
         [DataMember(Name = "quantity")]
         public int Quantity { get; set; }
 
+        // DateTimeOffset ignora DateTimeFormat y sale como {"DateTime":..,"OffsetMinutes":..}; el server no lo parsea.
         [DataMember(Name = "occurredAtUtc")]
-        public DateTimeOffset OccurredAtUtc { get; set; }
+        public DateTime OccurredAtUtc { get; set; }
     }
 
     [DataContract]

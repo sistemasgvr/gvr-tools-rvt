@@ -175,7 +175,7 @@ namespace GvrTools.Licensing.Entitlements
                 EventId = Guid.NewGuid(),
                 FeatureCode = featureCode,
                 Quantity = quantity,
-                OccurredAtUtc = DateTimeOffset.UtcNow
+                OccurredAtUtc = DateTime.UtcNow
             });
         }
 
