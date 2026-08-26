@@ -28,15 +28,21 @@
                 <input asp-for="Input.Version" type="text" class="form-control"
                        pattern="^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$"
                        placeholder="1.0.0" maxlength="64" required />
-                <div class="form-text">Formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0 (se permite prefijo v y prerelease).</div>
+                <div class="form-text">Debe ser mayor que la última del mismo tipo (o dejar la versión actual). Formato MAJOR.MINOR.PATCH.</div>
             </div>
 
-            <div class="mb-3" style="max-width: 28rem">
+            <div class="mb-3" style="max-width: 36rem">
                 <label asp-for="Input.Kind" class="form-label">Tipo</label>
                 <select asp-for="Input.Kind" class="form-select">
-                    <option value="@ReleaseKinds.Installer">Instalador (.exe) — descarga inicial del cliente</option>
-                    <option value="@ReleaseKinds.Update">Update — lo ofrece el add-in en marcha</option>
+                    <option value="@ReleaseKinds.Installer">Instalador — web /download (clientes nuevos)</option>
+                    <option value="@ReleaseKinds.Update">Update — solo aviso dentro de Revit</option>
                 </select>
+                <div class="form-text">
+                    <strong>Recomendado:</strong> usa siempre <em>Instalador</em> cuando subas un Setup nuevo
+                    (<code>GvrTools-Setup-X.Y.Z.exe</code>. Así aparece en la landing y el add-in también puede detectarlo.
+                    <em>Update</em> es opcional (no sale en la web; solo popup en Revit).
+                    No es un release por año de Revit: un solo Setup cubre 2021–2027.
+                </div>
             </div>
 
             <div class="mb-3" style="max-width: 36rem">

@@ -97,12 +97,20 @@ public class EditModel(
                 .Where(r => r.Id != Id && r.Channel == "stable" && r.Kind == kind)
                 .Select(r => r.Version)
                 .ToListAsync();
-            if (existingVersions.Any(existing =>
-                    SemVersion.TryParse(existing, out var parsed) && parsed!.ToString() == version))
+            var highest = SemVersion.MaxOf(existingVersions);
+            var keepingSameVersion = string.Equals(version, release.Version, StringComparison.Ordinal);
+            if (!keepingSameVersion
+                && highest is not null
+                && SemVersion.TryParse(version, out var candidate)
+                && candidate is not null
+                && !candidate.IsGreaterThan(highest))
             {
-                FailProgress(progressId, "Ya existe un release estable con esa versión y tipo.");
-                ModelState.AddModelError("Input.Version", "Ya existe un release estable con esa versión y tipo.");
-                return InvalidEditPage("Ya existe un release estable con esa versión y tipo.");
+                var kindLabel = kind == ReleaseKinds.Update ? "Update" : "Instalador";
+                var message =
+                    $"La versión debe ser mayor que la última publicada para {kindLabel} ({highest}).";
+                FailProgress(progressId, message);
+                ModelState.AddModelError("Input.Version", message);
+                return InvalidEditPage(message);
             }
 
             if (ArtifactFile is { Length: > 0 })

@@ -65,7 +65,8 @@ Consola MinIO (solo admin): https://console-sistemas-gvr-minio.odjkys.easypanel.
 
 Tras publicar un release tipo **instalador** en `/Admin/Releases`:
 
-- Enlace estable: `https://<tu-dominio-license>/download`
+- Landing de descarga: `https://<tu-dominio-license>/download` (HTML con `_PublicLayout`)
+- Archivo `.exe` (redirect MinIO): `https://<tu-dominio-license>/download/file`
 - Redirige a una URL firmada temporal del `.exe` en MinIO (bucket privado).
 
 También: `ConnectionStrings__Postgres`, `Signing__PrivateKeyPem`.

@@ -44,10 +44,36 @@ namespace GvrTools.App
                 LicenseUi.RequestApplicationClose = RevitRestart.RequestCloseAndRestart;
                 var uiContext = SynchronizationContext.Current;
 
+                void ShowRevokedUi(string reason)
+                {
+                    try
+                    {
+                        TaskDialog.Show(
+                            "GVR Tools · Licencia",
+                            reason + "\n\nLas herramientas dejan de estar disponibles hasta que actives de nuevo.");
+                        LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Warn("No se pudo mostrar reactivación tras kick: " + ex.Message);
+                    }
+                }
+
                 // Heartbeat (renueva JWT) + sesión expirada / updates en background.
                 Task.Run(async () =>
                 {
                     await LicenseRuntime.WarmupAsync().ConfigureAwait(false);
+
+                    // Watch periódico DESPUÉS del warmup para no duplicar el diálogo de arranque.
+                    void StartWatch()
+                    {
+                        LicenseRuntime.StartSessionWatch(uiContext, ShowRevokedUi);
+                    }
+
+                    if (uiContext != null)
+                        uiContext.Post(_ => StartWatch(), null);
+                    else
+                        StartWatch();
 
                     if (LicenseRuntime.NeedsReactivation)
                     {
@@ -129,7 +155,11 @@ namespace GvrTools.App
             return Result.Succeeded;
         }
 
-        public Result OnShutdown(UIControlledApplication application) => Result.Succeeded;
+        public Result OnShutdown(UIControlledApplication application)
+        {
+            LicenseRuntime.StopSessionWatch();
+            return Result.Succeeded;
+        }
 
         private static List<IRevitTool> FilterByEntitlement(IReadOnlyList<IRevitTool> tools, ILog log)
         {

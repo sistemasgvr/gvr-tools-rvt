@@ -70,6 +70,26 @@ public sealed class SemVersion : IComparable<SemVersion>
 
     public bool IsGreaterThan(SemVersion other) => CompareTo(other) > 0;
 
+    /// <summary>Highest parseable SemVer in the list, or null if none.</summary>
+    public static SemVersion? MaxOf(IEnumerable<string?> versions)
+    {
+        SemVersion? max = null;
+        foreach (var value in versions)
+        {
+            if (!TryParse(value, out var parsed) || parsed is null)
+            {
+                continue;
+            }
+
+            if (max is null || parsed.IsGreaterThan(max))
+            {
+                max = parsed;
+            }
+        }
+
+        return max;
+    }
+
     public int CompareTo(SemVersion? other)
     {
         if (other is null)

@@ -79,10 +79,23 @@ namespace GvrTools.Licensing
 
         public string ReactivationReason { get; private set; }
 
+        /// <summary>Se dispara cuando el servidor invalida la sesión (kick, suspensión, etc.).</summary>
+        public event Action SessionInvalidated;
+
+        /// <summary>Se dispara al activar de nuevo o limpiar el flag de reactivación.</summary>
+        public event Action SessionRestored;
+
         public void ClearReactivationFlag()
         {
             NeedsReactivation = false;
             ReactivationReason = null;
+            try
+            {
+                SessionRestored?.Invoke();
+            }
+            catch
+            {
+            }
         }
 
         public void LoadFromDisk()
@@ -327,6 +340,14 @@ namespace GvrTools.Licensing
             ReactivationReason = string.IsNullOrWhiteSpace(serverMessage)
                 ? "Sesión de licencia expirada. Vuelve a activar con tu clave GVR-…."
                 : serverMessage.Trim();
+            try
+            {
+                SessionInvalidated?.Invoke();
+            }
+            catch
+            {
+                // El host no debe tumbar el cliente de licencia.
+            }
         }
 
         private void ApplyServerEntitlements(string accessToken, string entitlementJson, string signatureBase64)

@@ -145,7 +145,8 @@ public sealed class LicenseEngine(
         var device = license.Devices.FirstOrDefault(d => d.Id == deviceId && d.Fingerprint == request.DeviceFingerprint);
         if (device is null)
         {
-            throw new LicenseApiException(401, "Dispositivo no reconocido.");
+            throw new LicenseApiException(401,
+                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave GVR-….");
         }
 
         // Suspendida/vencida se corta aquí, no esperando a que se agote la gracia offline
@@ -173,7 +174,8 @@ public sealed class LicenseEngine(
             d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
         if (!deviceExists)
         {
-            throw new LicenseApiException(401, "Dispositivo no reconocido.");
+            throw new LicenseApiException(401,
+                "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave GVR-….");
         }
 
         var receivedAtUtc = DateTimeOffset.UtcNow;

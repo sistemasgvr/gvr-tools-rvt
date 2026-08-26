@@ -13,10 +13,17 @@
         @if (TempData["PublicUrl"] != null)
         {
             <div class="mt-2">
-                Enlace para el cliente:
+                Enlace para el cliente (landing):
                 <a href="@TempData["PublicUrl"]" class="alert-link" target="_blank" rel="noopener">@TempData["PublicUrl"]</a>
             </div>
         }
+        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
+    </div>
+}
+@if (TempData["FileNameMismatch"] != null)
+{
+    <div class="alert alert-warning alert-dismissible fade show" role="alert">
+        @TempData["FileNameMismatch"]
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>
 }
@@ -33,8 +40,11 @@
 <div class="card mb-3">
     <div class="card-body d-flex flex-wrap align-items-center justify-content-between gap-2">
         <div>
-            <div class="fw-semibold">Descarga inicial del cliente</div>
-            <div class="text-secondary small">Último release tipo <em>instalador</em>. Envía este enlace por WhatsApp/correo.</div>
+            <div class="fw-semibold">Enlace para el cliente</div>
+            <div class="text-secondary small">
+                Landing pública del <strong>último instalador</strong> (tipo Instalador).
+                Los releases tipo <em>Update</em> no aparecen ahí: solo los ofrece el add-in en Revit.
+            </div>
         </div>
         <div class="d-flex flex-wrap align-items-center gap-2">
             <code id="public-installer-url" class="user-select-all">@Model.PublicInstallerUrl</code>
@@ -42,6 +52,14 @@
             <a class="btn btn-primary btn-sm" href="@Model.PublicInstallerUrl" target="_blank" rel="noopener">Abrir</a>
         </div>
     </div>
+</div>
+
+<div class="alert alert-info" role="note">
+    <strong>Cómo registrar bien:</strong>
+    <ul class="mb-0 small">
+        <li><strong>Instalador</strong> — Setup nuevo para clientes (WhatsApp/correo → <code>/download</code>). Archivo tip. <code>GvrTools-Setup-1.0.0.exe</code> con la misma versión en el nombre.</li>
+        <li><strong>Update</strong> — Lo que el add-in detecta al abrir Revit. Versión mayor que la instalada (ej. <code>1.0.1</code>) y archivo renombrado acorde (<code>GvrTools-Setup-1.0.1.exe</code>), no reuses el nombre del 1.0.0.</li>
+    </ul>
 </div>
 
 <div class="card">
@@ -89,22 +107,28 @@
                     <div asp-validation-summary="All" class="text-danger mb-2"></div>
                     <div class="mb-3">
                         <label class="form-label">Versión</label>
-                        <input name="Input.Version" type="text" class="form-control"
+                        <input name="Input.Version" id="release-version" type="text" class="form-control"
                                pattern="^v?\d+\.\d+\.\d+(-[0-9A-Za-z.-]+)?$"
                                placeholder="1.0.0" maxlength="64" required />
-                        <div class="form-text">Formato MAJOR.MINOR.PATCH, por ejemplo 1.0.0 (se permite prefijo v y prerelease).</div>
+                        <div class="form-text">SemVer (ej. 1.0.1). Debe ser mayor que la última del mismo tipo y coincidir con el nombre del archivo cuando puedas.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Tipo</label>
                         <select name="Input.Kind" class="form-select">
-                            <option value="@ReleaseKinds.Installer" selected>Instalador (.exe) — descarga inicial del cliente</option>
-                            <option value="@ReleaseKinds.Update">Update — lo ofrece el add-in en marcha</option>
+                            <option value="@ReleaseKinds.Installer" selected>Instalador — enlace /download para clientes nuevos</option>
+                            <option value="@ReleaseKinds.Update">Update — aviso dentro del add-in (Revit ya instalado)</option>
                         </select>
+                        <div class="form-text">
+                            No marques Update si quieres que salga en la web pública: ahí solo cuenta el último Instalador.
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Archivo</label>
                         <input name="ArtifactFile" type="file" class="form-control" accept=".exe,.zip,.7z" required />
-                        <div class="form-text">Se sube al bucket privado <code>gvr-tools-releases</code> en MinIO.</div>
+                        <div class="form-text">
+                            Recomendado: <code id="suggested-filename">GvrTools-Setup-1.0.0.exe</code>
+                            (misma versión que el campo de arriba).
+                        </div>
                         <div id="upload-progress-container" class="progress mt-2 d-none" role="progressbar"
                              aria-label="Progreso de subida" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
                             <div id="upload-progress-bar" class="progress-bar progress-bar-striped progress-bar-animated" style="width: 0%">0%</div>
@@ -127,6 +151,12 @@
 </div>
 
 <script>
+  document.getElementById('release-version')?.addEventListener('input', (e) => {
+    const v = (e.target.value || '').trim().replace(/^v/i, '') || '1.0.0';
+    const hint = document.getElementById('suggested-filename');
+    if (hint) hint.textContent = `GvrTools-Setup-${v}.exe`;
+  });
+
   document.getElementById('copy-public-url')?.addEventListener('click', async () => {
     const text = document.getElementById('public-installer-url')?.textContent?.trim();
     if (!text) return;
@@ -264,7 +294,23 @@
 <script>
   document.addEventListener('DOMContentLoaded', () => {
     const data = @Html.Raw(JsonSerializer.Serialize(Model.Rows, new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase }));
-    const kindLabel = (k) => k === 'installer' ? 'Instalador' : (k === 'update' ? 'Update' : k);
+
+    const kindBadge = (cell) => {
+      const k = cell.getValue();
+      if (k === 'installer') return '<span class="badge text-bg-primary">Instalador</span>';
+      if (k === 'update') return '<span class="badge text-bg-secondary">Update</span>';
+      return k;
+    };
+
+    const versionCell = (cell) => {
+      const row = cell.getData();
+      let html = `<code>${cell.getValue()}</code>`;
+      if (row.fileNameMismatch) {
+        html += ' <span class="badge text-bg-warning" title="El nombre del archivo no coincide con esta versión">Nombre≠versión</span>';
+      }
+      return html;
+    };
+
     new Tabulator('#releases-table', {
       data: data,
       locale: 'es',
@@ -274,11 +320,12 @@
       pagination: true,
       paginationSize: 10,
       paginationCounter: 'rows',
+      initialSort: [],
       columns: [
         { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
-        { title: 'Versión', field: 'version', minWidth: 90, responsive: 0 },
-        { title: 'Tipo', field: 'kind', width: 110, formatter: (c) => kindLabel(c.getValue()), responsive: 0 },
-        { title: 'Archivo', field: 'fileName', minWidth: 140, responsive: 1 },
+        { title: 'Versión', field: 'version', minWidth: 120, formatter: versionCell, responsive: 0 },
+        { title: 'Tipo', field: 'kind', width: 120, formatter: kindBadge, responsive: 0 },
+        { title: 'Archivo', field: 'fileName', minWidth: 160, responsive: 1 },
         { title: 'Publicado', field: 'publishedAtUtc', width: 130, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
         { title: 'Clave MinIO', field: 'artifactLocation', minWidth: 180, responsive: 2 },
         { title: 'Notas', field: 'notes', minWidth: 140, responsive: 3 },

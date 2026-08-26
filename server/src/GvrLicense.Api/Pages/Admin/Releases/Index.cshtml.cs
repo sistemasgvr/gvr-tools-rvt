@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using System.Text.Json.Serialization;
 using GvrLicense.Domain.Entities;
 using GvrLicense.Domain.Versioning;
 using GvrLicense.Infrastructure;
@@ -34,18 +35,28 @@ public class IndexModel(
         MinioConfigured = artifacts.IsConfigured;
         PublicInstallerUrl = $"{Request.Scheme}://{Request.Host}/download";
 
-        Rows = await db.Releases
-            .OrderByDescending(r => r.PublishedAtUtc)
-            .Select(r => new ReleaseRow(
-                r.Id,
-                r.Version,
-                r.Channel,
-                r.Kind,
-                r.FileName,
-                r.ArtifactLocation,
-                r.Notes,
-                r.PublishedAtUtc))
-            .ToListAsync();
+        var raw = await db.Releases.ToListAsync();
+        Rows = raw
+            .Select(r =>
+            {
+                SemVersion.TryParse(r.Version, out var sem);
+                return new ReleaseRow(
+                    r.Id,
+                    r.Version,
+                    r.Channel,
+                    r.Kind,
+                    r.FileName,
+                    r.ArtifactLocation,
+                    r.Notes,
+                    r.PublishedAtUtc,
+                    FileNameVersionLooksMismatched(r.FileName, r.Version),
+                    KindSortOrder(r.Kind),
+                    sem);
+            })
+            .OrderBy(r => r.KindOrder) // instalador primero
+            .ThenByDescending(r => r.ParsedVersion)
+            .ThenByDescending(r => r.PublishedAtUtc)
+            .ToList();
     }
 
     public IActionResult OnGetUploadProgress(Guid progressId)
@@ -107,11 +118,17 @@ public class IndexModel(
                 .Where(r => r.Channel == "stable" && r.Kind == kind)
                 .Select(r => r.Version)
                 .ToListAsync();
-            if (existingVersions.Any(existing =>
-                    SemVersion.TryParse(existing, out var parsed) && parsed!.ToString() == version))
+            var highest = SemVersion.MaxOf(existingVersions);
+            if (highest is not null
+                && SemVersion.TryParse(version, out var candidate)
+                && candidate is not null
+                && !candidate.IsGreaterThan(highest))
             {
-                FailProgress(progressId, "Ya existe un release estable con esa versión y tipo.");
-                ModelState.AddModelError("Input.Version", "Ya existe un release estable con esa versión y tipo.");
+                var kindLabel = kind == ReleaseKinds.Update ? "Update" : "Instalador";
+                var message =
+                    $"La versión debe ser mayor que la última publicada para {kindLabel} ({highest}).";
+                FailProgress(progressId, message);
+                ModelState.AddModelError("Input.Version", message);
                 return await InvalidPageAsync();
             }
 
@@ -134,13 +151,22 @@ public class IndexModel(
                 HttpContext.RequestAborted,
                 CreateMinioProgress(progressId));
 
+            var fileName = Path.GetFileName(ArtifactFile.FileName);
+            if (FileNameVersionLooksMismatched(fileName, version))
+            {
+                TempData["FileNameMismatch"] =
+                    $"La versión del release es {version}, pero el archivo se llama «{fileName}». " +
+                    "Conviene renombrar el .exe (ej. GvrTools-Setup-1.0.1.exe) antes de subir, " +
+                    "para no confundir Instalador vs Update.";
+            }
+
             db.Releases.Add(new Release
             {
                 Id = Guid.NewGuid(),
                 Version = version,
                 Channel = "stable",
                 Kind = kind,
-                FileName = Path.GetFileName(ArtifactFile.FileName),
+                FileName = fileName,
                 ArtifactLocation = objectKey,
                 Checksum = checksum,
                 Notes = string.IsNullOrWhiteSpace(Input.Notes) ? null : Input.Notes.Trim(),
@@ -155,7 +181,8 @@ public class IndexModel(
             }
 
             TempData["Saved"] = true;
-            TempData["PublicUrl"] = $"{Request.Scheme}://{Request.Host}/download";
+            if (kind == ReleaseKinds.Installer)
+                TempData["PublicUrl"] = $"{Request.Scheme}://{Request.Host}/download";
             if (IsAjaxRequest())
             {
                 return new JsonResult(new { redirect = Url.Page("/Admin/Releases/Index") });
@@ -168,6 +195,32 @@ public class IndexModel(
             FailProgress(progressId, ex.Message);
             throw;
         }
+    }
+
+    private static int KindSortOrder(string kind) =>
+        string.Equals(kind, ReleaseKinds.Installer, StringComparison.OrdinalIgnoreCase) ? 0 : 1;
+
+    /// <summary>
+    /// True si el nombre del archivo contiene un X.Y.Z distinto al campo Versión
+    /// (ej. version=1.0.1 pero archivo GvrTools-Setup-1.0.0.exe).
+    /// </summary>
+    internal static bool FileNameVersionLooksMismatched(string? fileName, string version)
+    {
+        if (string.IsNullOrWhiteSpace(fileName) || string.IsNullOrWhiteSpace(version))
+            return false;
+
+        var match = System.Text.RegularExpressions.Regex.Match(
+            fileName,
+            @"(\d+\.\d+\.\d+)",
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+        if (!match.Success)
+            return false;
+
+        if (!SemVersion.TryParse(match.Groups[1].Value, out var inName) ||
+            !SemVersion.TryParse(version, out var declared))
+            return false;
+
+        return inName!.ToString() != declared!.ToString();
     }
 
     private IProgress<(long Transferred, long Total)>? CreateMinioProgress(Guid? progressId)
@@ -232,7 +285,10 @@ public class IndexModel(
         string? FileName,
         string ArtifactLocation,
         string? Notes,
-        DateTimeOffset PublishedAtUtc);
+        DateTimeOffset PublishedAtUtc,
+        bool FileNameMismatch,
+        [property: JsonIgnore] int KindOrder,
+        [property: JsonIgnore] SemVersion? ParsedVersion);
 
     public sealed class ReleaseInput
     {

@@ -181,8 +181,8 @@ app.MapGet("/health", async (LicenseDbContext db) =>
     .AllowAnonymous()
     .ExcludeFromDescription();
 
-// Enlace estable para el cliente: redirige a URL firmada MinIO del último instalador.
-app.MapGet("/download", async (LicenseEngine engine, CancellationToken ct) =>
+// Descarga real del .exe (redirect MinIO). La landing HTML vive en Pages/Download.cshtml (/download).
+app.MapGet("/download/file", async (LicenseEngine engine, CancellationToken ct) =>
     {
         try
         {
@@ -195,8 +195,8 @@ app.MapGet("/download", async (LicenseEngine engine, CancellationToken ct) =>
         }
     })
     .WithTags("downloads")
-    .WithSummary("Descarga el instalador más reciente")
-    .WithDescription("Público. Redirige a una URL firmada temporal del bucket MinIO gvr-tools-releases (último release kind=installer).")
+    .WithSummary("Descarga el instalador más reciente (archivo)")
+    .WithDescription("Público. Redirige a una URL firmada temporal del bucket MinIO gvr-tools-releases (último release kind=installer). La landing está en GET /download.")
     .AllowAnonymous();
 
 app.MapV1Endpoints();

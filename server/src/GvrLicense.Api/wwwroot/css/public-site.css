@@ -1,0 +1,62 @@
+/* Landing pública (/) -- separado de admin-site.css a propósito: comparten Bootstrap/AdminLTE
+   pero esta hoja es solo para las páginas fuera de /Admin. */
+
+.public-header {
+  border-bottom: 1px solid var(--bs-border-color);
+  background: var(--bs-body-bg);
+}
+
+.public-brand {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--bs-body-color);
+}
+
+.public-hero {
+  padding: 4rem 0 3rem;
+  text-align: center;
+}
+
+.public-hero h1 {
+  font-weight: 800;
+  font-size: clamp(2rem, 5vw, 3rem);
+}
+
+.public-hero p.lead {
+  max-width: 42rem;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.public-step {
+  display: flex;
+  gap: 1rem;
+  align-items: flex-start;
+}
+
+.public-step-number {
+  flex: none;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 50%;
+  background: var(--bs-primary);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.public-notes {
+  max-width: 36rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid var(--bs-border-color);
+  border-radius: 0.5rem;
+  background: var(--bs-body-bg);
+  text-align: left;
+}
+
+.public-footer {
+  border-top: 1px solid var(--bs-border-color);
+  margin-top: 3rem;
+}

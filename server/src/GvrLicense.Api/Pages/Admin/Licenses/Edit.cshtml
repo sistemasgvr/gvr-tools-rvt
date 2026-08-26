@@ -14,7 +14,8 @@
 @if (TempData["Kicked"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        Dispositivo liberado. Ese PC deberá activar de nuevo la clave si quiere seguir usando el add-in.
+        Dispositivo liberado. En ese PC el add-in lo detectará en como máximo ~2 minutos
+        (o al usar una herramienta) y pedirá activar de nuevo.
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>
 }
@@ -112,7 +113,8 @@
                 }
             </div>
             <div class="card-footer text-body-secondary small">
-                “Liberar” quita el puesto para que otro PC pueda activar (kick seat).
+                “Liberar” quita el puesto. El add-in en ese PC pierde la licencia en el próximo
+                heartbeat (~2 min) o al intentar exportar.
             </div>
         </div>
     </div>

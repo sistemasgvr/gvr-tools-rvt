@@ -11,9 +11,19 @@ namespace GvrTools.Licensing
     /// </summary>
     public static class LicenseRuntime
     {
+        /// <summary>
+        /// Cada cuánto se consulta al servidor mientras Revit está abierto.
+        /// Un kick/liberar en admin se refleja como máximo en este intervalo (no es push).
+        /// </summary>
+        public static readonly TimeSpan SessionPollInterval = TimeSpan.FromMinutes(2);
+
         private static readonly object Gate = new object();
         private static LicenseClient _client;
         private static int _initialized;
+        private static Timer _sessionWatchTimer;
+        private static SynchronizationContext _uiContext;
+        private static int _reactivationPromptShown;
+        private static Action<string> _onSessionRevokedUi;
 
         public static LicenseClient Client
         {
@@ -42,6 +52,51 @@ namespace GvrTools.Licensing
                 if (_client != null) return;
                 _client = new LicenseClient();
             }
+        }
+
+        /// <summary>
+        /// Heartbeat periódico: detecta kick/suspensión sin reiniciar Revit.
+        /// <paramref name="onSessionRevokedUi"/> se llama en el hilo UI como máximo una vez
+        /// hasta que el usuario reactive.
+        /// </summary>
+        public static void StartSessionWatch(
+            SynchronizationContext uiContext,
+            Action<string> onSessionRevokedUi)
+        {
+            EnsureInitialized();
+            _uiContext = uiContext;
+            _onSessionRevokedUi = onSessionRevokedUi;
+
+            _client.SessionInvalidated -= OnSessionInvalidated;
+            _client.SessionInvalidated += OnSessionInvalidated;
+            _client.SessionRestored -= OnSessionRestored;
+            _client.SessionRestored += OnSessionRestored;
+
+            if (_sessionWatchTimer != null)
+                return;
+
+            // Primer tick tras el intervalo (WarmupAsync ya corre al arranque).
+            _sessionWatchTimer = new Timer(
+                _ => _ = PollSessionSafeAsync(),
+                null,
+                SessionPollInterval,
+                SessionPollInterval);
+        }
+
+        public static void StopSessionWatch()
+        {
+            var timer = Interlocked.Exchange(ref _sessionWatchTimer, null);
+            timer?.Dispose();
+
+            if (_client != null)
+            {
+                _client.SessionInvalidated -= OnSessionInvalidated;
+                _client.SessionRestored -= OnSessionRestored;
+            }
+
+            _onSessionRevokedUi = null;
+            _uiContext = null;
+            Interlocked.Exchange(ref _reactivationPromptShown, 0);
         }
 
         /// <summary>
@@ -103,12 +158,69 @@ namespace GvrTools.Licensing
         /// <summary>Solo tests / reinicio controlado.</summary>
         public static void ResetForTests()
         {
+            StopSessionWatch();
             lock (Gate)
             {
                 _client?.Dispose();
                 _client = null;
                 Interlocked.Exchange(ref _initialized, 0);
             }
+        }
+
+        private static async Task PollSessionSafeAsync()
+        {
+            try
+            {
+                if (_client == null || _client.NeedsReactivation)
+                    return;
+
+                using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5)))
+                {
+                    await _client.TryHeartbeatAsync(cts.Token).ConfigureAwait(false);
+                }
+            }
+            catch (Http.LicenseApiClientException)
+            {
+                // SessionInvalidated ya se disparó desde MarkNeedsReactivation.
+            }
+            catch (Exception)
+            {
+                // Red / timeout: no molestar; se reintenta en el próximo intervalo.
+            }
+        }
+
+        private static void OnSessionRestored()
+        {
+            Interlocked.Exchange(ref _reactivationPromptShown, 0);
+        }
+
+        private static void OnSessionInvalidated()
+        {
+            if (Interlocked.Exchange(ref _reactivationPromptShown, 1) != 0)
+                return;
+
+            var reason = ReactivationReason
+                ?? "Este PC fue desvinculado o la licencia ya no es válida. Activa de nuevo con tu clave GVR-….";
+            var callback = _onSessionRevokedUi;
+            if (callback == null)
+                return;
+
+            void Show()
+            {
+                try
+                {
+                    callback(reason);
+                }
+                catch
+                {
+                    // ignore UI failures
+                }
+            }
+
+            if (_uiContext != null)
+                _uiContext.Post(_ => Show(), null);
+            else
+                Show();
         }
     }
 }
