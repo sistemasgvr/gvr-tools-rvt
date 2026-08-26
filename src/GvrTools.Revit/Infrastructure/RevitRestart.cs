@@ -6,6 +6,7 @@ using System.Text;
 using System.Windows.Threading;
 using Autodesk.Revit.UI;
 using Autodesk.Revit.UI.Events;
+using GvrTools.Core.Diagnostics;
 
 namespace GvrTools.Revit.Infrastructure
 {
@@ -38,27 +39,52 @@ namespace GvrTools.Revit.Infrastructure
         /// <summary>
         /// Programa el relanzado y pide el cierre cuando Revit esté idle
         /// (después de que todos los ShowDialog / MessageBox / ExternalCommand hayan terminado).
+        ///
+        /// Se llama siempre en diferido (Dispatcher.BeginInvoke desde LicenseUi), fuera de la pila
+        /// del comando/diálogo que originó la activación -- ningún try/catch de más arriba puede
+        /// atraparla ya. Sin este try/catch propio, un fallo de E/S al escribir el script de
+        /// reinicio, o al lanzar powershell.exe, tumbaría Revit entero en vez de solo avisar que
+        /// el reinicio automático no se pudo hacer.
         /// </summary>
         public static void RequestCloseAndRestart()
         {
-            string revitExe = ResolveRevitExecutable();
-            string documentPath = PendingDocumentPath;
-            PendingDocumentPath = null;
-
-            if (!string.IsNullOrEmpty(revitExe))
+            try
             {
-                ScheduleRestart(revitExe, documentPath);
-            }
-            else
-            {
-                TaskDialog.Show(
-                    "GVR Tools · Reiniciar Revit",
-                    "La licencia se activó, pero no se pudo localizar Revit.exe para reabrirlo automáticamente "
-                    + "(instalación fuera de la ruta habitual).\n\n"
-                    + "Revit se cerrará. Ábrelo de nuevo manualmente desde el acceso que uses en este PC.");
-            }
+                string revitExe = ResolveRevitExecutable();
+                string documentPath = PendingDocumentPath;
+                PendingDocumentPath = null;
 
-            ScheduleExit();
+                if (!string.IsNullOrEmpty(revitExe))
+                {
+                    ScheduleRestart(revitExe, documentPath);
+                }
+                else
+                {
+                    TaskDialog.Show(
+                        "GVR Tools · Reiniciar Revit",
+                        "La licencia se activó, pero no se pudo localizar Revit.exe para reabrirlo automáticamente "
+                        + "(instalación fuera de la ruta habitual).\n\n"
+                        + "Revit se cerrará. Ábrelo de nuevo manualmente desde el acceso que uses en este PC.");
+                }
+
+                ScheduleExit();
+            }
+            catch (Exception ex)
+            {
+                LogFailure("No se pudo programar el reinicio de Revit tras activar la licencia.", ex);
+            }
+        }
+
+        private static void LogFailure(string message, Exception ex)
+        {
+            try
+            {
+                new RollingFileLog("App").Error(message, ex);
+            }
+            catch
+            {
+                // el logging nunca debe ser la razón de un segundo fallo.
+            }
         }
 
         private static void ScheduleExit()
@@ -83,17 +109,30 @@ namespace GvrTools.Revit.Infrastructure
             dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(PostCloseToMainWindow));
         }
 
+        /// <summary>
+        /// Manejador del evento Idling de Revit: si algo de aquí lanza sin atrapar, Revit no lo
+        /// absorbe como haría con un IExternalCommand.Execute -- una excepción sin manejar dentro
+        /// de un handler de un evento de la API es justo el tipo de cosa que produce el "error
+        /// irrecuperable" de Revit, así que este método nunca debe dejar escapar una excepción.
+        /// </summary>
         private static void OnIdlingExitOnce(object sender, IdlingEventArgs e)
         {
-            if (_controlledApp != null)
-                _controlledApp.Idling -= OnIdlingExitOnce;
-            _exitSubscribed = false;
+            try
+            {
+                if (_controlledApp != null)
+                    _controlledApp.Idling -= OnIdlingExitOnce;
+                _exitSubscribed = false;
 
-            var uiApp = sender as UIApplication;
-            if (TryPostExitRevit(uiApp))
-                return;
+                var uiApp = sender as UIApplication;
+                if (TryPostExitRevit(uiApp))
+                    return;
 
-            PostCloseToMainWindow();
+                PostCloseToMainWindow();
+            }
+            catch (Exception ex)
+            {
+                LogFailure("El cierre programado de Revit falló dentro del evento Idling.", ex);
+            }
         }
 
         private static bool TryPostExitRevit(UIApplication uiApp)
@@ -118,11 +157,18 @@ namespace GvrTools.Revit.Infrastructure
 
         private static void PostCloseToMainWindow()
         {
-            IntPtr handle = Process.GetCurrentProcess().MainWindowHandle;
-            if (handle == IntPtr.Zero)
-                return;
+            try
+            {
+                IntPtr handle = Process.GetCurrentProcess().MainWindowHandle;
+                if (handle == IntPtr.Zero)
+                    return;
 
-            PostMessage(handle, WmClose, IntPtr.Zero, IntPtr.Zero);
+                PostMessage(handle, WmClose, IntPtr.Zero, IntPtr.Zero);
+            }
+            catch (Exception ex)
+            {
+                LogFailure("No se pudo cerrar la ventana principal de Revit.", ex);
+            }
         }
 
         private static string ResolveRevitExecutable()

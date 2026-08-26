@@ -2,6 +2,7 @@ using System;
 using System.Windows;
 using System.Windows.Interop;
 using System.Windows.Threading;
+using GvrTools.Core.Diagnostics;
 using GvrTools.Licensing.Http.Dto;
 
 namespace GvrTools.Licensing.Activation
@@ -63,13 +64,40 @@ namespace GvrTools.Licensing.Activation
             var dispatcher = Dispatcher.CurrentDispatcher;
             if (dispatcher == null || dispatcher.HasShutdownStarted)
             {
-                RequestApplicationClose?.Invoke();
+                InvokeRequestApplicationClose();
                 return;
             }
 
             dispatcher.BeginInvoke(
                 DispatcherPriority.ApplicationIdle,
-                new Action(() => RequestApplicationClose?.Invoke()));
+                new Action(InvokeRequestApplicationClose));
+        }
+
+        /// <summary>
+        /// Este delegado corre diferido -- vía Dispatcher.BeginInvoke o, más adelante, el evento
+        /// Idling de Revit -- fuera de la pila del comando que lo originó. No hay ningún
+        /// AppDomain/Dispatcher.UnhandledException registrado en todo el add-in, así que si algo
+        /// dentro (resolver Revit.exe, escribir el script de reinicio, lanzar el proceso) lanzara
+        /// sin atrapar, no hay nada que lo detenga: una excepción no controlada aquí tumba Revit
+        /// entero con "error irrecuperable" en vez de solo fallar el reinicio.
+        /// </summary>
+        private static void InvokeRequestApplicationClose()
+        {
+            try
+            {
+                RequestApplicationClose?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    new RollingFileLog("App").Error("No se pudo reiniciar Revit tras activar la licencia.", ex);
+                }
+                catch
+                {
+                    // el logging nunca debe ser la razón de un segundo fallo.
+                }
+            }
         }
 
         /// <summary>
