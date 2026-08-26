@@ -22,6 +22,7 @@ WORKDIR /app
 COPY --from=build /app .
 
 ENV ASPNETCORE_URLS=http://+:8080
+ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 EXPOSE 8080
 
 ENTRYPOINT ["dotnet", "GvrLicense.Api.dll"]

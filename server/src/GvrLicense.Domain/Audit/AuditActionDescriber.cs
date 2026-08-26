@@ -1,4 +1,5 @@
 using System.Text.Json;
+using GvrLicense.Domain.Entities;
 
 namespace GvrLicense.Domain.Audit;
 
@@ -46,14 +47,31 @@ public static class AuditActionDescriber
         {
             using var doc = JsonDocument.Parse(detailsJson);
             var root = doc.RootElement;
-            var from = root.TryGetProperty("from", out var fromEl) ? fromEl.GetString() : null;
-            var to = root.TryGetProperty("to", out var toEl) ? toEl.GetString() : null;
+            var from = ParseStatus(root, "from");
+            var to = ParseStatus(root, "to");
             return (from, to);
         }
-        catch (JsonException)
+        catch (Exception)
         {
             return (null, null);
         }
+    }
+
+    // El trigger de Postgres escribe old.status/new.status como número, no como string.
+    private static string? ParseStatus(JsonElement root, string propertyName)
+    {
+        if (!root.TryGetProperty(propertyName, out var element))
+        {
+            return null;
+        }
+
+        return element.ValueKind switch
+        {
+            JsonValueKind.String => element.GetString(),
+            JsonValueKind.Number when element.TryGetInt32(out var raw) && Enum.IsDefined(typeof(LicenseStatus), raw)
+                => ((LicenseStatus)raw).ToString(),
+            _ => null
+        };
     }
 
     private static string StatusLabel(string status) => status switch

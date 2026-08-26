@@ -225,7 +225,7 @@
                 <h3 class="card-title mb-0">Próximas a vencer</h3>
                 @if (Model.ExpiringSoonCount > 0)
                 {
-                    <span class="badge text-bg-danger">@Model.ExpiringSoonCount en 30 días</span>
+                    <span class="badge text-bg-danger">@(Model.ExpiringSoonCount) en 30 días</span>
                 }
             </div>
             <div class="card-body p-0 table-responsive">
@@ -250,7 +250,7 @@
                             <td><a href="/Admin/Licenses/Edit?id=@row.Id"><code>@row.Key</code></a></td>
                             <td>@row.CustomerName</td>
                             <td>@row.ValidUntil.ToString("dd/MM/yyyy")</td>
-                            <td class="text-end"><span class="badge @daysBadge">@row.DaysUntil d</span></td>
+                            <td class="text-end"><span class="badge @daysBadge">@(row.DaysUntil) d</span></td>
                         </tr>
                     }
                     </tbody>

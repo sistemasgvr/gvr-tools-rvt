@@ -1,5 +1,6 @@
 using GvrLicense.Domain.Audit;
 using GvrLicense.Domain.Entities;
+using GvrLicense.Domain.Formatting;
 using GvrLicense.Domain.LicenseKeys;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -78,26 +79,43 @@ public class IndexModel(LicenseDbContext db) : PageModel
 
         SheetsThisMonth = await db.UsageCounters
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature)
-            .SumAsync(u => u.Consumed);
+            .Select(u => (int?)u.Consumed)
+            .SumAsync() ?? 0;
 
-        TopUsageRows = (await db.UsageCounters
+        var topCounters = await db.UsageCounters
             .AsNoTracking()
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature && u.Consumed > 0)
             .OrderByDescending(u => u.Consumed)
             .Take(5)
-            .Join(
-                db.Licenses.Include(l => l.Customer),
-                counter => counter.LicenseId,
-                license => license.Id,
-                (counter, license) => new UsageRankRow(
-                    license.Id,
-                    license.Key,
-                    license.Customer!.CompanyName,
-                    counter.Consumed,
-                    counter.QuotaLimit))
-            .ToListAsync())
-            .Select(r => r with { Key = LicenseKeyGenerator.FormatForDisplay(r.Key) })
-            .ToList();
+            .ToListAsync();
+
+        if (topCounters.Count == 0)
+        {
+            TopUsageRows = [];
+        }
+        else
+        {
+            var licenseIds = topCounters.Select(c => c.LicenseId).ToList();
+            var licensesById = await db.Licenses
+                .AsNoTracking()
+                .Include(l => l.Customer)
+                .Where(l => licenseIds.Contains(l.Id))
+                .ToDictionaryAsync(l => l.Id);
+
+            TopUsageRows = topCounters
+                .Where(c => licensesById.ContainsKey(c.LicenseId))
+                .Select(c =>
+                {
+                    var license = licensesById[c.LicenseId];
+                    return new UsageRankRow(
+                        license.Id,
+                        LicenseKeyGenerator.FormatForDisplay(license.Key),
+                        license.Customer!.CompanyName,
+                        c.Consumed,
+                        c.QuotaLimit);
+                })
+                .ToList();
+        }
 
         var usageEvents = await db.UsageEvents
             .AsNoTracking()
@@ -133,7 +151,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
             .ToListAsync();
 
         MonthlyChartLabels = monthlyPeriods
-            .Select(p => p.ToString("MMM yyyy", System.Globalization.CultureInfo.GetCultureInfo("es-ES")))
+            .Select(ChartLabels.FormatMonthYear)
             .ToList();
         MonthlyChartValues = monthlyPeriods
             .Select(p => monthlyTotals.FirstOrDefault(t => t.Period == p)?.Total ?? 0)
