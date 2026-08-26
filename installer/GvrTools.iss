@@ -75,15 +75,33 @@ begin
   Result := FileExists(ExpandConstant('{pf}\Autodesk\Revit ' + IntToStr(Year) + '\Revit.exe'));
 end;
 
+function IsPdf24BinaryPresent: Boolean;
+begin
+  { Ejecutables reales del producto. Una carpeta PDF24 vacía o restos de desinstalación no cuentan. }
+  Result :=
+    FileExists(ExpandConstant('{pf}\PDF24\pdf24.exe')) or
+    FileExists(ExpandConstant('{pf}\PDF24\pdf24-DocTool.exe')) or
+    FileExists(ExpandConstant('{pf}\PDF24\pdf24-Creator.exe')) or
+    FileExists(ExpandConstant('{pf32}\PDF24\pdf24.exe')) or
+    FileExists(ExpandConstant('{pf32}\PDF24\pdf24-DocTool.exe')) or
+    FileExists(ExpandConstant('{pf32}\PDF24\pdf24-Creator.exe'));
+end;
+
+function IsPdf24PrinterPresent: Boolean;
+begin
+  { Impresora del producto PDF24 Creator.
+    No basta con el driver "PDF24": otras apps (p. ej. ProSheets) lo reutilizan. }
+  Result :=
+    RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Control\Print\Printers\PDF24') or
+    RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Control\Print\Printers\PDF24 Creator') or
+    RegKeyExists(HKLM, 'SYSTEM\CurrentControlSet\Control\Print\Printers\PDF24 Toolbox');
+end;
+
 function IsPdf24Installed: Boolean;
 begin
-  Result :=
-    RegKeyExists(HKLM, 'SOFTWARE\PDF24') or
-    RegKeyExists(HKLM, 'SOFTWARE\WOW6432Node\PDF24') or
-    FileExists(ExpandConstant('{pf}\PDF24\pdf24-DocTool.exe')) or
-    FileExists(ExpandConstant('{pf32}\PDF24\pdf24-DocTool.exe')) or
-    DirExists(ExpandConstant('{pf}\PDF24')) or
-    DirExists(ExpandConstant('{pf32}\PDF24'));
+  { Antes se miraba solo HKLM\SOFTWARE\PDF24 o DirExists — eso queda como basura tras
+    desinstalar y marcaba "Ya instalado" sin tener el programa usable para Revit. }
+  Result := IsPdf24BinaryPresent and IsPdf24PrinterPresent;
 end;
 
 function IsSpanish: Boolean;
@@ -222,8 +240,10 @@ end;
 
 function ShouldInstallPdf24: Boolean;
 begin
+  { Reevaluar al instalar (no solo al abrir el wizard): evita saltarse el setup si el
+    estado cambió, o si basura de registro engañó una detección antigua. }
   Result :=
-    (not Pdf24InstalledAtStart) and
+    (not IsPdf24Installed) and
     (WizardIsTaskSelected('revit2021') or InstallPdf24Check.Checked);
 end;
 

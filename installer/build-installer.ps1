@@ -13,7 +13,17 @@ $ErrorActionPreference = "Stop"
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $project = Join-Path $repoRoot "src\GvrTools.App\GvrTools.App.csproj"
 $iss = Join-Path $PSScriptRoot "GvrTools.iss"
+$pdf24 = Join-Path $PSScriptRoot "prereqs\pdf24-creator-installer.exe"
 $versions = @(2021, 2022, 2023, 2024, 2025, 2026, 2027)
+
+# PDF24 no está en git (~420 MB). Si falta, se descarga del sitio oficial.
+if (-not (Test-Path $pdf24)) {
+    Write-Host "Falta PDF24 en prereqs/. Descargando desde pdf24.org ..." -ForegroundColor Yellow
+    & (Join-Path $PSScriptRoot "download-pdf24.ps1")
+    if ($LASTEXITCODE -ne 0 -or -not (Test-Path $pdf24)) {
+        throw "No se pudo obtener pdf24-creator-installer.exe. Ejecuta: .\installer\download-pdf24.ps1"
+    }
+}
 
 if (-not $SkipBuild) {
     foreach ($version in $versions) {
