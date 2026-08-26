@@ -1,5 +1,6 @@
 using System;
 using System.Windows.Input;
+using GvrTools.Core.Diagnostics;
 
 namespace GvrTools.UI.Mvvm
 {
@@ -31,8 +32,38 @@ namespace GvrTools.UI.Mvvm
 
         public bool CanExecute(object parameter) => _canExecute == null || _canExecute(parameter);
 
-        public void Execute(object parameter) => _execute(parameter);
+        /// <summary>
+        /// Every button/menu item in every GVR Tools window goes through here. WPF invokes
+        /// ICommand.Execute from its own dispatcher loop, and this add-in has no
+        /// Dispatcher.UnhandledException handler anywhere (by design -- see RevitRestart.cs) -- so
+        /// an exception that escaped this call would not just fail one command, it would crash the
+        /// whole Revit process with an "unrecoverable error". Every command gets this net once,
+        /// here, instead of relying on each view model to remember to add its own try/catch.
+        /// </summary>
+        public void Execute(object parameter)
+        {
+            try
+            {
+                _execute(parameter);
+            }
+            catch (Exception ex)
+            {
+                LogFailure(ex);
+            }
+        }
 
         public void RaiseCanExecuteChanged() => CanExecuteChanged?.Invoke(this, EventArgs.Empty);
+
+        private static void LogFailure(Exception ex)
+        {
+            try
+            {
+                new RollingFileLog("App").Error("Un comando falló sin manejar.", ex);
+            }
+            catch
+            {
+                // el logging nunca debe ser la razón de un segundo fallo.
+            }
+        }
     }
 }

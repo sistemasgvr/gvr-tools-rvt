@@ -15,8 +15,8 @@ public static class V1Endpoints
     {
         var v1 = app.MapGroup("/v1").WithTags("v1 (add-in)");
 
-        v1.MapPost("/activate", async (ActivateRequest request, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(() => engine.ActivateAsync(request, ct)))
+        v1.MapPost("/activate", async (ActivateRequest request, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "activate", () => engine.ActivateAsync(request, ct)))
             .AllowAnonymous()
             .WithSummary("Activa una license key en este dispositivo")
             .WithDescription("Valida la key, crea/renueva el seat (node-locked por fingerprint) y devuelve el blob de entitlements firmado + un JWT (AccessToken) para heartbeat/usage.")
@@ -25,8 +25,8 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        v1.MapPost("/heartbeat", async (HeartbeatRequest request, ClaimsPrincipal user, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(() =>
+        v1.MapPost("/heartbeat", async (HeartbeatRequest request, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "heartbeat", () =>
                 {
                     var (licenseId, deviceId) = RequireClaims(user);
                     return engine.HeartbeatAsync(licenseId, deviceId, request, ct);
@@ -39,8 +39,8 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        v1.MapPost("/usage", async (UsageEventRequest request, ClaimsPrincipal user, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(() =>
+        v1.MapPost("/usage", async (UsageEventRequest request, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "usage", () =>
                 {
                     var (licenseId, deviceId) = RequireClaims(user);
                     return engine.ReportUsageAsync(licenseId, deviceId, request, ct);
@@ -51,8 +51,8 @@ public static class V1Endpoints
             .Produces<UsageEventResponse>()
             .ProducesProblem(StatusCodes.Status401Unauthorized);
 
-        v1.MapPost("/deactivate", async (DeactivateRequest request, ClaimsPrincipal user, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(() =>
+        v1.MapPost("/deactivate", async (DeactivateRequest request, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "deactivate", () =>
                 {
                     var (licenseId, deviceId) = RequireClaims(user);
                     return engine.DeactivateAsync(licenseId, deviceId, request, ct);
@@ -64,14 +64,14 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status401Unauthorized)
             .ProducesProblem(StatusCodes.Status404NotFound);
 
-        v1.MapGet("/updates/check", async (string? version, string? revit, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(() => engine.CheckUpdateAsync(version, revit, ct)))
+        v1.MapGet("/updates/check", async (string? version, string? revit, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "updates/check", () => engine.CheckUpdateAsync(version, revit, ct)))
             .AllowAnonymous()
             .WithSummary("Consulta si hay una versión más nueva en el canal stable")
             .Produces<UpdateCheckResponse>();
 
-        v1.MapGet("/updates/download/{id:guid}", async (Guid id, LicenseEngine engine, CancellationToken ct) =>
-                await RunAsync(async () => new UpdateDownloadResponse
+        v1.MapGet("/updates/download/{id:guid}", async (Guid id, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "updates/download", async () => new UpdateDownloadResponse
                 {
                     Location = await engine.GetDownloadLocationAsync(id, ct)
                 }))
@@ -102,7 +102,16 @@ public static class V1Endpoints
         return (lid, did);
     }
 
-    private static async Task<IResult> RunAsync<T>(Func<Task<T>> action)
+    /// <summary>
+    /// El add-in siempre espera un ProblemDetails JSON en cualquier falla, no una página HTML de
+    /// error ni una respuesta vacía -- por eso este catch-all además del catch específico de
+    /// LicenseApiException: sin él, una NpgsqlException transitoria o un timeout de MinIO se
+    /// atraparían recién en el manejador global de Program.cs, que sí responde JSON pero sin el
+    /// nombre del endpoint en el log. Atrapar aquí también significa que el manejador global NUNCA
+    /// ve estas excepciones (quedan resueltas en este catch) -- por eso el log tiene que pasar
+    /// justo aquí, no se puede asumir que "ya quedó registrado más arriba".
+    /// </summary>
+    private static async Task<IResult> RunAsync<T>(ILogger log, string endpoint, Func<Task<T>> action)
     {
         try
         {
@@ -111,6 +120,16 @@ public static class V1Endpoints
         catch (LicenseApiException ex)
         {
             return Results.Problem(ex.Message, statusCode: ex.StatusCode);
+        }
+        catch (Exception ex)
+        {
+            log.LogError(ex, "Fallo no controlado en /v1/{Endpoint}", endpoint);
+
+            // Nunca se expone el mensaje real de la excepción al cliente (podría filtrar detalles
+            // de infraestructura); el detalle completo ya quedó en el log de arriba.
+            return Results.Problem(
+                "No se pudo completar la operación. Intenta de nuevo en unos minutos.",
+                statusCode: StatusCodes.Status500InternalServerError);
         }
     }
 }

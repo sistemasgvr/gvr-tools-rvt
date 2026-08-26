@@ -6,6 +6,7 @@ using GvrLicense.Infrastructure.Signing;
 using GvrLicense.Infrastructure.Storage;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
@@ -157,6 +158,49 @@ if (app.Environment.IsDevelopment())
         throw;
     }
 }
+
+// Red de seguridad: sin esto, cualquier excepción que un endpoint no atrape (una NpgsqlException
+// transitoria, un timeout de MinIO, etc.) llega sin manejar hasta el cliente. Antes de esto solo
+// /v1/updates/download/{id} tenía este problema documentado, pero cualquier endpoint nuevo que se
+// agregue sin pasar por el helper RunAsync de V1Endpoints caería en el mismo hueco -- este handler
+// es el respaldo para todos, no solo para los que ya se acordaron de envolver su propio try/catch.
+// Nunca expone el mensaje de la excepción real al cliente (podría filtrar detalles de infraestructura);
+// eso solo se registra en el log del servidor.
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        var feature = context.Features.Get<IExceptionHandlerPathFeature>();
+        var exception = feature?.Error;
+
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("UnhandledException");
+        logger.LogError(exception, "Excepción sin manejar en {Path}", feature?.Path ?? context.Request.Path.Value);
+
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+
+        if (context.Request.Path.StartsWithSegments("/v1"))
+        {
+            context.Response.ContentType = "application/problem+json";
+            await context.Response.WriteAsJsonAsync(new
+            {
+                title = "Internal Server Error",
+                status = 500,
+                detail = "No se pudo completar la operación. Intenta de nuevo en unos minutos."
+            });
+            return;
+        }
+
+        context.Response.ContentType = "text/html; charset=utf-8";
+        await context.Response.WriteAsync(
+            "<!doctype html><html lang=\"es\"><head><meta charset=\"utf-8\">" +
+            "<title>Error -- GVR Tools</title></head>" +
+            "<body style=\"font-family:system-ui,sans-serif;max-width:32rem;margin:4rem auto;text-align:center;color:#212121\">" +
+            "<h1>Algo salió mal</h1>" +
+            "<p>Ocurrió un error inesperado. Intenta de nuevo en unos minutos.</p>" +
+            "<p><a href=\"/\">Volver al inicio</a></p>" +
+            "</body></html>");
+    });
+});
 
 app.UseRateLimiter();
 

@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows.Threading;
 using Autodesk.Revit.UI;
 using GvrTools.App.Account;
 using GvrTools.App.Ribbon;
@@ -38,6 +39,41 @@ namespace GvrTools.App
             {
                 log.Info($"Iniciando GVR Tools (compilado para Revit {RevitVersionInfo.CompiledFor}, " +
                          $"PDF nativo: {RevitVersionInfo.HasNativePdfExport}).");
+
+                // Red de seguridad de última instancia. Todo lo que corre a través del dispatcher de
+                // este hilo -- comandos de botones, Dispatcher.BeginInvoke, hasta un TextBox
+                // disparando su setter -- pasa por aquí. Sin esto, cualquier excepción no atrapada
+                // en cualquiera de esos caminos tumba Revit entero con "error irrecuperable" en vez
+                // de solo fallar la operación puntual. e.Handled = true es lo que evita el cierre.
+                Dispatcher.CurrentDispatcher.UnhandledException += (sender, e) =>
+                {
+                    try
+                    {
+                        log.Error("Excepción no manejada atrapada por la red de seguridad del dispatcher.", e.Exception);
+                    }
+                    catch
+                    {
+                        // el logging nunca debe ser la razón de un segundo fallo.
+                    }
+
+                    e.Handled = true;
+                };
+
+                // Respaldo de solo diagnóstico: una excepción fuera del dispatcher (ej. un hilo de
+                // ThreadPool crudo que no pasó por Task.Run) no se puede evitar desde aquí -- el
+                // proceso igual se cierra -- pero al menos queda una línea en el log explicando por
+                // qué, en vez de dejar solo el diálogo genérico de Revit sin ninguna pista.
+                AppDomain.CurrentDomain.UnhandledException += (sender, e) =>
+                {
+                    try
+                    {
+                        log.Error("Excepción no manejada fuera del dispatcher (el proceso se cerrará).", e.ExceptionObject as Exception);
+                    }
+                    catch
+                    {
+                        // el logging nunca debe ser la razón de un segundo fallo.
+                    }
+                };
 
                 LicenseRuntime.EnsureInitialized();
                 RevitRestart.Bind(application);
@@ -89,7 +125,14 @@ namespace GvrTools.App
                 {
                     void StartWatch()
                     {
-                        LicenseRuntime.StartSessionWatch(uiContext, ShowRevokedUi);
+                        try
+                        {
+                            LicenseRuntime.StartSessionWatch(uiContext, ShowRevokedUi);
+                        }
+                        catch (Exception ex)
+                        {
+                            log.Warn("No se pudo iniciar el watch de sesión: " + ex.Message);
+                        }
                     }
 
                     if (uiContext != null)
