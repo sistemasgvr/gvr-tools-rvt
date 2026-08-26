@@ -7,6 +7,7 @@ FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
 WORKDIR /src
 
 COPY GvrLicense.slnx .
+COPY Directory.Build.props .
 COPY src/GvrLicense.Domain/GvrLicense.Domain.csproj src/GvrLicense.Domain/
 COPY src/GvrLicense.Contracts/GvrLicense.Contracts.csproj src/GvrLicense.Contracts/
 COPY src/GvrLicense.Infrastructure/GvrLicense.Infrastructure.csproj src/GvrLicense.Infrastructure/

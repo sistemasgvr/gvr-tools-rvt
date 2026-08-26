@@ -31,7 +31,11 @@ Extras puntuales (más cuota, DWG en Starter, etc.): edita la licencia → **ove
 
 ## Esquema (Postgres)
 
-En **Development**, la API aplica migraciones EF al arrancar (`Database.Migrate()`). En **Production**, no: usa `dotnet ef database update` con `ConnectionStrings__Postgres` (ver `server/README.md`).
+En **Development**, la API aplica migraciones EF al arrancar (`Database.Migrate()`). En **Production**, no: usa `dotnet ef database update` con `ConnectionStrings__Postgres` (ver [`DEPLOY_EASYPANEL.md`](DEPLOY_EASYPANEL.md) y `server/README.md`).
+
+## Deploy producción
+
+Checklist EasyPanel (Docker, env, MinIO, dominio, primer release): [`DEPLOY_EASYPANEL.md`](DEPLOY_EASYPANEL.md).
 
 ## Qué no hace el sistema (a propósito)
 

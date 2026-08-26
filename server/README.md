@@ -45,9 +45,12 @@ dotnet run                    # http://localhost:5299  (admin + /v1 + /download)
 
 ## Deploy
 
-Pieza 6 del plan: un servicio Docker en EasyPanel construido desde `server/Dockerfile`, más
-`postgres`. Artefactos de release viven en **MinIO** (bucket `gvr-tools-releases`), no en un
-volumen local del API.
+Guía de la **app** en EasyPanel (imagen, env, dominio):
+
+→ **[`docs/DEPLOY_EASYPANEL.md`](../docs/DEPLOY_EASYPANEL.md)**
+
+Postgres y MinIO se asumen ya desplegados; solo se pasan por env. La imagen Hub
+`sistemasgvr/visor-gvr` es otro producto — usar `sistemasgvr/gvr-license-api`.
 
 ### Variables MinIO (EasyPanel)
 
