@@ -15,7 +15,7 @@ namespace GvrTools.Licensing
         /// Cada cuánto se consulta al servidor mientras Revit está abierto.
         /// Un kick/liberar en admin se refleja como máximo en este intervalo (no es push).
         /// </summary>
-        public static readonly TimeSpan SessionPollInterval = TimeSpan.FromMinutes(2);
+        public static readonly TimeSpan SessionPollInterval = TimeSpan.FromSeconds(30);
 
         private static readonly object Gate = new object();
         private static LicenseClient _client;

@@ -58,6 +58,24 @@ public class EditModel(LicenseDbContext db) : PageModel
         return RedirectToPage(new { id = Id });
     }
 
+    public async Task<IActionResult> OnGetUsageAsync()
+    {
+        if (!await db.Licenses.AnyAsync(l => l.Id == Id))
+        {
+            return NotFound();
+        }
+
+        var rows = await LoadUsageRowsAsync();
+        return new JsonResult(rows.Select(u => new
+        {
+            featureCode = u.FeatureCode,
+            label = FeatureLabel(u.FeatureCode),
+            consumed = u.Consumed,
+            quotaLimit = u.QuotaLimit,
+            limitLabel = u.QuotaLimit < 0 ? "Ilimitado" : u.QuotaLimit.ToString()
+        }));
+    }
+
     /// <summary>
     /// Libera un PC (kick seat): borra el device para que otra máquina pueda activar.
     /// El add-in en ese PC dejará de renovar heartbeat con ese device id.
@@ -119,13 +137,25 @@ public class EditModel(LicenseDbContext db) : PageModel
                 d.ActivatedAtUtc))
             .ToListAsync();
 
+        UsageRows = await LoadUsageRowsAsync();
+    }
+
+    private async Task<List<UsageRow>> LoadUsageRowsAsync()
+    {
         var periodStart = new DateOnly(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1);
-        UsageRows = await db.UsageCounters
+        return await db.UsageCounters
             .Where(u => u.LicenseId == Id && u.Period == periodStart)
             .OrderBy(u => u.FeatureCode)
             .Select(u => new UsageRow(u.FeatureCode, u.Consumed, u.QuotaLimit, u.Period))
             .ToListAsync();
     }
+
+    private static string FeatureLabel(string featureCode) =>
+        featureCode switch
+        {
+            "quota.sheets_per_month" => "Láminas exportadas",
+            _ => featureCode
+        };
 
     private async Task LoadPlanOptionsAsync(Guid currentPlanId)
     {

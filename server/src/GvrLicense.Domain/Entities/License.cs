@@ -11,7 +11,7 @@ public sealed class License
 {
     public Guid Id { get; set; }
 
-    /// <summary>Formato XXXX-XXXX-XXXX (Base32 Crockford aleatorio + checksum).</summary>
+    /// <summary>Formato GVR-XXXX-XXXX-XXXX (Base32 Crockford aleatorio + checksum).</summary>
     public string Key { get; set; } = string.Empty;
 
     public Guid CustomerId { get; set; }

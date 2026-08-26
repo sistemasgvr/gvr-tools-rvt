@@ -50,7 +50,8 @@ namespace GvrTools.Tools.BatchExport
             }
 
             LicenseRuntime.EnsureInitialized();
-            if (!LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))
+            if (LicenseRuntime.NeedsReactivation
+                || !LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))
             {
                 var hwnd = commandData.Application.MainWindowHandle;
                 TaskDialog.Show(DialogTitle,

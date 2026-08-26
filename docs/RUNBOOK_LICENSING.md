@@ -5,10 +5,10 @@ Sin Stripe ni SMTP en v1. El dinero y el envío de la clave van por transferenci
 ## Tras confirmar el pago
 
 1. En el **panel admin**: crea o abre el **Cliente** (empresa o persona). Anota en notas el pago (monto, fecha, referencia).
-2. **Licencias → Nueva**: elige cliente, plan, `MaxUsers`, `ValidUntil` → **copia la clave** (`XXXX-XXXX-XXXX`).
+2. **Licencias → Nueva**: elige cliente, plan, `MaxUsers`, `ValidUntil` → **copia la clave** `GVR-…`.
 3. Envía **tú** al cliente (correo/WhatsApp):
    - el enlace de descarga del instalador: `https://<dominio-license>/download` (o el que muestra **Actualizaciones** en el admin tras publicar el Setup)
-   - la clave de licencia
+   - la clave `GVR-…`
    - que en Revit abran **Cuenta / Licencia**, peguen la clave y usen **nombre + correo de cada colaborador**
 
 ## Escenarios

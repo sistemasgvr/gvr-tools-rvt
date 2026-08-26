@@ -10,8 +10,7 @@ public class LicenseKeyGeneratorTests
     {
         var key = LicenseKeyGenerator.Generate();
 
-        Assert.Matches(@"^[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$", key);
-        Assert.DoesNotContain("GVR-", key);
+        Assert.Matches(@"^GVR-[0-9A-Z]{4}-[0-9A-Z]{4}-[0-9A-Z]{4}$", key);
     }
 
     [Fact]

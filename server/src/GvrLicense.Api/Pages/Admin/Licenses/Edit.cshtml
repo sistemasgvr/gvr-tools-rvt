@@ -14,8 +14,8 @@
 @if (TempData["Kicked"] != null)
 {
     <div class="alert alert-success alert-dismissible fade show" role="alert">
-        Dispositivo liberado. En ese PC el add-in lo detectará en como máximo ~2 minutos
-        (o al usar una herramienta) y pedirá activar de nuevo.
+        Dispositivo liberado. En ese PC el add-in lo detectará en unos ~30 segundos
+        (o al abrir Exportar láminas) y pedirá activar de nuevo.
         <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Cerrar"></button>
     </div>
 }
@@ -114,51 +114,96 @@
             </div>
             <div class="card-footer text-body-secondary small">
                 “Liberar” quita el puesto. El add-in en ese PC pierde la licencia en el próximo
-                heartbeat (~2 min) o al intentar exportar.
+                heartbeat (~30 s) o al abrir Exportar láminas.
             </div>
         </div>
     </div>
     <div class="col-lg-6">
         <div class="card card-outline">
-            <div class="card-header">
-                <h3 class="card-title">Uso este mes (UTC)</h3>
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <h3 class="card-title mb-0">Uso este mes (UTC)</h3>
+                <span class="badge text-bg-secondary" id="usage-live-badge">En vivo</span>
             </div>
             <div class="card-body p-0">
-                @if (Model.UsageRows.Count == 0)
-                {
-                    <p class="text-secondary p-3 mb-0">Sin consumo registrado este mes.</p>
-                }
-                else
-                {
-                    <div class="table-responsive">
-                        <table class="table table-striped mb-0 align-middle">
-                            <thead>
-                                <tr>
-                                    <th>Función</th>
-                                    <th>Usado</th>
-                                    <th>Límite</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                            @foreach (var u in Model.UsageRows)
+                <p class="text-secondary p-3 mb-0@(Model.UsageRows.Count == 0 ? "" : " d-none")" id="usage-empty">Sin consumo registrado este mes.</p>
+                <div class="table-responsive@(Model.UsageRows.Count == 0 ? " d-none" : "")" id="usage-table-wrap">
+                    <table class="table table-striped mb-0 align-middle">
+                        <thead>
+                            <tr>
+                                <th>Función</th>
+                                <th>Usado</th>
+                                <th>Límite</th>
+                            </tr>
+                        </thead>
+                        <tbody id="usage-rows">
+                        @foreach (var u in Model.UsageRows)
+                        {
+                            var limitLabel = u.QuotaLimit < 0 ? "Ilimitado" : u.QuotaLimit.ToString();
+                            var featureLabel = u.FeatureCode switch
                             {
-                                var limitLabel = u.QuotaLimit < 0 ? "Ilimitado" : u.QuotaLimit.ToString();
-                                var featureLabel = u.FeatureCode switch
-                                {
-                                    "quota.sheets_per_month" => "Láminas exportadas",
-                                    _ => u.FeatureCode
-                                };
-                                <tr>
-                                    <td>@featureLabel</td>
-                                    <td>@u.Consumed</td>
-                                    <td>@limitLabel</td>
-                                </tr>
-                            }
-                            </tbody>
-                        </table>
-                    </div>
-                }
+                                "quota.sheets_per_month" => "Láminas exportadas",
+                                _ => u.FeatureCode
+                            };
+                            <tr data-feature="@u.FeatureCode">
+                                <td>@featureLabel</td>
+                                <td class="usage-consumed">@u.Consumed</td>
+                                <td class="usage-limit">@limitLabel</td>
+                            </tr>
+                        }
+                        </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </div>
 </div>
+
+<script>
+(() => {
+  const licenseId = @Json.Serialize(Model.Id);
+  const tbody = document.getElementById('usage-rows');
+  const empty = document.getElementById('usage-empty');
+  const tableWrap = document.getElementById('usage-table-wrap');
+  const badge = document.getElementById('usage-live-badge');
+  if (!licenseId) return;
+
+  const renderRows = (rows) => {
+    if (!rows || rows.length === 0) {
+      if (tbody) tbody.innerHTML = '';
+      if (tableWrap) tableWrap.classList.add('d-none');
+      if (empty) empty.classList.remove('d-none');
+      return;
+    }
+    if (empty) empty.classList.add('d-none');
+    if (tableWrap) tableWrap.classList.remove('d-none');
+    if (!tbody) return;
+    tbody.innerHTML = rows.map(r => `
+      <tr data-feature="${r.featureCode}">
+        <td>${r.label}</td>
+        <td class="usage-consumed">${r.consumed}</td>
+        <td class="usage-limit">${r.limitLabel}</td>
+      </tr>`).join('');
+  };
+
+  const refreshUsage = async () => {
+    try {
+      const res = await fetch(`/Admin/Licenses/Edit?id=${encodeURIComponent(licenseId)}&handler=Usage`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      if (!res.ok) {
+        if (badge) badge.textContent = 'Sin conexión';
+        return;
+      }
+      const rows = await res.json();
+      renderRows(rows);
+      if (badge) badge.textContent = 'En vivo';
+    } catch {
+      if (badge) badge.textContent = 'Sin conexión';
+    }
+  };
+
+  refreshUsage();
+  setInterval(refreshUsage, 15000);
+})();
+</script>
