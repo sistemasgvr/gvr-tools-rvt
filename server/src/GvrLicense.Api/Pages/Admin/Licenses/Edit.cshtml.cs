@@ -58,6 +58,22 @@ public class EditModel(LicenseDbContext db) : PageModel
         return RedirectToPage(new { id = Id });
     }
 
+    public async Task<IActionResult> OnGetPlanFeaturesAsync(Guid planId)
+    {
+        var plan = await db.Plans.FindAsync(planId);
+        if (plan is null)
+        {
+            return NotFound();
+        }
+
+        var form = PlanFeatureForm.FromDictionary(plan.Features);
+        return new JsonResult(new
+        {
+            summary = PlanFeatureForm.Summarize(plan.Features),
+            features = PlanFeaturesJson.FromForm(form)
+        });
+    }
+
     public async Task<IActionResult> OnGetUsageAsync()
     {
         if (!await db.Licenses.AnyAsync(l => l.Id == Id))
@@ -128,11 +144,13 @@ public class EditModel(LicenseDbContext db) : PageModel
 
         Devices = await db.Devices
             .Where(d => d.LicenseId == Id)
+            .Include(d => d.CompanyUser)
             .OrderByDescending(d => d.LastSeenUtc)
             .Select(d => new DeviceRow(
                 d.Id,
                 d.DisplayName ?? d.Fingerprint,
                 d.CompanyUser != null ? d.CompanyUser.FullName : "—",
+                d.CompanyUser != null ? d.CompanyUser.Email : "—",
                 d.LastSeenUtc,
                 d.ActivatedAtUtc))
             .ToListAsync();
@@ -177,6 +195,30 @@ public class EditModel(LicenseDbContext db) : PageModel
         public PlanFeatureForm Features { get; set; } = new();
     }
 
-    public sealed record DeviceRow(Guid Id, string Label, string UserName, DateTimeOffset LastSeenUtc, DateTimeOffset ActivatedAtUtc);
+    public sealed record DeviceRow(
+        Guid Id,
+        string Label,
+        string UserName,
+        string UserEmail,
+        DateTimeOffset LastSeenUtc,
+        DateTimeOffset ActivatedAtUtc);
+
+    /// <summary>JSON plano para actualizar el formulario al cambiar de plan.</summary>
+    internal static class PlanFeaturesJson
+    {
+        public static object FromForm(PlanFeatureForm form) => new
+        {
+            toolBatchExport = form.ToolBatchExport,
+            formatPdf = form.FormatPdf,
+            formatDwg = form.FormatDwg,
+            formatPdfDwg = form.FormatPdfDwg,
+            updatesStable = form.UpdatesStable,
+            sheetsPerMonth = form.SheetsPerMonth,
+            sheetsPerMonthUnlimited = form.SheetsPerMonthUnlimited,
+            sheetsPerBatch = form.SheetsPerBatch,
+            maxDevicesPerUser = form.MaxDevicesPerUser,
+            extraFeaturesText = form.ExtraFeaturesText ?? string.Empty
+        };
+    }
     public sealed record UsageRow(string FeatureCode, int Consumed, int QuotaLimit, DateOnly Period);
 }

@@ -22,7 +22,7 @@
 
         <StackPanel Grid.Row="0" Margin="0,0,0,14">
             <TextBlock Text="Activar licencia" Style="{StaticResource Gvr.Text.Title}"/>
-            <TextBlock Text="Pega la clave que te enviamos y tus datos. Cada colaborador usa su propio correo."
+            <TextBlock Text="Pega la clave que te enviamos y tus datos. Usa siempre el mismo correo en todos tus PCs; cada persona distinta consume un usuario de la licencia."
                        Style="{StaticResource Gvr.Text.Subtle}" Margin="0,4,0,0"/>
         </StackPanel>
 

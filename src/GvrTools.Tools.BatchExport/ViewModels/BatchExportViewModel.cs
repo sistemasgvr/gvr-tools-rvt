@@ -224,7 +224,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set
             {
                 if (!Set(ref _namingPattern, value)) return;
-                Raise(nameof(NamingPreview));
+                Raise(nameof(NamingPreview), nameof(SelectedNamingPreset));
             }
         }
 
@@ -247,17 +247,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         }
 
         /// <summary>
-        /// Write-only selector: picking a preset copies its pattern into <see cref="NamingPattern"/>
-        /// and the box goes back to plain text editing. There is deliberately no "which preset is
-        /// this" state to keep in sync afterwards -- once the user edits the text it no longer
-        /// matches any preset anyway, so tracking a selected item would just go stale.
+        /// Selector de plantilla: refleja el patrón actual cuando coincide con una plantilla conocida.
+        /// Elegir una plantilla rellena el cuadro de patrón (sigue editable a mano).
         /// </summary>
         public NamingPreset SelectedNamingPreset
         {
-            get => null;
+            get => NamingPresets.ResolveForPattern(_namingPattern);
             set
             {
-                if (value != null) NamingPattern = value.Pattern;
+                if (value != null)
+                    NamingPattern = value.Pattern;
             }
         }
 
@@ -885,13 +884,23 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     _log.Warn("No se pudo descontar cuota local tras una lámina exitosa (remaining insuficiente).");
                     return;
                 }
-
-                // Reconciliar con el servidor en background; fallos de red quedan en la cola.
-                System.Threading.Tasks.Task.Run(() => LicenseRuntime.Client.FlushUsageQueueAsync(default));
             }
             catch (Exception ex)
             {
                 _log.Warn("Error al registrar uso de licencia: " + ex.Message);
+            }
+        }
+
+        private void FlushUsageToServer()
+        {
+            try
+            {
+                LicenseRuntime.EnsureInitialized();
+                LicenseRuntime.Client.FlushUsageQueueAsync(default).GetAwaiter().GetResult();
+            }
+            catch (Exception ex)
+            {
+                _log.Warn("No se pudo sincronizar el uso con el servidor: " + ex.Message);
             }
         }
 
@@ -931,6 +940,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         private void FinishExport(BatchResult lastResult)
         {
+            FlushUsageToServer();
+
             IsExporting = false;
             _historyStore.Save(_project.ProjectKey, _exportHistory);
 
@@ -1020,6 +1031,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _dwgAlsoExportImage = preferences.DwgAlsoExportImage;
 
             _selectedPrinter = PdfPrinterOptions.FindByNameContains(RequiredPdfPrinterHint);
+
+            Raise(nameof(NamingPattern), nameof(NamingPreview), nameof(SelectedNamingPreset));
         }
 
         private void SavePreferences()

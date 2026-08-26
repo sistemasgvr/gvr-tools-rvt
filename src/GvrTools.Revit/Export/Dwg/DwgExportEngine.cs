@@ -4,6 +4,7 @@ using System.IO;
 using Autodesk.Revit.DB;
 using GvrTools.Core.Batch;
 using GvrTools.Core.Diagnostics;
+using GvrTools.Core.Naming;
 using GvrTools.Revit.Model;
 using GvrTools.Revit.Sheets;
 
@@ -55,14 +56,29 @@ namespace GvrTools.Revit.Export.Dwg
                 if (viewSheet == null)
                     return BatchItemResult.Failure(sheet.Label, "La lámina ya no existe en el proyecto.");
 
+                IReadOnlyList<string> viewSuffixes = _options.MergedViews
+                    ? null
+                    : CollectViewSuffixes(viewSheet);
+
                 // Document.Export appends the extension itself, so it needs a base name.
-                string baseName = _namer.ReserveBaseName(sheet);
+                string baseName = viewSuffixes == null
+                    ? _namer.ReserveBaseName(sheet)
+                    : _namer.ReserveDwgBaseName(sheet, viewSuffixes);
+
                 string expectedPath = Path.Combine(_folder, baseName + ".dwg");
+                string builtName = _namer.UnreservedBaseName(sheet);
+                string detailSuffix = string.Equals(baseName, builtName, StringComparison.OrdinalIgnoreCase)
+                    ? null
+                    : $" (como {baseName}.dwg porque ya existía uno anterior)";
+
+                MoveAsideLegacyRevitDwgs(viewSheet);
 
                 bool exported = _document.Export(_folder, baseName, new List<ElementId> { sheet.Id }, _options);
 
                 if (!exported)
-                    return BatchItemResult.Failure(sheet.Label, "Revit rechazó la exportación DWG de esta lámina.");
+                    return BatchItemResult.Failure(
+                        sheet.Label,
+                        "Revit rechazó la exportación DWG de esta lámina." + (detailSuffix ?? string.Empty));
 
                 if (!File.Exists(expectedPath))
                     return BatchItemResult.Failure(sheet.Label, "Revit no generó el archivo DWG esperado.");
@@ -71,7 +87,60 @@ namespace GvrTools.Revit.Export.Dwg
                 if (_exportImage)
                     _imageExporter.ExportAlongside(_document, viewSheet, expectedPath);
 
-                return BatchItemResult.Success(sheet.Label, expectedPath);
+                return BatchItemResult.Success(
+                    sheet.Label,
+                    expectedPath + (detailSuffix ?? string.Empty));
+            }
+
+            private IReadOnlyList<string> CollectViewSuffixes(ViewSheet viewSheet)
+            {
+                var suffixes = new List<string>();
+                foreach (ElementId viewId in viewSheet.GetAllPlacedViews())
+                {
+                    if (!(_document.GetElement(viewId) is View view))
+                        continue;
+
+                    string suffix = PathSanitizer.SanitizeFileName(view.Name);
+                    if (!string.IsNullOrWhiteSpace(suffix))
+                        suffixes.Add(suffix);
+                }
+
+                return suffixes;
+            }
+
+            /// <summary>
+            /// Revit a veces deja DWG viejos con nombre {proyecto}-{vista}.dwg que bloquean re-exportes.
+            /// </summary>
+            private void MoveAsideLegacyRevitDwgs(ViewSheet viewSheet)
+            {
+                string docPrefix = PathSanitizer.SanitizeFileName(_document.Title);
+                if (string.IsNullOrWhiteSpace(docPrefix))
+                    return;
+
+                var asideResolver = new UniqueNameResolver(_folder);
+                foreach (ElementId viewId in viewSheet.GetAllPlacedViews())
+                {
+                    if (!(_document.GetElement(viewId) is View view))
+                        continue;
+
+                    string suffix = PathSanitizer.SanitizeFileName(view.Name);
+                    if (string.IsNullOrWhiteSpace(suffix))
+                        continue;
+
+                    string legacyPath = Path.Combine(_folder, docPrefix + "-" + suffix + ".dwg");
+                    if (!File.Exists(legacyPath))
+                        continue;
+
+                    try
+                    {
+                        string asidePath = asideResolver.ReservePath(docPrefix + "-" + suffix + "_anterior", ".dwg");
+                        File.Move(legacyPath, asidePath);
+                    }
+                    catch (Exception)
+                    {
+                        // Si no se puede mover, Revit puede seguir mostrando su diálogo nativo.
+                    }
+                }
             }
 
             public void Dispose()

@@ -197,6 +197,15 @@ namespace GvrTools.App
 
         public Result OnShutdown(UIControlledApplication application)
         {
+            try
+            {
+                LicenseRuntime.Client.FlushUsageQueueAsync(default).GetAwaiter().GetResult();
+            }
+            catch
+            {
+                // Best effort: no bloquear el cierre de Revit por red.
+            }
+
             LicenseRuntime.StopSessionWatch();
             return Result.Succeeded;
         }

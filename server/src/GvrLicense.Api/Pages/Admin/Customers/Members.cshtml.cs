@@ -1,3 +1,4 @@
+using GvrLicense.Domain.Validation;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
@@ -60,15 +61,27 @@ public class MembersModel(LicenseDbContext db, IAntiforgery antiforgery) : PageM
     public async Task<IActionResult> OnPostEditAsync(Guid userId, string fullName, string email)
     {
         var user = await db.CompanyUsers.FindAsync(userId);
-        if (user != null)
+        if (user is null)
         {
-            user.FullName = fullName.Trim();
-            user.Email = email.Trim();
-            await db.SaveChangesAsync();
+            return RedirectToPage(new { customerId = CustomerId });
+        }
+
+        if (!PersonNameValidator.TryNormalize(fullName, out var normalizedName, out var nameError))
+        {
+            TempData["MemberError"] = nameError;
             return RedirectToPage(new { customerId = user.CustomerId });
         }
 
-        return RedirectToPage(new { customerId = CustomerId });
+        if (!EmailValidator.TryNormalize(email, out var normalizedEmail, out var emailError))
+        {
+            TempData["MemberError"] = emailError;
+            return RedirectToPage(new { customerId = user.CustomerId });
+        }
+
+        user.FullName = normalizedName;
+        user.Email = normalizedEmail;
+        await db.SaveChangesAsync();
+        return RedirectToPage(new { customerId = user.CustomerId });
     }
 
     public sealed record MemberRow(Guid Id, string FullName, string Email, bool IsActive, DateTimeOffset CreatedAtUtc, List<string> Devices);

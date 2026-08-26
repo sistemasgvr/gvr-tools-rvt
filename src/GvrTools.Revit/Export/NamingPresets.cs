@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 
 namespace GvrTools.Revit.Export
@@ -25,6 +26,8 @@ namespace GvrTools.Revit.Export
     /// </summary>
     public static class NamingPresets
     {
+        public static NamingPreset Default => All[0];
+
         public static readonly IReadOnlyList<NamingPreset> All = new[]
         {
             new NamingPreset("Número - Nombre", NamingTokens.DefaultPattern),
@@ -33,5 +36,24 @@ namespace GvrTools.Revit.Export
             new NamingPreset("Número_Rev_Nombre", "{SheetNumber}_Rev{RevisionNumber}_{SheetName}"),
             new NamingPreset("Fecha_Número_Nombre", "{Date}_{SheetNumber}_{SheetName}")
         };
+
+        /// <summary>
+        /// Devuelve la plantilla que coincide con el patrón, o la predeterminada si está vacío.
+        /// Patrones personalizados devuelven null (el combo queda sin selección).
+        /// </summary>
+        public static NamingPreset ResolveForPattern(string pattern)
+        {
+            if (string.IsNullOrWhiteSpace(pattern))
+                return Default;
+
+            string trimmed = pattern.Trim();
+            foreach (NamingPreset preset in All)
+            {
+                if (string.Equals(preset.Pattern, trimmed, StringComparison.Ordinal))
+                    return preset;
+            }
+
+            return null;
+        }
     }
 }

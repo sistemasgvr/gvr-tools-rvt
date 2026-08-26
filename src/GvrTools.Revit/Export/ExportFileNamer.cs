@@ -36,12 +36,30 @@ namespace GvrTools.Revit.Export
         public string ReserveBaseName(SheetSnapshot sheet) =>
             _resolver.ReserveBaseName(BuildName(sheet), _extension);
 
+        /// <summary>
+        /// Reserves a DWG base name, also avoiding Revit per-view sibling files when applicable.
+        /// </summary>
+        public string ReserveDwgBaseName(SheetSnapshot sheet, IReadOnlyList<string> viewSuffixes) =>
+            _resolver.ReserveBaseName(BuildName(sheet), _extension, viewSuffixes);
+
         /// <summary>Reserves and returns the full output path for <paramref name="sheet"/>.</summary>
         public string ReservePath(SheetSnapshot sheet) =>
             _resolver.ReservePath(BuildName(sheet), _extension);
 
+        /// <summary>
+        /// Preview with the same collision rules as export (may append _2, _3, ...).
+        /// </summary>
+        public string PreviewReserved(SheetSnapshot sheet, IReadOnlyList<string> viewSuffixes = null)
+        {
+            string baseName = _resolver.ReserveBaseName(BuildName(sheet), _extension, viewSuffixes);
+            return baseName + _extension;
+        }
+
         /// <summary>Expands the pattern without reserving anything, for the preview in the UI.</summary>
         public string Preview(SheetSnapshot sheet) => BuildName(sheet) + _extension;
+
+        /// <summary>Base name from the pattern alone, without collision suffixes.</summary>
+        public string UnreservedBaseName(SheetSnapshot sheet) => BuildName(sheet);
 
         private string BuildName(SheetSnapshot sheet)
         {

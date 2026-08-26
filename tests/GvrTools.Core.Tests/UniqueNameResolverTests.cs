@@ -21,7 +21,7 @@ namespace GvrTools.Core.Tests
             var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { @"C:\out\A-101.pdf" };
             var resolver = new UniqueNameResolver(@"C:\out", existing.Contains);
 
-            Assert.Equal("A-101 (2)", resolver.ReserveBaseName("A-101", ".pdf"));
+            Assert.Equal("A-101_2", resolver.ReserveBaseName("A-101", ".pdf"));
         }
 
         [Fact]
@@ -30,8 +30,8 @@ namespace GvrTools.Core.Tests
             var resolver = new UniqueNameResolver(@"C:\out", _ => false);
 
             Assert.Equal("A-101", resolver.ReserveBaseName("A-101", ".pdf"));
-            Assert.Equal("A-101 (2)", resolver.ReserveBaseName("A-101", ".pdf"));
-            Assert.Equal("A-101 (3)", resolver.ReserveBaseName("A-101", ".pdf"));
+            Assert.Equal("A-101_2", resolver.ReserveBaseName("A-101", ".pdf"));
+            Assert.Equal("A-101_3", resolver.ReserveBaseName("A-101", ".pdf"));
         }
 
         [Fact]
@@ -49,6 +49,18 @@ namespace GvrTools.Core.Tests
             var resolver = new UniqueNameResolver(@"C:\out", _ => false);
 
             Assert.Equal(@"C:\out\A-101.pdf", resolver.ReservePath("A-101", "pdf"));
+        }
+
+        [Fact]
+        public void Avoids_revit_dwg_view_suffix_collisions()
+        {
+            var existing = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                @"C:\out\E101-Autodesk Logo.dwg"
+            };
+            var resolver = new UniqueNameResolver(@"C:\out", existing.Contains);
+
+            Assert.Equal("E101_2", resolver.ReserveBaseName("E101", ".dwg", new[] { "Autodesk Logo" }));
         }
     }
 }

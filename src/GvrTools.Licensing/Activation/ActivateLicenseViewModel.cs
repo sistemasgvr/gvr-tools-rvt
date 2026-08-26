@@ -2,6 +2,8 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using GvrTools.Licensing.Storage;
+using GvrTools.Licensing.Validation;
 using GvrTools.UI.Mvvm;
 
 namespace GvrTools.Licensing.Activation
@@ -9,13 +11,20 @@ namespace GvrTools.Licensing.Activation
     public sealed class ActivateLicenseViewModel : ObservableObject
     {
         private readonly LicenseClient _client;
+        private readonly FileActivationProfileStore _profileStore;
         private CancellationTokenSource _cts;
 
         public ActivateLicenseViewModel(LicenseClient client, string initialMessage = null)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
+            _profileStore = new FileActivationProfileStore();
             if (!string.IsNullOrWhiteSpace(initialMessage))
                 _statusMessage = initialMessage.Trim();
+
+            var profile = _profileStore.Load();
+            _fullName = profile.FullName;
+            _email = profile.Email;
+
             ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy);
             CancelCommand = new RelayCommand(() => RequestClose?.Invoke(false));
         }
@@ -75,11 +84,21 @@ namespace GvrTools.Licensing.Activation
         {
             StatusMessage = null;
 
-            if (string.IsNullOrWhiteSpace(LicenseKey) ||
-                string.IsNullOrWhiteSpace(FullName) ||
-                string.IsNullOrWhiteSpace(Email))
+            if (string.IsNullOrWhiteSpace(LicenseKey))
             {
-                StatusMessage = "Completa la clave, tu nombre y tu correo.";
+                StatusMessage = "Completa la clave de licencia.";
+                return;
+            }
+
+            if (!PersonNameValidator.TryNormalize(FullName, out string fullName, out string nameError))
+            {
+                StatusMessage = nameError;
+                return;
+            }
+
+            if (!EmailValidator.TryNormalize(Email, out string email, out string emailError))
+            {
+                StatusMessage = emailError;
                 return;
             }
 
@@ -87,7 +106,8 @@ namespace GvrTools.Licensing.Activation
             _cts = new CancellationTokenSource();
             try
             {
-                await _client.ActivateAsync(LicenseKey, FullName, Email, _cts.Token).ConfigureAwait(true);
+                await _client.ActivateAsync(LicenseKey, fullName, email, _cts.Token).ConfigureAwait(true);
+                _profileStore.Save(fullName, email);
                 StatusMessage = "Licencia activada.";
                 RequestClose?.Invoke(true);
             }

@@ -16,6 +16,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\GvrLicense.Api\GvrLicense.Api.csproj" />
+    <ProjectReference Include="..\..\src\GvrLicense.Domain\GvrLicense.Domain.csproj" />
   </ItemGroup>
 
 </Project>

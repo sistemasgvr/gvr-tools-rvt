@@ -4,6 +4,7 @@ using System.Text.Json;
 using GvrLicense.Contracts;
 using GvrLicense.Domain.Entities;
 using GvrLicense.Domain.LicenseKeys;
+using GvrLicense.Domain.Validation;
 using GvrLicense.Domain.Versioning;
 using GvrLicense.Infrastructure;
 using GvrLicense.Infrastructure.Signing;
@@ -38,9 +39,14 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(400, "Formato de license key inválido.");
         }
 
-        if (string.IsNullOrWhiteSpace(request.UserFullName) || string.IsNullOrWhiteSpace(request.UserEmail))
+        if (!PersonNameValidator.TryNormalize(request.UserFullName, out var userFullName, out var nameError))
         {
-            throw new LicenseApiException(400, "Nombre y correo son obligatorios para activar.");
+            throw new LicenseApiException(400, nameError);
+        }
+
+        if (!EmailValidator.TryNormalize(request.UserEmail, out var userEmail, out var emailError))
+        {
+            throw new LicenseApiException(400, emailError);
         }
 
         var license = await db.Licenses
@@ -55,7 +61,7 @@ public sealed class LicenseEngine(
 
         EnsureLicenseUsable(license);
 
-        var companyUser = await FindOrCreateCompanyUserAsync(license.CustomerId, request.UserFullName, request.UserEmail, ct);
+        var companyUser = await FindOrCreateCompanyUserAsync(license.CustomerId, userFullName, userEmail, ct);
 
         var device = license.Devices.FirstOrDefault(d => d.Fingerprint == request.DeviceFingerprint);
         if (device is null)
@@ -72,7 +78,7 @@ public sealed class LicenseEngine(
             if (maxDevicesPerUser != -1 && devicesOfThisUser.Count >= maxDevicesPerUser)
             {
                 throw new LicenseApiException(403,
-                    $"{request.UserEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
+                    $"{userEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
             }
 
             var distinctUsersExcludingThis = license.Devices
@@ -84,7 +90,7 @@ public sealed class LicenseEngine(
             if (devicesOfThisUser.Count == 0 && distinctUsersExcludingThis >= license.MaxUsers)
             {
                 throw new LicenseApiException(403,
-                    $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {request.UserEmail}.");
+                    $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {userEmail}.");
             }
 
             device = new Device
@@ -115,7 +121,7 @@ public sealed class LicenseEngine(
                 if (maxDevicesPerUser != -1 && devicesOfThisUser.Count >= maxDevicesPerUser)
                 {
                     throw new LicenseApiException(403,
-                        $"{request.UserEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
+                        $"{userEmail} ya activó en {maxDevicesPerUser} dispositivo(s), el máximo que permite el plan. Desactiva uno antes de activar en este PC.");
                 }
 
                 var distinctUsersAfterReassign = license.Devices
@@ -128,7 +134,7 @@ public sealed class LicenseEngine(
                 if (distinctUsersAfterReassign > license.MaxUsers)
                 {
                     throw new LicenseApiException(403,
-                        $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {request.UserEmail}.");
+                        $"Esta licencia ya tiene {license.MaxUsers} usuario(s) activo(s). Libera un seat antes de activar para {userEmail}.");
                 }
 
                 device.CompanyUserId = companyUser.Id;
@@ -200,6 +206,14 @@ public sealed class LicenseEngine(
 
     public async Task<UsageEventResponse> ReportUsageAsync(Guid licenseId, Guid deviceId, UsageEventRequest request, CancellationToken ct)
     {
+        var license = await db.Licenses
+            .Include(l => l.Plan)
+            .FirstOrDefaultAsync(l => l.Id == licenseId, ct);
+        if (license is null)
+        {
+            throw new LicenseApiException(404, "Licencia no encontrada.");
+        }
+
         var deviceExists = await db.Devices.AnyAsync(
             d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
         if (!deviceExists)
@@ -208,29 +222,41 @@ public sealed class LicenseEngine(
                 "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave de licencia.");
         }
 
+        var featureCode = request.FeatureCode.Trim().ToLowerInvariant();
+        var period = CurrentPeriod();
+
+        // Sin fila en usage_counter, consume_quota devuelve NULL y el cliente descarta el evento.
+        await EnsureCurrentPeriodCountersAsync(license, ct);
+
         var receivedAtUtc = DateTimeOffset.UtcNow;
 
         // INSERT ... ON CONFLICT (id) DO NOTHING: idempotencia por EventId, sin buscar antes de
         // insertar (docs/LICENSING_PLAN.md, "Dónde vive la lógica: app vs Postgres").
         var inserted = await db.Database.ExecuteSqlInterpolatedAsync($"""
             insert into usage_event (id, license_id, device_id, feature_code, quantity, occurred_at_utc, received_at_utc)
-            values ({request.EventId}, {licenseId}, {deviceId}, {request.FeatureCode}, {request.Quantity}, {request.OccurredAtUtc}, {receivedAtUtc})
+            values ({request.EventId}, {licenseId}, {deviceId}, {featureCode}, {request.Quantity}, {request.OccurredAtUtc}, {receivedAtUtc})
             on conflict (id) do nothing
             """, ct);
-
-        var period = CurrentPeriod();
 
         if (inserted == 0)
         {
             // Reintento de un evento ya procesado: no se vuelve a consumir cuota.
             var existing = await db.UsageCounters.FirstOrDefaultAsync(
-                c => c.LicenseId == licenseId && c.FeatureCode == request.FeatureCode && c.Period == period, ct);
+                c => c.LicenseId == licenseId && c.FeatureCode == featureCode && c.Period == period, ct);
             return new UsageEventResponse { Remaining = existing is null ? null : RemainingOf(existing) };
         }
 
         var remaining = await db.Database
-            .SqlQuery<int?>($"select consume_quota({licenseId}, {request.FeatureCode}, {request.Quantity}) as \"Value\"")
+            .SqlQuery<int?>($"select consume_quota({licenseId}, {featureCode}, {request.Quantity}) as \"Value\"")
             .SingleAsync(ct);
+
+        if (remaining is null)
+        {
+            // Evita eventos huérfanos que bloquean reintentos con el mismo EventId.
+            await db.Database.ExecuteSqlInterpolatedAsync(
+                $"delete from usage_event where id = {request.EventId}", ct);
+            throw new LicenseApiException(503, "No se pudo registrar el uso. Reintenta en unos segundos.");
+        }
 
         return new UsageEventResponse { Remaining = remaining };
     }
@@ -369,16 +395,20 @@ public sealed class LicenseEngine(
     /// </summary>
     private async Task<CompanyUser> FindOrCreateCompanyUserAsync(Guid customerId, string fullName, string email, CancellationToken ct)
     {
-        var normalizedEmail = email.Trim().ToLowerInvariant();
-
         var existing = await db.CompanyUsers.FirstOrDefaultAsync(
-            u => u.CustomerId == customerId && u.Email == normalizedEmail, ct);
+            u => u.CustomerId == customerId && u.Email == email, ct);
 
         if (existing != null)
         {
             if (!existing.IsActive)
             {
-                throw new LicenseApiException(403, $"El usuario {normalizedEmail} está desactivado. Contacta a soporte.");
+                throw new LicenseApiException(403, $"El usuario {email} está desactivado. Contacta a soporte.");
+            }
+
+            // Mismo correo en otro PC: actualiza el nombre visible si cambió.
+            if (!string.Equals(existing.FullName, fullName, StringComparison.Ordinal))
+            {
+                existing.FullName = fullName;
             }
 
             return existing;
@@ -388,8 +418,8 @@ public sealed class LicenseEngine(
         {
             Id = Guid.NewGuid(),
             CustomerId = customerId,
-            FullName = fullName.Trim(),
-            Email = normalizedEmail,
+            FullName = fullName,
+            Email = email,
             IsActive = true,
             CreatedAtUtc = DateTimeOffset.UtcNow
         };

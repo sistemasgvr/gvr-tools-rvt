@@ -34,8 +34,8 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
                     <label asp-for="Input.PlanId" class="form-label">Plan</label>
-                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
-                    <div class="form-text">Base de capacidades. Abajo puedes personalizar solo esta licencia.</div>
+                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" id="license-plan-select" required></select>
+                    <div class="form-text">Base de capacidades. Al cambiar el plan se recargan las opciones de abajo.</div>
                 </div>
                 <div class="col-md-3">
                     <label asp-for="Input.ValidUntil" class="form-label">Fecha de vencimiento</label>
@@ -53,10 +53,12 @@
             <h5 class="mb-2">Qué puede usar esta licencia</h5>
             <p class="text-body-secondary small mb-3">
                 Valores actuales (plan + ajustes). Si cambias algo respecto al plan, se guarda solo la diferencia.
-                Plan base: <strong>@Model.PlanSummary</strong>
+                Plan base: <strong id="plan-summary-text">@Model.PlanSummary</strong>
             </p>
 
+            <div id="license-features-editor">
             <partial name="~/Pages/Shared/_PlanFeaturesEditor.cshtml" for="Input.Features" />
+            </div>
         </div>
         <div class="card-footer d-flex flex-wrap gap-2">
             <button type="submit" class="btn btn-primary">
@@ -86,6 +88,7 @@
                                 <tr>
                                     <th>PC</th>
                                     <th>Usuario</th>
+                                    <th>Correo</th>
                                     <th>Última vez</th>
                                     <th></th>
                                 </tr>
@@ -96,6 +99,7 @@
                                 <tr>
                                     <td>@d.Label</td>
                                     <td>@d.UserName</td>
+                                    <td><code class="small">@d.UserEmail</code></td>
                                     <td>@d.LastSeenUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
                                     <td class="text-end">
                                         <form method="post" asp-page-handler="KickDevice" asp-route-id="@Model.Id" class="d-inline"
@@ -113,6 +117,8 @@
                 }
             </div>
             <div class="card-footer text-body-secondary small">
+                Cada fila es un PC activado. El correo identifica al usuario (seat): la misma persona debe
+                usar el mismo correo en todos sus equipos; otro correo distinto consume otro usuario.
                 “Liberar” quita el puesto. El add-in en ese PC pierde la licencia en el próximo
                 heartbeat (~30 s) o al abrir Exportar láminas.
             </div>
@@ -157,6 +163,67 @@
         </div>
     </div>
 </div>
+
+<script>
+(() => {
+  const planSelect = document.getElementById('license-plan-select');
+  const planSummary = document.getElementById('plan-summary-text');
+  let confirmedPlanId = planSelect?.value;
+
+  const setField = (name, value) => {
+    const el = document.querySelector(`[name="${name}"]`);
+    if (!el) return;
+    if (el.type === 'checkbox') {
+      el.checked = !!value;
+      el.dispatchEvent(new Event('change'));
+    } else {
+      el.value = value ?? '';
+    }
+  };
+
+  const applyPlanFeatures = (features) => {
+    if (!features) return;
+    setField('Input.Features.ToolBatchExport', features.toolBatchExport);
+    setField('Input.Features.FormatPdf', features.formatPdf);
+    setField('Input.Features.FormatDwg', features.formatDwg);
+    setField('Input.Features.FormatPdfDwg', features.formatPdfDwg);
+    setField('Input.Features.UpdatesStable', features.updatesStable);
+    setField('Input.Features.SheetsPerMonth', features.sheetsPerMonth);
+    setField('Input.Features.SheetsPerMonthUnlimited', features.sheetsPerMonthUnlimited);
+    setField('Input.Features.SheetsPerBatch', features.sheetsPerBatch);
+    setField('Input.Features.MaxDevicesPerUser', features.maxDevicesPerUser);
+    setField('Input.Features.ExtraFeaturesText', features.extraFeaturesText);
+  };
+
+  planSelect?.addEventListener('change', async () => {
+    const nextPlanId = planSelect.value;
+    if (!nextPlanId || nextPlanId === confirmedPlanId) return;
+
+    const ok = confirm(
+      '¿Cargar las capacidades del plan seleccionado?\n\nSe actualizarán las opciones de "Qué puede usar esta licencia" con los valores base del plan.'
+    );
+    if (!ok) {
+      planSelect.value = confirmedPlanId;
+      return;
+    }
+
+    try {
+      const res = await fetch(`/Admin/Licenses/Edit?handler=PlanFeatures&planId=${encodeURIComponent(nextPlanId)}`, {
+        headers: { 'Accept': 'application/json' },
+        credentials: 'same-origin'
+      });
+      if (!res.ok) throw new Error('plan fetch failed');
+      const data = await res.json();
+      applyPlanFeatures(data.features);
+      if (planSummary && data.summary) planSummary.textContent = data.summary;
+      confirmedPlanId = nextPlanId;
+    } catch {
+      alert('No se pudo cargar el plan. Intenta de nuevo.');
+      planSelect.value = confirmedPlanId;
+    }
+  });
+})();
+</script>
 
 <script>
 (() => {

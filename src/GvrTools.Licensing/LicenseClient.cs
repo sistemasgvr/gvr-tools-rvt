@@ -245,7 +245,13 @@ namespace GvrTools.Licensing
 
                         var response = await _api.ReportUsageAsync(token, item, ct).ConfigureAwait(false);
                         if (response?.Remaining != null)
+                        {
                             _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
+                        }
+                        else
+                        {
+                            leftover.Add(item);
+                        }
                     }
                     catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
                     {
