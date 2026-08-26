@@ -38,8 +38,12 @@ builder.Services.AddScoped<LicenseEngine>();
 
 // Misma clave ECDsa P-256 que firma el blob de entitlements (Signing:PrivateKeyPem), reusada para
 // firmar/validar el JWT de sesión del add-in -- un solo par de claves, dos usos relacionados.
-var signingPem = builder.Configuration["Signing:PrivateKeyPem"]
-    ?? throw new InvalidOperationException("Signing:PrivateKeyPem no está configurado (ver server/README.md).");
+var signingPem = PemNormalizer.Normalize(builder.Configuration["Signing:PrivateKeyPem"]);
+if (string.IsNullOrWhiteSpace(signingPem))
+{
+    throw new InvalidOperationException("Signing:PrivateKeyPem no está configurado (ver server/README.md).");
+}
+
 var jwtValidationKey = ECDsa.Create();
 jwtValidationKey.ImportFromPem(signingPem);
 

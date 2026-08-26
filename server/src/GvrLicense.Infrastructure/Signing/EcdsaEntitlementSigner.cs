@@ -15,7 +15,7 @@ public sealed class EcdsaEntitlementSigner : IEntitlementSigner, IDisposable
 
     public EcdsaEntitlementSigner(IConfiguration configuration)
     {
-        var pem = configuration["Signing:PrivateKeyPem"];
+        var pem = PemNormalizer.Normalize(configuration["Signing:PrivateKeyPem"]);
         if (string.IsNullOrWhiteSpace(pem))
         {
             throw new InvalidOperationException(

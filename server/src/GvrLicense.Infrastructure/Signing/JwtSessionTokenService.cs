@@ -26,8 +26,11 @@ public sealed class JwtSessionTokenService : IDisposable
 
     public JwtSessionTokenService(IConfiguration configuration)
     {
-        var pem = configuration["Signing:PrivateKeyPem"]
-            ?? throw new InvalidOperationException("Signing:PrivateKeyPem no está configurado.");
+        var pem = PemNormalizer.Normalize(configuration["Signing:PrivateKeyPem"]);
+        if (string.IsNullOrWhiteSpace(pem))
+        {
+            throw new InvalidOperationException("Signing:PrivateKeyPem no está configurado.");
+        }
 
         _key = ECDsa.Create();
         _key.ImportFromPem(pem);
