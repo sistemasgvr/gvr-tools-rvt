@@ -75,6 +75,7 @@ namespace GvrTools.Revit.Sheets
 
         private static SheetSnapshot Snapshot(ViewSheet sheet) => new SheetSnapshot(
             sheet.Id,
+            sheet.UniqueId,
             sheet.SheetNumber,
             sheet.Name,
             ReadParameter(sheet, BuiltInParameter.SHEET_CURRENT_REVISION),

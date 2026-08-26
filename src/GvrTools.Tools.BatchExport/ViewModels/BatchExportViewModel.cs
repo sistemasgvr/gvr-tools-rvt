@@ -8,6 +8,7 @@ using System.Windows.Data;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Batch;
 using GvrTools.Core.Diagnostics;
+using GvrTools.Core.History;
 using GvrTools.Core.Naming;
 using GvrTools.Core.Settings;
 using GvrTools.Revit.Export;
@@ -51,32 +52,45 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private readonly RevitJobScheduler _scheduler;
         private readonly IUserDialogs _dialogs;
         private readonly ISettingsStore _settingsStore;
+        private readonly ISheetExportHistoryStore _historyStore;
         private readonly ILog _log;
         private readonly ExportEngineCatalog _engines;
         private readonly ProjectSnapshot _project;
         private readonly IReadOnlyList<SheetSetSnapshot> _sheetSets;
         private readonly BatchExportPreferences _preferences;
+        private readonly Dictionary<string, DateTime> _exportHistory;
 
         public BatchExportViewModel(
             UIDocument uiDocument,
             RevitJobScheduler scheduler,
             IUserDialogs dialogs,
             ISettingsStore settingsStore,
+            ISheetExportHistoryStore historyStore,
             ILog log)
         {
             _uiDocument = uiDocument;
             _scheduler = scheduler;
             _dialogs = dialogs;
             _settingsStore = settingsStore;
+            _historyStore = historyStore ?? new SheetExportHistoryStore();
             _log = log ?? NullLog.Instance;
             _engines = ExportEngineCatalog.CreateDefault();
 
             _project = ProjectSnapshot.Read(uiDocument.Document);
             _sheetSets = SheetRepository.GetSheetSets(uiDocument.Document);
 
+            // Dictionary<,>(IReadOnlyDictionary<,>) is not available on net48 (Revit 2021-2024) --
+            // copy explicitly instead so this builds the same way on every target framework.
+            _exportHistory = new Dictionary<string, DateTime>(StringComparer.Ordinal);
+            foreach (KeyValuePair<string, DateTime> entry in _historyStore.Load(_project.ProjectKey))
+                _exportHistory[entry.Key] = entry.Value;
+
             foreach (SheetSnapshot sheet in SheetRepository.GetSheets(uiDocument.Document))
             {
                 var item = new SheetItemViewModel(sheet);
+                if (!string.IsNullOrEmpty(sheet.UniqueId) && _exportHistory.TryGetValue(sheet.UniqueId, out DateTime lastExported))
+                    item.LastExportedUtc = lastExported;
+
                 item.PropertyChanged += OnSheetItemChanged;
                 Sheets.Add(item);
             }
@@ -99,6 +113,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             SelectAllCommand = new RelayCommand(() => SetVisibleSelection(true));
             SelectNoneCommand = new RelayCommand(() => SetVisibleSelection(false));
             InvertSelectionCommand = new RelayCommand(InvertVisibleSelection);
+            SelectPendingCommand = new RelayCommand(SelectVisiblePending);
             BrowseFolderCommand = new RelayCommand(BrowseFolder);
             OpenFolderCommand = new RelayCommand(() => _dialogs.Reveal(RevealTarget));
             ExportCommand = new RelayCommand(StartExport, () => CanExport);
@@ -193,12 +208,57 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// </summary>
         private string RevealTarget => _selectedFormatMode == FormatMode.PdfAndDwg ? OutputFolder : DestinationFolder;
 
+        // ---------------------------------------------------------------- naming pattern
+
+        /// <summary>Every token the pattern box understands, for the help text under it.</summary>
+        public string NamingHelpText => NamingTokens.HelpText;
+
+        /// <summary>Presets offered as a starting point; picking one just fills the pattern box.</summary>
+        public IReadOnlyList<NamingPreset> NamingPresetChoices { get; } = NamingPresets.All;
+
+        private string _namingPattern = NamingTokens.DefaultPattern;
+        public string NamingPattern
+        {
+            get => _namingPattern;
+            set
+            {
+                if (!Set(ref _namingPattern, value)) return;
+                Raise(nameof(NamingPreview));
+            }
+        }
+
         /// <summary>
-        /// Every file is named "SheetNumber - SheetName". A configurable pattern was there before
-        /// and just made the window feel busy: sheet number plus name is how every drafter labels
-        /// their PDFs already, so it is now a fixed convention and the input is gone.
+        /// Live "this is what the file will be called" example, built from the first sheet in the
+        /// project (selection/filter do not matter for a naming preview) using the exact same
+        /// <see cref="ExportFileNamer"/> the real export uses, so the preview can never drift from
+        /// what actually gets written to disk.
         /// </summary>
-        private const string NamingPattern = NamingTokens.DefaultPattern;
+        public string NamingPreview
+        {
+            get
+            {
+                SheetSnapshot sample = Sheets.Count > 0 ? Sheets[0].Sheet : null;
+                if (sample == null) return string.IsNullOrWhiteSpace(NamingPattern) ? string.Empty : "(sin láminas para previsualizar)";
+
+                var namer = new ExportFileNamer(string.Empty, NamingPattern, string.Empty, _project.ToTokens());
+                return namer.Preview(sample);
+            }
+        }
+
+        /// <summary>
+        /// Write-only selector: picking a preset copies its pattern into <see cref="NamingPattern"/>
+        /// and the box goes back to plain text editing. There is deliberately no "which preset is
+        /// this" state to keep in sync afterwards -- once the user edits the text it no longer
+        /// matches any preset anyway, so tracking a selected item would just go stale.
+        /// </summary>
+        public NamingPreset SelectedNamingPreset
+        {
+            get => null;
+            set
+            {
+                if (value != null) NamingPattern = value.Pattern;
+            }
+        }
 
         // ---------------------------------------------------------------- format and options
 
@@ -464,6 +524,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public RelayCommand InvertSelectionCommand { get; }
 
+        /// <summary>Marks only the visible sheets that have never exported successfully -- the "what's left" shortcut.</summary>
+        public RelayCommand SelectPendingCommand { get; }
+
         public RelayCommand BrowseFolderCommand { get; }
 
         public RelayCommand OpenFolderCommand { get; }
@@ -481,6 +544,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private ExportFormat _currentExportFormat;
         private List<SheetSnapshot> _pendingSheets;
         private BatchResult _firstPhaseResult;
+
+        /// <summary>
+        /// How many <see cref="OnItemCompleted"/> callbacks have fired since <see cref="LaunchFormat"/>
+        /// started the current phase -- <see cref="BatchItemResult"/> does not carry the sheet
+        /// identity, but the scheduler guarantees one step per sheet in <c>_pendingSheets</c> order
+        /// with no skipping or parallelism, so this index reliably points at the sheet each result
+        /// belongs to (see <see cref="BatchExportJob.ExecuteStep"/>).
+        /// </summary>
+        private int _itemsCompletedInPhase;
+        private Dictionary<SheetSnapshot, SheetItemViewModel> _itemsBySheet;
 
         // ---------------------------------------------------------------- behaviour
 
@@ -520,6 +593,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 item.IsSelected = !item.IsSelected;
         }
 
+        private void SelectVisiblePending()
+        {
+            foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
+                item.IsSelected = !item.WasExported;
+        }
+
         private void BrowseFolder()
         {
             string picked = _dialogs.PickFolder(
@@ -536,12 +615,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         private void StartExport()
         {
-            List<SheetSnapshot> selected = Sheets
-                .Where(item => item.IsSelected)
-                .Select(item => item.Sheet)
-                .ToList();
+            List<SheetItemViewModel> selectedItems = Sheets.Where(item => item.IsSelected).ToList();
+            List<SheetSnapshot> selected = selectedItems.Select(item => item.Sheet).ToList();
 
             if (selected.Count == 0) return;
+
+            _itemsBySheet = selectedItems.ToDictionary(item => item.Sheet);
 
             if (!TryValidateLicenseQuota(selected.Count, out string licenseError))
             {
@@ -633,6 +712,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void LaunchFormat(ExportFormat format, List<SheetSnapshot> sheets)
         {
             _currentExportFormat = format;
+            _itemsCompletedInPhase = 0;
 
             var request = new ExportRequest(
                 _uiDocument,
@@ -725,14 +805,36 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             string formatTag = _isMultiFormat ? ExportFormatInfo.Label(_currentExportFormat) : null;
             Results.Add(new ExportResultViewModel(result, formatTag));
 
+            SheetSnapshot sheet = _itemsCompletedInPhase < _pendingSheets.Count
+                ? _pendingSheets[_itemsCompletedInPhase]
+                : null;
+            _itemsCompletedInPhase++;
+
             if (result.Succeeded)
             {
+                if (sheet != null) RecordSheetExported(sheet);
                 RecordSuccessfulSheetUsage();
                 return;
             }
 
             LastRunHadFailures = true;
             ShowResults = true;
+        }
+
+        /// <summary>
+        /// Updates both the in-memory history (persisted once at the end of the run, not per sheet,
+        /// to avoid a disk write per item in a large batch) and the live grid row, so "Pendientes"
+        /// reflects sheets exported earlier in the very same run.
+        /// </summary>
+        private void RecordSheetExported(SheetSnapshot sheet)
+        {
+            if (string.IsNullOrEmpty(sheet.UniqueId)) return;
+
+            DateTime now = DateTime.UtcNow;
+            _exportHistory[sheet.UniqueId] = now;
+
+            if (_itemsBySheet != null && _itemsBySheet.TryGetValue(sheet, out SheetItemViewModel item))
+                item.LastExportedUtc = now;
         }
 
         private void RecordSuccessfulSheetUsage()
@@ -792,6 +894,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void FinishExport(BatchResult lastResult)
         {
             IsExporting = false;
+            _historyStore.Save(_project.ProjectKey, _exportHistory);
 
             int totalSucceeded = lastResult.SucceededCount;
             int totalFailed = lastResult.FailedCount;
@@ -859,8 +962,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 ? preferences.OutputFolder
                 : _project.LocalFolder ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 
-            // NamingPattern is no longer configurable; the preference is left alone for
-            // forward compatibility (if the field comes back it will pick up the stored value).
+            _namingPattern = string.IsNullOrWhiteSpace(preferences.NamingPattern)
+                ? NamingTokens.DefaultPattern
+                : preferences.NamingPattern;
 
             _selectedFormatMode = preferences.Format;
             _openFolderWhenDone = preferences.OpenFolderWhenDone;

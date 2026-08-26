@@ -1,3 +1,4 @@
+using System;
 using GvrTools.Revit.Model;
 using GvrTools.UI.Mvvm;
 
@@ -27,6 +28,44 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         {
             get => _isSelected;
             set => Set(ref _isSelected, value);
+        }
+
+        private DateTime? _lastExportedUtc;
+
+        /// <summary>
+        /// When this sheet last exported successfully (any format), from the per-project export
+        /// history -- null means "never exported" (at least not from this PC/user). Set once when
+        /// the window opens and again live after each successful export in the current run.
+        /// </summary>
+        public DateTime? LastExportedUtc
+        {
+            get => _lastExportedUtc;
+            set
+            {
+                if (Set(ref _lastExportedUtc, value))
+                    Raise(nameof(WasExported), nameof(ExportStatusLabel));
+            }
+        }
+
+        public bool WasExported => _lastExportedUtc.HasValue;
+
+        /// <summary>Short, human-relative status for the grid column ("Nunca exportado", "Exportado hace 3 días"...).</summary>
+        public string ExportStatusLabel
+        {
+            get
+            {
+                if (_lastExportedUtc == null) return "Nunca exportado";
+
+                TimeSpan elapsed = DateTime.UtcNow - _lastExportedUtc.Value;
+                if (elapsed < TimeSpan.Zero) elapsed = TimeSpan.Zero;
+
+                if (elapsed < TimeSpan.FromMinutes(1)) return "Exportado hace un momento";
+                if (elapsed < TimeSpan.FromHours(1)) return $"Exportado hace {(int)elapsed.TotalMinutes} min";
+                if (elapsed < TimeSpan.FromHours(24)) return $"Exportado hace {(int)elapsed.TotalHours} h";
+                if (elapsed < TimeSpan.FromDays(7)) return $"Exportado hace {(int)elapsed.TotalDays} día(s)";
+
+                return "Exportado el " + _lastExportedUtc.Value.ToLocalTime().ToString("dd/MM/yyyy");
+            }
         }
 
         /// <summary>True when the row matches the current search term.</summary>

@@ -16,6 +16,7 @@ namespace GvrTools.Revit.Model
     {
         public SheetSnapshot(
             ElementId id,
+            string uniqueId,
             string number,
             string name,
             string revisionNumber,
@@ -24,6 +25,7 @@ namespace GvrTools.Revit.Model
             string issueDate)
         {
             Id = id;
+            UniqueId = uniqueId ?? string.Empty;
             Number = number ?? string.Empty;
             Name = name ?? string.Empty;
             RevisionNumber = revisionNumber ?? string.Empty;
@@ -33,6 +35,13 @@ namespace GvrTools.Revit.Model
         }
 
         public ElementId Id { get; }
+
+        /// <summary>
+        /// Revit's <c>Element.UniqueId</c> (a GUID persisted in the file), stable across sessions
+        /// unlike <see cref="Id"/> -- this is the key the export-history store uses to remember
+        /// "was this sheet exported before" from one Revit session to the next.
+        /// </summary>
+        public string UniqueId { get; }
 
         public string Number { get; }
 
