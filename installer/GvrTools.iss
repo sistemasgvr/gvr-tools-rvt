@@ -39,6 +39,8 @@ SetupIconFile=assets\SetupIcon.ico
 WizardImageFile=assets\WizardImage.bmp
 WizardSmallImageFile=assets\WizardSmallImage.bmp
 UninstallDisplayIcon={app}\SetupIcon.ico
+CloseApplications=force
+CloseApplicationsFilter=Revit.exe
 
 [Languages]
 Name: "spanish"; MessagesFile: "compiler:Languages\Spanish.isl"
@@ -53,15 +55,25 @@ Name: "revit2025"; Description: "Revit 2025"; GroupDescription: "Instalar este a
 Name: "revit2026"; Description: "Revit 2026"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
 Name: "revit2027"; Description: "Revit 2027"; GroupDescription: "Instalar este add-in para:"; Flags: unchecked
 
+[InstallDelete]
+; Borra el payload anterior del año antes de copiar, para que no queden DLLs viejas mezcladas.
+Type: filesandordirs; Name: "{app}\2021"; Tasks: revit2021
+Type: filesandordirs; Name: "{app}\2022"; Tasks: revit2022
+Type: filesandordirs; Name: "{app}\2023"; Tasks: revit2023
+Type: filesandordirs; Name: "{app}\2024"; Tasks: revit2024
+Type: filesandordirs; Name: "{app}\2025"; Tasks: revit2025
+Type: filesandordirs; Name: "{app}\2026"; Tasks: revit2026
+Type: filesandordirs; Name: "{app}\2027"; Tasks: revit2027
+
 [Files]
 ; Cada carpeta build/<año> se copia solo si el task correspondiente está marcado.
-Source: "{#PayloadRoot}\2021\*"; DestDir: "{app}\2021"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2021
-Source: "{#PayloadRoot}\2022\*"; DestDir: "{app}\2022"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2022
-Source: "{#PayloadRoot}\2023\*"; DestDir: "{app}\2023"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2023
-Source: "{#PayloadRoot}\2024\*"; DestDir: "{app}\2024"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2024
-Source: "{#PayloadRoot}\2025\*"; DestDir: "{app}\2025"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2025
-Source: "{#PayloadRoot}\2026\*"; DestDir: "{app}\2026"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2026
-Source: "{#PayloadRoot}\2027\*"; DestDir: "{app}\2027"; Flags: ignoreversion recursesubdirs createallsubdirs; Tasks: revit2027
+Source: "{#PayloadRoot}\2021\*"; DestDir: "{app}\2021"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2021
+Source: "{#PayloadRoot}\2022\*"; DestDir: "{app}\2022"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2022
+Source: "{#PayloadRoot}\2023\*"; DestDir: "{app}\2023"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2023
+Source: "{#PayloadRoot}\2024\*"; DestDir: "{app}\2024"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2024
+Source: "{#PayloadRoot}\2025\*"; DestDir: "{app}\2025"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2025
+Source: "{#PayloadRoot}\2026\*"; DestDir: "{app}\2026"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2026
+Source: "{#PayloadRoot}\2027\*"; DestDir: "{app}\2027"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace; Excludes: "*.pdb"; Tasks: revit2027
 ; PDF24 se incluye para que la instalación sea reproducible y no dependa de una descarga.
 Source: "prereqs\pdf24-creator-installer.exe"; DestDir: "{tmp}"; Flags: deleteafterinstall nocompression
 ; Copia del ícono para que UninstallDisplayIcon (abajo) apunte a un archivo real tras instalar --
@@ -78,6 +90,15 @@ var
   PrereqList: TNewMemo;
   InstallPdf24Check: TNewCheckBox;
   Pdf24InstalledAtStart: Boolean;
+  UpgradeInstall: Boolean;
+
+function InitializeSetup(): Boolean;
+begin
+  UpgradeInstall := RegKeyExists(
+    HKLM,
+    'Software\Microsoft\Windows\CurrentVersion\Uninstall\{A7C3E2F1-9B4D-4E8A-9C1F-6D2B0A5E8F31}_is1');
+  Result := True;
+end;
 
 function RevitExeExists(Year: Integer): Boolean;
 begin
@@ -278,14 +299,32 @@ begin
   end;
 end;
 
+function AddinDirForYear(Year: Integer): string;
+begin
+  if Year >= 2027 then
+    Result := ExpandConstant('{pf}\Autodesk\Revit\Addins\' + IntToStr(Year))
+  else
+    Result := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Year));
+end;
+
+procedure RemoveAddinForYear(Year: Integer);
+var
+  AddinDir, Path: string;
+begin
+  AddinDir := AddinDirForYear(Year);
+  Path := AddinDir + '\GvrTools.addin';
+  if FileExists(Path) then
+    DeleteFile(Path);
+  Path := AddinDir + '\GvrTools.MassPdfExport.addin';
+  if FileExists(Path) then
+    DeleteFile(Path);
+end;
+
 function WriteAddin(Year: Integer): Boolean;
 var
   AddinDir, AddinPath, AssemblyPath, Content: string;
 begin
-  if Year >= 2027 then
-    AddinDir := ExpandConstant('{pf}\Autodesk\Revit\Addins\' + IntToStr(Year))
-  else
-    AddinDir := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Year));
+  AddinDir := AddinDirForYear(Year);
   ForceDirectories(AddinDir);
   AssemblyPath := ExpandConstant('{app}\' + IntToStr(Year) + '\GvrTools.App.dll');
   AddinPath := AddinDir + '\GvrTools.addin';
@@ -304,6 +343,14 @@ begin
   Result := SaveStringToFile(AddinPath, Content, False);
 end;
 
+procedure SyncAddinForYear(Year: Integer);
+begin
+  if WizardIsTaskSelected('revit' + IntToStr(Year)) then
+    WriteAddin(Year)
+  else
+    RemoveAddinForYear(Year);
+end;
+
 procedure WriteLicenseConfig;
 var
   Dir, Path: string;
@@ -315,36 +362,42 @@ begin
   SaveStringToFile(Path, '{"BaseUrl":"https://tools.proyectosgvr.com"}', False);
 end;
 
+procedure ClearUserLicenseCache;
+var
+  Dir: string;
+begin
+  Dir := ExpandConstant('{userappdata}\GVR\GvrTools');
+  if FileExists(Dir + '\license.dat') then
+    DeleteFile(Dir + '\license.dat');
+  if FileExists(Dir + '\usage-queue.json') then
+    DeleteFile(Dir + '\usage-queue.json');
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 begin
   if CurStep = ssPostInstall then
   begin
+    if not UpgradeInstall then
+      ClearUserLicenseCache;
     WriteLicenseConfig;
-    if WizardIsTaskSelected('revit2021') then WriteAddin(2021);
-    if WizardIsTaskSelected('revit2022') then WriteAddin(2022);
-    if WizardIsTaskSelected('revit2023') then WriteAddin(2023);
-    if WizardIsTaskSelected('revit2024') then WriteAddin(2024);
-    if WizardIsTaskSelected('revit2025') then WriteAddin(2025);
-    if WizardIsTaskSelected('revit2026') then WriteAddin(2026);
-    if WizardIsTaskSelected('revit2027') then WriteAddin(2027);
+    SyncAddinForYear(2021);
+    SyncAddinForYear(2022);
+    SyncAddinForYear(2023);
+    SyncAddinForYear(2024);
+    SyncAddinForYear(2025);
+    SyncAddinForYear(2026);
+    SyncAddinForYear(2027);
   end;
 end;
 
 procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
 var
   Y: Integer;
-  AddinPath: string;
 begin
   if CurUninstallStep = usPostUninstall then
   begin
+    ClearUserLicenseCache;
     for Y := 2021 to 2027 do
-    begin
-      if Y >= 2027 then
-        AddinPath := ExpandConstant('{pf}\Autodesk\Revit\Addins\' + IntToStr(Y) + '\GvrTools.addin')
-      else
-        AddinPath := ExpandConstant('{commonappdata}\Autodesk\Revit\Addins\' + IntToStr(Y) + '\GvrTools.addin');
-      if FileExists(AddinPath) then
-        DeleteFile(AddinPath);
-    end;
+      RemoveAddinForYear(Y);
   end;
 end;

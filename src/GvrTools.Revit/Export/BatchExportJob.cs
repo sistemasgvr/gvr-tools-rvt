@@ -4,6 +4,7 @@ using System.Diagnostics;
 using System.IO;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Batch;
+using GvrTools.Core.IO;
 using GvrTools.Revit.Infrastructure;
 using GvrTools.Revit.Model;
 
@@ -122,16 +123,10 @@ namespace GvrTools.Revit.Export
 
         private void CreateDestinationFolder()
         {
-            try
-            {
-                Directory.CreateDirectory(_request.DestinationFolder);
-            }
-            catch (Exception ex)
-            {
-                throw new ExportSetupException(
-                    $"No se pudo crear la carpeta de destino:{Environment.NewLine}{_request.DestinationFolder}" +
-                    $"{Environment.NewLine}{Environment.NewLine}{ex.Message}", ex);
-            }
+            if (ExportPathHelper.TryEnsureWritable(_request.DestinationFolder, out string error))
+                return;
+
+            throw new ExportSetupException(error);
         }
     }
 }

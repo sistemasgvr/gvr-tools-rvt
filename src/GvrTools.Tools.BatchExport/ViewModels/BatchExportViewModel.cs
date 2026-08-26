@@ -9,6 +9,7 @@ using Autodesk.Revit.UI;
 using GvrTools.Core.Batch;
 using GvrTools.Core.Diagnostics;
 using GvrTools.Core.History;
+using GvrTools.Core.IO;
 using GvrTools.Core.Naming;
 using GvrTools.Core.Settings;
 using GvrTools.Revit.Export;
@@ -607,6 +608,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             if (picked == null) return;
 
+            if (!ExportPathHelper.TryEnsureWritable(picked, out string pathError))
+            {
+                _dialogs.ShowError(DialogTitle, pathError);
+                return;
+            }
+
             OutputFolder = picked;
             Raise(nameof(CanExport));
             ExportCommand.RaiseCanExecuteChanged();
@@ -625,6 +632,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             if (!TryValidateLicenseQuota(selected.Count, out string licenseError))
             {
                 _dialogs.ShowError(DialogTitle, licenseError);
+                return;
+            }
+
+            if (!TryValidateOutputPaths(out string pathError))
+            {
+                _dialogs.ShowError(DialogTitle, pathError);
                 return;
             }
 
@@ -649,6 +662,31 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 : ExportFormat.Pdf;
 
             LaunchFormat(firstFormat, selected);
+        }
+
+        private bool TryValidateOutputPaths(out string error)
+        {
+            error = null;
+
+            if (!ExportPathHelper.TryEnsureWritable(OutputFolder, out error))
+                return false;
+
+            if (_selectedFormatMode == FormatMode.PdfAndDwg)
+            {
+                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(ExportFormat.Pdf), out error))
+                    return false;
+
+                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(ExportFormat.Dwg), out error))
+                    return false;
+            }
+            else
+            {
+                ExportFormat format = _selectedFormatMode == FormatMode.Dwg ? ExportFormat.Dwg : ExportFormat.Pdf;
+                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(format), out error))
+                    return false;
+            }
+
+            return true;
         }
 
         private bool TryValidateLicenseQuota(int selectedCount, out string error)
@@ -958,9 +996,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         private void ApplyPreferences(BatchExportPreferences preferences)
         {
-            _outputFolder = !string.IsNullOrWhiteSpace(preferences.OutputFolder) && Directory.Exists(preferences.OutputFolder)
-                ? preferences.OutputFolder
-                : _project.LocalFolder ?? Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            _outputFolder = ExportPathHelper.ResolveWritableFolder(
+                preferences.OutputFolder,
+                _project.LocalFolder,
+                ExportPathHelper.DefaultExportRoot);
 
             _namingPattern = string.IsNullOrWhiteSpace(preferences.NamingPattern)
                 ? NamingTokens.DefaultPattern

@@ -180,7 +180,7 @@ namespace GvrTools.Licensing
                 await FlushUsageQueueAsync(ct).ConfigureAwait(false);
                 return true;
             }
-            catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
+            catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
             {
                 MarkNeedsReactivation(ex.Message);
                 ClearLocal();
@@ -247,7 +247,7 @@ namespace GvrTools.Licensing
                         if (response?.Remaining != null)
                             _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
                     }
-                    catch (LicenseApiClientException ex) when (ex.StatusCode == 401 || ex.StatusCode == 403)
+                    catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
                     {
                         MarkNeedsReactivation(ex.Message);
                         ClearLocal();
@@ -345,6 +345,9 @@ namespace GvrTools.Licensing
             if (_ownsApi && _api is IDisposable disposable)
                 disposable.Dispose();
         }
+
+        private static bool IsServerSessionRejected(LicenseApiClientException ex) =>
+            ex.StatusCode == 401 || ex.StatusCode == 403 || ex.StatusCode == 404;
 
         private void MarkNeedsReactivation(string serverMessage)
         {

@@ -103,8 +103,8 @@ namespace GvrTools.Licensing
         }
 
         /// <summary>
-        /// Heartbeat con timeout corto (~2.5s). Renueva JWT + gracia. Nunca tumba el add-in:
-        /// fallos de red se tragan; 401/403 limpian cache y marcan NeedsReactivation.
+        /// Heartbeat con timeout corto (~8s). Renueva JWT + gracia. Nunca tumba el add-in:
+        /// fallos de red se tragan; 401/403/404 limpian cache y marcan NeedsReactivation.
         /// </summary>
         public static async Task WarmupAsync(CancellationToken externalCt = default)
         {
@@ -112,7 +112,7 @@ namespace GvrTools.Licensing
 
             using (var cts = CancellationTokenSource.CreateLinkedTokenSource(externalCt))
             {
-                cts.CancelAfter(TimeSpan.FromMilliseconds(2500));
+                cts.CancelAfter(TimeSpan.FromSeconds(8));
                 try
                 {
                     await _client.TryHeartbeatAsync(cts.Token).ConfigureAwait(false);

@@ -59,12 +59,34 @@ namespace GvrTools.App
                     }
                 }
 
-                // Heartbeat (renueva JWT) + sesión expirada / updates en background.
+                // Validar cache local contra el servidor antes de armar la cinta (evita licencia fantasma).
+                try
+                {
+                    Task.Run(async () => await LicenseRuntime.WarmupAsync().ConfigureAwait(false))
+                        .Wait(TimeSpan.FromSeconds(9));
+                }
+                catch (Exception ex)
+                {
+                    log.Warn("Warmup de licencia no completado: " + ex.Message);
+                }
+
+                if (LicenseRuntime.NeedsReactivation)
+                {
+                    var reason = LicenseRuntime.ReactivationReason
+                        ?? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia.";
+                    try
+                    {
+                        LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
+                    }
+                    catch (Exception ex)
+                    {
+                        log.Warn("No se pudo mostrar reactivación al arranque: " + ex.Message);
+                    }
+                }
+
+                // Watch periódico + aviso de updates en background (warmup ya corrió arriba).
                 Task.Run(async () =>
                 {
-                    await LicenseRuntime.WarmupAsync().ConfigureAwait(false);
-
-                    // Watch periódico DESPUÉS del warmup para no duplicar el diálogo de arranque.
                     void StartWatch()
                     {
                         LicenseRuntime.StartSessionWatch(uiContext, ShowRevokedUi);
@@ -74,31 +96,6 @@ namespace GvrTools.App
                         uiContext.Post(_ => StartWatch(), null);
                     else
                         StartWatch();
-
-                    if (LicenseRuntime.NeedsReactivation)
-                    {
-                        var reason = LicenseRuntime.ReactivationReason
-                            ?? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia.";
-
-                        void ShowReactivate()
-                        {
-                            try
-                            {
-                                LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
-                            }
-                            catch (Exception ex)
-                            {
-                                log.Warn("No se pudo mostrar reactivación: " + ex.Message);
-                            }
-                        }
-
-                        if (uiContext != null)
-                            uiContext.Post(_ => ShowReactivate(), null);
-                        else
-                            ShowReactivate();
-
-                        return;
-                    }
 
                     var current = AddInVersion.Current;
                     var update = await LicenseRuntime.TryCheckForUpdateAsync(
