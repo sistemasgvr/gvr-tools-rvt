@@ -40,6 +40,7 @@ namespace GvrTools.App
                          $"PDF nativo: {RevitVersionInfo.HasNativePdfExport}).");
 
                 LicenseRuntime.EnsureInitialized();
+                RevitRestart.Bind(application);
                 LicenseUi.RequestApplicationClose = RevitRestart.RequestCloseAndRestart;
                 var uiContext = SynchronizationContext.Current;
 

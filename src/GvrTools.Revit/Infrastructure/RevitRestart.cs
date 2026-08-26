@@ -3,24 +3,42 @@ using System.Diagnostics;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Windows.Threading;
+using Autodesk.Revit.UI;
+using Autodesk.Revit.UI.Events;
 
 namespace GvrTools.Revit.Infrastructure
 {
     /// <summary>
-    /// Cierra Revit y lo vuelve a abrir tras activar licencia. Autodesk no expone salida/reinicio en
-    /// la API; el cierre usa la ventana principal (respeta guardar) y el relanzado va en un script
-    /// auxiliar que espera a que termine el proceso actual.
+    /// Cierra Revit y lo vuelve a abrir tras activar licencia.
+    /// Preferencia: PostableCommand.ExitRevit en el siguiente Idling (salida ordenada de Revit).
+    /// Fallback: PostMessage(WM_CLOSE) solo cuando ya no hay diálogos modales.
+    /// Nunca SendMessage ni CloseMainWindow desde un ShowDialog WPF (error irrecuperable).
     /// </summary>
     public static class RevitRestart
     {
         private const uint WmClose = 0x0010;
 
+        private static UIControlledApplication _controlledApp;
+        private static bool _exitSubscribed;
+
         /// <summary>Proyecto .rvt a reabrir tras reiniciar (opcional; solo si está guardado en disco).</summary>
         public static string PendingDocumentPath { get; set; }
 
         [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = false)]
-        private static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
+        /// <summary>Registrar en OnStartup para poder usar Idling + ExitRevit.</summary>
+        public static void Bind(UIControlledApplication application)
+        {
+            _controlledApp = application;
+        }
+
+        /// <summary>
+        /// Programa el relanzado y pide el cierre cuando Revit esté idle
+        /// (después de que todos los ShowDialog / MessageBox / ExternalCommand hayan terminado).
+        /// </summary>
         public static void RequestCloseAndRestart()
         {
             string revitExe = ResolveRevitExecutable();
@@ -30,18 +48,71 @@ namespace GvrTools.Revit.Infrastructure
             if (!string.IsNullOrEmpty(revitExe))
                 ScheduleRestart(revitExe, documentPath);
 
-            RequestClose();
+            ScheduleExit();
         }
 
-        private static void RequestClose()
+        private static void ScheduleExit()
         {
-            Process process = Process.GetCurrentProcess();
-            IntPtr handle = process.MainWindowHandle;
+            if (_controlledApp != null)
+            {
+                if (_exitSubscribed)
+                    return;
+
+                _exitSubscribed = true;
+                _controlledApp.Idling += OnIdlingExitOnce;
+                return;
+            }
+
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            if (dispatcher == null || dispatcher.HasShutdownStarted)
+            {
+                PostCloseToMainWindow();
+                return;
+            }
+
+            dispatcher.BeginInvoke(DispatcherPriority.ApplicationIdle, new Action(PostCloseToMainWindow));
+        }
+
+        private static void OnIdlingExitOnce(object sender, IdlingEventArgs e)
+        {
+            if (_controlledApp != null)
+                _controlledApp.Idling -= OnIdlingExitOnce;
+            _exitSubscribed = false;
+
+            var uiApp = sender as UIApplication;
+            if (TryPostExitRevit(uiApp))
+                return;
+
+            PostCloseToMainWindow();
+        }
+
+        private static bool TryPostExitRevit(UIApplication uiApp)
+        {
+            if (uiApp == null)
+                return false;
+
+            try
+            {
+                RevitCommandId commandId = RevitCommandId.LookupPostableCommandId(PostableCommand.ExitRevit);
+                if (commandId == null || !uiApp.CanPostCommand(commandId))
+                    return false;
+
+                uiApp.PostCommand(commandId);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static void PostCloseToMainWindow()
+        {
+            IntPtr handle = Process.GetCurrentProcess().MainWindowHandle;
             if (handle == IntPtr.Zero)
                 return;
 
-            if (!process.CloseMainWindow())
-                SendMessage(handle, WmClose, IntPtr.Zero, IntPtr.Zero);
+            PostMessage(handle, WmClose, IntPtr.Zero, IntPtr.Zero);
         }
 
         private static string ResolveRevitExecutable()
@@ -70,7 +141,13 @@ namespace GvrTools.Revit.Infrastructure
             else
                 script.AppendLine("$documentPath = $null");
 
-            script.AppendLine("while (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) { Start-Sleep -Milliseconds 400 }");
+            script.AppendLine("$deadline = (Get-Date).AddMinutes(10)");
+            script.AppendLine("while ((Get-Date) -lt $deadline -and (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue)) { Start-Sleep -Milliseconds 400 }");
+            script.AppendLine("if (Get-Process -Id $pidToWait -ErrorAction SilentlyContinue) {");
+            script.AppendLine("  Remove-Item -LiteralPath $MyInvocation.MyCommand.Path -Force");
+            script.AppendLine("  exit 0");
+            script.AppendLine("}");
+            script.AppendLine("Start-Sleep -Milliseconds 800");
             script.AppendLine("if ($documentPath) {");
             script.AppendLine("  Start-Process -FilePath $revitExe -ArgumentList @($documentPath)");
             script.AppendLine("} else {");

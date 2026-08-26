@@ -22,8 +22,13 @@ namespace GvrTools.Licensing.Activation
                 : null;
             var activateVm = new ActivateLicenseViewModel(LicenseRuntime.Client, reason);
             var dialog = new ActivateLicenseWindow(activateVm) { Owner = this };
-            if (dialog.ShowDialog() == true)
-                _viewModel.Refresh();
+            if (dialog.ShowDialog() != true)
+                return;
+
+            // Cerrar Cuenta primero: si pedimos reinicio con este ShowDialog aún abierto,
+            // Revit puede caer en error irrecuperable.
+            Close();
+            LicenseUi.PromptRestartAfterActivation();
         }
     }
 }
