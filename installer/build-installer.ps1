@@ -63,4 +63,4 @@ if ($LASTEXITCODE -ne 0) {
     throw "ISCC falló con código $LASTEXITCODE"
 }
 
-Write-Host "Listo. Revisa dist\GvrTools-Setup-*.exe (sin firmar)." -ForegroundColor Green
+Write-Host "Listo. Revisa dist\GvrTools-Setup-*.exe (sin firma Authenticode)." -ForegroundColor Green

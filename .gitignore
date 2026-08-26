@@ -89,3 +89,6 @@ server/.env
 server/**/*.pfx
 server/**/*.pem
 server/.build-check/
+
+# Certificados Authenticode locales (nunca versionar PFX/contraseñas)
+certs/

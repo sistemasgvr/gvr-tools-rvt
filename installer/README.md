@@ -76,12 +76,17 @@ inicial. Al reemplazar el binario por una versión nueva, conserva exactamente e
 nombre `pdf24-creator-installer.exe`, verifica la firma del proveedor y prueba el
 setup en una máquina limpia.
 
-## Authenticode (cuando tengáis certificado)
+## Authenticode
 
-No está integrado en CI todavía. Ejemplo manual:
+Por ahora el producto se distribuye **sin firma**. Revit mostrará “Fabricante desconocido”
+(el cliente puede usar **Cargar siempre**) y SmartScreen puede avisar al abrir el Setup.
+
+Los scripts en `scripts/codesign/` quedan por si más adelante compráis un cert de CA:
 
 ```powershell
-signtool sign /fd SHA256 /tr http://timestamp.digicert.com /td SHA256 /a dist\GvrTools-Setup-1.0.0.exe
+$env:GVR_CODESIGN_PFX = "C:\secure\gvr-codesign.pfx"
+$env:GVR_CODESIGN_PASSWORD = "..."
+.\scripts\codesign\Sign-Assemblies.ps1 -Path dist\GvrTools-Setup-1.0.0.exe
 ```
 
-Sin firma, SmartScreen avisará a clientes externos — obligatorio antes de la primera venta formal.
+`install-addin.ps1` y `build-installer.ps1` **no** firman automáticamente.
