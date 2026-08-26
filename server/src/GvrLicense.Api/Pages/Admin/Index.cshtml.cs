@@ -1,4 +1,6 @@
+using GvrLicense.Domain.Audit;
 using GvrLicense.Domain.Entities;
+using GvrLicense.Domain.LicenseKeys;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
@@ -12,7 +14,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
 
     public List<LicenseRow> RecentRows { get; private set; } = [];
     public List<UsageRankRow> TopUsageRows { get; private set; } = [];
-    public List<LicenseRow> ExpiringSoonRows { get; private set; } = [];
+    public List<LicenseRow> UpcomingExpiryRows { get; private set; } = [];
     public List<AuditRow> RecentAuditRows { get; private set; } = [];
 
     public int ActiveCount { get; private set; }
@@ -54,17 +56,17 @@ public class IndexModel(LicenseDbContext db) : PageModel
         RecentRows = allLicenses
             .OrderByDescending(l => l.CreatedAtUtc)
             .Take(RecentCount)
-            .Select(l => new LicenseRow(l.Id, l.Key, l.CustomerName, l.PlanCode, l.Status, l.ValidUntil))
+            .Select(l => ToLicenseRow(l.Id, l.Key, l.CustomerName, l.PlanCode, l.Status, l.ValidUntil))
             .ToList();
 
         ExpiringSoonCount = allLicenses.Count(l =>
             l.Status == LicenseStatus.Active && l.ValidUntil <= soonCutoff);
 
-        ExpiringSoonRows = allLicenses
-            .Where(l => l.Status == LicenseStatus.Active && l.ValidUntil <= soonCutoff)
+        UpcomingExpiryRows = allLicenses
+            .Where(l => l.Status == LicenseStatus.Active)
             .OrderBy(l => l.ValidUntil)
             .Take(RecentCount)
-            .Select(l => new LicenseRow(l.Id, l.Key, l.CustomerName, l.PlanCode, l.Status, l.ValidUntil))
+            .Select(l => ToLicenseRow(l.Id, l.Key, l.CustomerName, l.PlanCode, l.Status, l.ValidUntil))
             .ToList();
 
         ActiveCount = allLicenses.Count(l => l.Status == LicenseStatus.Active);
@@ -78,7 +80,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature)
             .SumAsync(u => u.Consumed);
 
-        TopUsageRows = await db.UsageCounters
+        TopUsageRows = (await db.UsageCounters
             .AsNoTracking()
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature && u.Consumed > 0)
             .OrderByDescending(u => u.Consumed)
@@ -93,7 +95,9 @@ public class IndexModel(LicenseDbContext db) : PageModel
                     license.Customer!.CompanyName,
                     counter.Consumed,
                     counter.QuotaLimit))
-            .ToListAsync();
+            .ToListAsync())
+            .Select(r => r with { Key = LicenseKeyGenerator.FormatForDisplay(r.Key) })
+            .ToList();
 
         var usageEvents = await db.UsageEvents
             .AsNoTracking()
@@ -135,13 +139,42 @@ public class IndexModel(LicenseDbContext db) : PageModel
             .Select(p => monthlyTotals.FirstOrDefault(t => t.Period == p)?.Total ?? 0)
             .ToList();
 
-        RecentAuditRows = await db.AuditLogs
+        var recentAudit = await db.AuditLogs
             .AsNoTracking()
             .OrderByDescending(a => a.OccurredAtUtc)
             .Take(8)
-            .Select(a => new AuditRow(a.Id, a.Actor, a.Action, a.OccurredAtUtc, a.LicenseId))
+            .Select(a => new { a.Id, a.Actor, a.Action, a.DetailsJson, a.OccurredAtUtc, a.LicenseId })
             .ToListAsync();
+
+        RecentAuditRows = recentAudit
+            .Select(a => new AuditRow(
+                a.Id,
+                a.Actor,
+                a.Action,
+                AuditActionDescriber.Describe(a.Action, a.DetailsJson),
+                a.OccurredAtUtc,
+                a.LicenseId))
+            .ToList();
     }
+
+    private static LicenseRow ToLicenseRow(
+        Guid id,
+        string key,
+        string customerName,
+        string planCode,
+        LicenseStatus status,
+        DateTimeOffset validUntil) =>
+        new(
+            id,
+            LicenseKeyGenerator.FormatForDisplay(key),
+            customerName,
+            planCode,
+            status,
+            validUntil,
+            DaysUntil(validUntil));
+
+    public static int DaysUntil(DateTimeOffset validUntil) =>
+        Math.Max(0, (int)Math.Ceiling((validUntil - DateTimeOffset.UtcNow).TotalDays));
 
     public sealed record LicenseRow(
         Guid Id,
@@ -149,7 +182,8 @@ public class IndexModel(LicenseDbContext db) : PageModel
         string CustomerName,
         string PlanCode,
         LicenseStatus Status,
-        DateTimeOffset ValidUntil);
+        DateTimeOffset ValidUntil,
+        int DaysUntil);
 
     public sealed record UsageRankRow(
         Guid LicenseId,
@@ -162,17 +196,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
         Guid Id,
         string Actor,
         string Action,
+        string ActionLabel,
         DateTimeOffset OccurredAtUtc,
         Guid? LicenseId);
-
-    public static string DescribeAuditAction(string action) => action switch
-    {
-        "license.create" => "Licencia creada",
-        "license.suspend" => "Licencia suspendida",
-        "license.activate" => "Licencia reactivada",
-        "license.expire" => "Licencia vencida",
-        "device.kick" => "PC liberado",
-        "device.deactivate" => "Desactivación en cliente",
-        _ => action.Replace('.', ' ')
-    };
 }

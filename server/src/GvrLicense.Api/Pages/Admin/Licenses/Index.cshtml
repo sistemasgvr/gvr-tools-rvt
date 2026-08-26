@@ -131,7 +131,7 @@
       paginationCounter: 'rows',
       columns: [
         { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false, headerTooltip: 'Ver más columnas' },
-        { title: 'Clave', field: 'key', minWidth: 170, formatter: (cell) => `<code>${cell.getValue()}</code>`, responsive: 0 },
+        { title: 'Clave', field: 'displayKey', minWidth: 170, formatter: (cell) => `<code>${cell.getValue()}</code>`, responsive: 0 },
         { title: 'Acciones', field: 'id', formatter: actionButton, width: 200, hozAlign: 'center', headerSort: false, responsive: 0 },
         { title: 'Cliente', field: 'customerName', minWidth: 140, responsive: 1 },
         { title: 'Estado', field: 'status', formatter: (cell) => window.gvrAdmin.licenseStatusBadge(cell.getValue()), width: 120, hozAlign: 'center', responsive: 2 },
@@ -146,6 +146,7 @@
       if (value) {
         table.setFilter([[
           { field: 'key', type: 'like', value },
+          { field: 'displayKey', type: 'like', value },
           { field: 'customerName', type: 'like', value },
           { field: 'planCode', type: 'like', value },
         ]]);

@@ -42,6 +42,18 @@ public class LicenseKeyGeneratorTests
         Assert.False(LicenseKeyGenerator.TryValidateFormat(input));
     }
 
+    [Fact]
+    public void FormatForDisplay_NormalizesLegacyKeyWithoutPrefix()
+    {
+        Assert.Equal("GVR-N7ZD-SMZD-NTV5", LicenseKeyGenerator.FormatForDisplay("N7ZD-SMZD-NTV5"));
+    }
+
+    [Fact]
+    public void FormatForDisplay_NormalizesSpacesToDashes()
+    {
+        Assert.Equal("GVR-2N2E-802D-VZPX", LicenseKeyGenerator.FormatForDisplay("GVR 2N2E 802D VZPX"));
+    }
+
     private static string ReplaceLastChar(string key)
     {
         var lastChar = key[^1];

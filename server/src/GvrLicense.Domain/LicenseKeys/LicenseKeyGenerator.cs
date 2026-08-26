@@ -46,6 +46,29 @@ public static class LicenseKeyGenerator
         return normalized;
     }
 
+    /// <summary>Presentación uniforme en admin (GVR-XXXX-XXXX-XXXX).</summary>
+    public static string FormatForDisplay(string? key)
+    {
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return string.Empty;
+        }
+
+        var normalized = Normalize(key);
+        if (normalized.StartsWith("GVR-", StringComparison.Ordinal))
+        {
+            return normalized;
+        }
+
+        var compact = normalized.Replace("-", string.Empty, StringComparison.Ordinal);
+        if (compact.Length == PayloadLength + 2)
+        {
+            return $"GVR-{compact[..4]}-{compact[4..8]}-{compact[8..]}";
+        }
+
+        return normalized;
+    }
+
     /// <summary>Valida formato + checksum, sin tocar la base de datos. No confirma que la key exista.</summary>
     public static bool TryValidateFormat(string? key)
     {

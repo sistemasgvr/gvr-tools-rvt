@@ -7,6 +7,7 @@ using System.Runtime.Serialization.Json;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using GvrTools.Core.Diagnostics;
 using GvrTools.Licensing.Crypto;
 using GvrTools.Licensing.Device;
 using GvrTools.Licensing.Entitlements;
@@ -190,9 +191,13 @@ namespace GvrTools.Licensing
             {
                 throw;
             }
-            catch (Exception)
+            catch (Exception ex)
             {
-                // Red / timeout: seguir con cache si aún está en gracia.
+                // Red / timeout: seguir con cache si aún está en gracia. Si esto falla de forma
+                // repetida, FlushUsageQueueAsync (llamado más abajo en el camino feliz) nunca se
+                // ejecuta y la cola de uso se queda pegada sin que quede ningún rastro -- de ahí
+                // el log aquí también.
+                LogFailure("Heartbeat falló; se continúa con la caché local si sigue en gracia.", ex);
                 return false;
             }
         }
@@ -220,6 +225,13 @@ namespace GvrTools.Licensing
             ClearLocal();
         }
 
+        /// <summary>
+        /// Consumo pendiente por lámina exportada: si esto falla en silencio, el admin muestra
+        /// "0 exportadas" aunque el cliente sí haya exportado con éxito -- pasó de verdad (ver
+        /// diagnóstico del 2026-08-26), y no dejaba ningún rastro para saber por qué. Cada rama de
+        /// "no se pudo" ahora deja una línea en el log de la app, así la próxima vez hay algo que
+        /// leer en vez de tener que reproducir la llamada a mano contra producción.
+        /// </summary>
         public async Task FlushUsageQueueAsync(CancellationToken ct)
         {
             await _usageFlushGate.WaitAsync(ct).ConfigureAwait(false);
@@ -250,18 +262,25 @@ namespace GvrTools.Licensing
                         }
                         else
                         {
+                            // El servidor respondió 200 pero sin Remaining: consume_quota no
+                            // encontró fila (contador del período/feature no existe todavía en
+                            // ese momento puntual). Reintentar más tarde suele resolverlo solo,
+                            // pero sin este log no había forma de distinguir esto de un bug real.
+                            LogFailure($"Evento de uso '{item.FeatureCode}' quedó pendiente: el servidor no devolvió Remaining (event={item.EventId}).", null);
                             leftover.Add(item);
                         }
                     }
                     catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
                     {
+                        LogFailure($"Sesión rechazada al reportar uso (event={item.EventId}): {ex.Message}. Se limpia la cola local.", ex);
                         MarkNeedsReactivation(ex.Message);
                         ClearLocal();
                         leftover.Clear();
                         break;
                     }
-                    catch (Exception)
+                    catch (Exception ex)
                     {
+                        LogFailure($"No se pudo reportar uso '{item.FeatureCode}' (event={item.EventId}); queda en cola para reintentar.", ex);
                         for (var j = i; j < pending.Count; j++)
                             leftover.Add(pending[j]);
                         break;
@@ -350,6 +369,18 @@ namespace GvrTools.Licensing
             _usageFlushGate.Dispose();
             if (_ownsApi && _api is IDisposable disposable)
                 disposable.Dispose();
+        }
+
+        private static void LogFailure(string message, Exception ex)
+        {
+            try
+            {
+                new RollingFileLog("Licensing").Error(message, ex);
+            }
+            catch
+            {
+                // el logging nunca debe ser la razón de un segundo fallo.
+            }
         }
 
         private static bool IsServerSessionRejected(LicenseApiClientException ex) =>

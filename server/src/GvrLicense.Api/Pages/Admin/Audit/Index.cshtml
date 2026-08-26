@@ -39,7 +39,7 @@
       columns: [
         { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
         { title: 'Cuándo', field: 'occurredAtUtc', width: 150, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
-        { title: 'Acción', field: 'action', minWidth: 120, responsive: 0 },
+        { title: 'Acción', field: 'actionLabel', minWidth: 160, responsive: 0 },
         { title: 'Quién', field: 'actor', minWidth: 100, responsive: 1 },
         { title: 'Detalle', field: 'detailsJson', minWidth: 200, responsive: 2 },
       ],

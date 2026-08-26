@@ -1,4 +1,5 @@
 using GvrLicense.Domain.Entities;
+using GvrLicense.Domain.LicenseKeys;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Antiforgery;
 using Microsoft.AspNetCore.Mvc;
@@ -26,15 +27,36 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
     {
         AntiForgeryToken = antiforgery.GetAndStoreTokens(HttpContext).RequestToken!;
 
-        Rows = await db.Licenses
+        var rows = await db.Licenses
             .Include(l => l.Customer)
             .Include(l => l.Plan)
             .Include(l => l.Devices)
             .OrderByDescending(l => l.CreatedAtUtc)
-            .Select(l => new LicenseRow(
-                l.Id, l.Key, l.Customer!.CompanyName, l.Plan!.Code, l.Status, l.ValidUntil,
-                l.Devices.Select(d => d.CompanyUserId).Distinct().Count(), l.MaxUsers))
+            .Select(l => new
+            {
+                l.Id,
+                l.Key,
+                CustomerName = l.Customer!.CompanyName,
+                PlanCode = l.Plan!.Code,
+                l.Status,
+                l.ValidUntil,
+                UserCount = l.Devices.Select(d => d.CompanyUserId).Distinct().Count(),
+                l.MaxUsers
+            })
             .ToListAsync();
+
+        Rows = rows
+            .Select(l => new LicenseRow(
+                l.Id,
+                l.Key,
+                LicenseKeyGenerator.FormatForDisplay(l.Key),
+                l.CustomerName,
+                l.PlanCode,
+                l.Status,
+                l.ValidUntil,
+                l.UserCount,
+                l.MaxUsers))
+            .ToList();
 
         CustomerOptions = await db.Customers
             .Where(c => c.IsActive)
@@ -59,6 +81,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
         if (license != null)
         {
             license.Status = license.Status == LicenseStatus.Active ? LicenseStatus.Suspended : LicenseStatus.Active;
+            await db.SetAuditActorAsync(User.Identity?.Name ?? "admin");
             await db.SaveChangesAsync();
         }
 
@@ -66,6 +89,6 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
     }
 
     public sealed record LicenseRow(
-        Guid Id, string Key, string CustomerName, string PlanCode, LicenseStatus Status,
+        Guid Id, string Key, string DisplayKey, string CustomerName, string PlanCode, LicenseStatus Status,
         DateTimeOffset ValidUntil, int UserCount, int MaxUsers);
 }
