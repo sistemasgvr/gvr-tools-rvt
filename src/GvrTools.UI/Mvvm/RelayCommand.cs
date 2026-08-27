@@ -34,11 +34,11 @@ namespace GvrTools.UI.Mvvm
 
         /// <summary>
         /// Every button/menu item in every GVR Tools window goes through here. WPF invokes
-        /// ICommand.Execute from its own dispatcher loop, and this add-in has no
-        /// Dispatcher.UnhandledException handler anywhere (by design -- see RevitRestart.cs) -- so
-        /// an exception that escaped this call would not just fail one command, it would crash the
-        /// whole Revit process with an "unrecoverable error". Every command gets this net once,
-        /// here, instead of relying on each view model to remember to add its own try/catch.
+        /// ICommand.Execute from its own dispatcher loop, and even though GvrApplication.OnStartup
+        /// now registers a Dispatcher.UnhandledException handler as a last-resort net, that handler
+        /// only logs -- it doesn't know which command failed or let the window keep working. Every
+        /// command gets its own try/catch here too, instead of relying on each view model to
+        /// remember to add its own, or on the global handler to explain what broke.
         /// </summary>
         public void Execute(object parameter)
         {

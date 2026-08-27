@@ -15,46 +15,39 @@ namespace GvrTools.Licensing.Activation
         /// </summary>
         public static Action RequestApplicationClose { get; set; }
 
-        public static bool? ShowActivate(
-            LicenseClient client,
-            System.IntPtr ownerHwnd = default,
-            string initialMessage = null)
-        {
-            var vm = new ActivateLicenseViewModel(client ?? LicenseRuntime.Client, initialMessage);
-            var window = new ActivateLicenseWindow(vm);
-            AttachOwner(window, ownerHwnd);
-            bool? accepted = window.ShowDialog();
-            if (accepted == true)
-                PromptRestartAfterActivation();
-            return accepted;
-        }
-
         /// <summary>
         /// Ventana unificada Cuenta / Cambiar plan: resumen + soporte + pegar key + desactivar
-        /// (UI_FREEMIUM_PLAN.md §3.2). Alias de <see cref="ShowChangePlan"/>.
+        /// (UI_FREEMIUM_PLAN.md §3.2). Único punto de entrada para activar/reactivar/desactivar --
+        /// antes existía también ActivateLicenseWindow (solo campos, sin resumen de plan) para el
+        /// arranque/kick/gate de herramientas; auditoría del sistema encontró que duplicaba casi
+        /// toda esta lógica con UX distinta según el punto de entrada, así que se retiró.
+        /// <paramref name="initialMessage"/> es opcional: si no se pasa, se usa
+        /// <see cref="LicenseClient.ReactivationReason"/> del cliente (ya lo lee
+        /// AccountLicenseViewModel.PlanSummary), que es lo que la mayoría de los llamadores ya
+        /// tienen puesto antes de llegar aquí (MarkNeedsReactivation corre primero).
         /// </summary>
-        public static void ShowAccount(LicenseClient client = null, System.IntPtr ownerHwnd = default)
-            => ShowChangePlan(client, ownerHwnd);
-
-        /// <summary>Misma ventana que Cuenta: pensada para el CTA "Cambiar plan ★" de las tools.</summary>
         public static void ShowChangePlan(LicenseClient client = null, System.IntPtr ownerHwnd = default)
         {
             var vm = new AccountLicenseViewModel(client ?? LicenseRuntime.Client);
             var window = new AccountLicenseWindow(vm);
             AttachOwner(window, ownerHwnd);
             bool? result = window.ShowDialog();
-            if (result == true || window.ActivatedSuccessfully)
-                PromptRestartAfterActivation();
+            if (result == true || window.NeedsRestart)
+                PromptRestartAfterActivation(window.RestartReason);
         }
+
+        /// <summary>Alias de <see cref="ShowChangePlan"/> -- mismo diálogo, distinto punto de entrada semántico (ribbon "Cuenta / Licencia").</summary>
+        public static void ShowAccount(LicenseClient client = null, System.IntPtr ownerHwnd = default)
+            => ShowChangePlan(client, ownerHwnd);
 
         /// <summary>
         /// Aviso al usuario y cierre diferido de Revit (cuando el dispatcher esté idle).
         /// Debe llamarse solo cuando ya no hay ShowDialog de licencia abiertos.
         /// </summary>
-        public static void PromptRestartAfterActivation()
+        public static void PromptRestartAfterActivation(string reason = null)
         {
             MessageBox.Show(
-                "Licencia activada correctamente.\n\n" +
+                (string.IsNullOrWhiteSpace(reason) ? "Licencia activada correctamente." : reason.Trim()) + "\n\n" +
                 "Al pulsar Aceptar, Revit se cerrará y se volverá a abrir solo para cargar todas las herramientas de tu plan.\n\n" +
                 "Si tenías un proyecto guardado abierto, se reabrirá automáticamente.\n" +
                 "Si Revit pregunta si guardar, confirma o descarta según corresponda.",

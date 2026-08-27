@@ -87,7 +87,7 @@ namespace GvrTools.App
                         TaskDialog.Show(
                             "GVR Tools · Licencia",
                             reason + "\n\nLas herramientas dejan de estar disponibles hasta que actives de nuevo.");
-                        LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
+                        LicenseUi.ShowChangePlan(LicenseRuntime.Client);
                     }
                     catch (Exception ex)
                     {
@@ -108,11 +108,9 @@ namespace GvrTools.App
 
                 if (LicenseRuntime.NeedsReactivation)
                 {
-                    var reason = LicenseRuntime.ReactivationReason
-                        ?? "Sesión de licencia expirada. Vuelve a activar con tu clave de licencia.";
                     try
                     {
-                        LicenseUi.ShowActivate(LicenseRuntime.Client, default, reason);
+                        LicenseUi.ShowChangePlan(LicenseRuntime.Client);
                     }
                     catch (Exception ex)
                     {

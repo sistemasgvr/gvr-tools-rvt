@@ -314,9 +314,26 @@ namespace GvrTools.Licensing
                     }
                     catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
                     {
-                        LogFailure($"Sesión rechazada al reportar uso (event={item.EventId}): {ex.Message}. Se limpia la cola local.", ex);
-                        MarkNeedsReactivation(ex.Message);
+                        // Auditoría del sistema: antes esto siempre exigía reactivación manual, a
+                        // diferencia de TryHeartbeatAsync (que ya intenta el plan free primero desde
+                        // el fix del kick). Mismo tipo de rechazo, mismo comportamiento ahora. El
+                        // consumo de estos eventos igual se pierde -- no hay forma de reportarlo
+                        // contra una licencia de la que ya se desvinculó el dispositivo -- pero
+                        // ahora queda un log explícito de cuántos eventos se perdieron, en vez de
+                        // desaparecer en silencio.
+                        int lostCount = pending.Count - i;
                         ClearLocal();
+
+                        if (await TryActivateFreeAsync(ct).ConfigureAwait(false))
+                        {
+                            LogFailure($"Sesión rechazada al reportar uso (event={item.EventId}); se perdieron {lostCount} evento(s) de uso pendiente(s), pero se recuperó el plan free automáticamente.", ex);
+                        }
+                        else
+                        {
+                            LogFailure($"Sesión rechazada al reportar uso (event={item.EventId}): {ex.Message}. Se limpia la cola local ({lostCount} evento(s) perdido(s)).", ex);
+                            MarkNeedsReactivation(ex.Message);
+                        }
+
                         leftover.Clear();
                         break;
                     }

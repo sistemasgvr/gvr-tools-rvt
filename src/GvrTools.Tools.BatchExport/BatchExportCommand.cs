@@ -58,13 +58,25 @@ namespace GvrTools.Tools.BatchExport
                 TaskDialog.Show(DialogTitle,
                     "No hay una licencia válida para Exportar láminas. Activa tu clave en Cuenta / Licencia.");
                 RevitRestart.PendingDocumentPath = uiDocument.Document.PathName;
-                bool? accepted = LicenseUi.ShowActivate(LicenseRuntime.Client, hwnd);
+                try
+                {
+                    LicenseUi.ShowChangePlan(LicenseRuntime.Client, hwnd);
+                }
+                catch (Exception ex)
+                {
+                    // Igual que en GvrApplication.cs: un fallo mostrando la ventana de licencia
+                    // no debe dejar rastro solo como una excepción genérica de Revit -- se registra
+                    // y se sigue el mismo camino de "no entitled" de abajo.
+                    new RollingFileLog("BatchExport").Error("No se pudo mostrar Cambiar plan desde el comando de exportación.", ex);
+                }
+
                 if (!LicenseRuntime.Entitlements.CanUse(FeatureCodes.ToolBatchExport))
                     return Result.Cancelled;
 
-                // Activación ok → reinicio de Revit ya programado; no abrir la ventana ahora.
-                if (accepted == true)
-                    return Result.Succeeded;
+                // Ya está entitled y no lo estaba antes de abrir el diálogo: solo pudo pasar
+                // activando (o cayendo a free), y eso ya programó el reinicio de Revit -- no
+                // tiene sentido abrir la ventana de exportación justo antes de que Revit se cierre.
+                return Result.Succeeded;
             }
 
             if (_openWindow != null)

@@ -19,8 +19,11 @@ namespace GvrTools.Licensing.Activation
             HeaderIcon.Source = BrandIcons.Escudo;
         }
 
-        /// <summary>true si el usuario activó una clave en esta sesión de diálogo.</summary>
-        public bool ActivatedSuccessfully => _activated;
+        /// <summary>true si el plan cambió (activó o desactivó) en esta sesión de diálogo -- el host debe reiniciar Revit.</summary>
+        public bool NeedsRestart => _activated;
+
+        /// <summary>Texto a mostrar en el aviso de reinicio -- distinto según activó o desactivó.</summary>
+        public string RestartReason => _viewModel.RestartReason;
 
         private void OnRequestClose(bool activated)
         {

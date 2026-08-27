@@ -14,6 +14,9 @@ public static class V1Endpoints
     /// <summary>Nombre de la política de rate limiting de activate-free -- ver Program.cs (AddRateLimiter).</summary>
     public const string ActivateFreeRateLimitPolicy = "activate-free";
 
+    /// <summary>Nombre de la política de rate limiting de activate (key de pago) -- ver Program.cs (AddRateLimiter).</summary>
+    public const string ActivateRateLimitPolicy = "activate";
+
     public static IEndpointRouteBuilder MapV1Endpoints(this IEndpointRouteBuilder app)
     {
         var v1 = app.MapGroup("/v1").WithTags("v1 (add-in)");
@@ -21,6 +24,7 @@ public static class V1Endpoints
         v1.MapPost("/activate", async (ActivateRequest request, HttpContext http, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
                 await RunAsync(log, "activate", () => engine.ActivateAsync(request, http.Connection.RemoteIpAddress?.ToString(), ct)))
             .AllowAnonymous()
+            .RequireRateLimiting(ActivateRateLimitPolicy)
             .WithSummary("Activa una license key en este dispositivo")
             .WithDescription("Valida la key, crea/renueva el seat (node-locked por fingerprint) y devuelve el blob de entitlements firmado + un JWT (AccessToken) para heartbeat/usage.")
             .Produces<ActivateResponse>()

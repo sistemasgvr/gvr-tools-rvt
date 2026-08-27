@@ -154,6 +154,20 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0
             }));
+
+    // Auditoría del sistema: /v1/activate (key de pago) se había quedado sin ningún límite --
+    // más generoso que el de activate-free porque un cliente real puede legítimamente activar
+    // en varias PCs seguidas, pero sigue acotando el abuso/DoS sobre el único otro endpoint
+    // público que toca la base de datos sin sesión previa.
+    options.AddPolicy(V1Endpoints.ActivateRateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 20,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0
+            }));
 });
 
 var app = builder.Build();

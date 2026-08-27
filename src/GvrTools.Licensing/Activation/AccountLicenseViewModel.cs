@@ -29,14 +29,20 @@ namespace GvrTools.Licensing.Activation
             _fullName = profile.FullName;
             _email = profile.Email;
 
-            ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy);
+            ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy && !string.IsNullOrWhiteSpace(LicenseKey));
             DeactivateCommand = new RelayCommand(async () => await DeactivateAsync(), () => IsLicensed && !IsBusy);
             CloseCommand = new RelayCommand(() => RequestClose?.Invoke(false));
             Refresh();
         }
 
-        /// <summary>true = activó licencia (el host pide reinicio de Revit).</summary>
+        /// <summary>true = el plan cambió (activó o desactivó) y el host debe reiniciar Revit.</summary>
         public event Action<bool> RequestClose;
+
+        /// <summary>
+        /// Texto para el MessageBox de reinicio -- distinto según se haya activado o desactivado,
+        /// para no mostrar "Licencia activada correctamente" tras un "Desactivar este PC".
+        /// </summary>
+        public string RestartReason { get; private set; }
 
         public void Refresh()
         {
@@ -173,6 +179,7 @@ namespace GvrTools.Licensing.Activation
                 await _client.ActivateAsync(LicenseKey, fullName, email, _cts.Token).ConfigureAwait(true);
                 _profileStore.Save(fullName, email);
                 StatusMessage = "Licencia activada.";
+                RestartReason = "Licencia activada correctamente.";
                 RequestClose?.Invoke(true);
             }
             catch (Http.LicenseApiClientException ex)
@@ -211,7 +218,12 @@ namespace GvrTools.Licensing.Activation
                 }
 
                 StatusMessage = "PC liberado.";
-                Refresh();
+                // Auditoría del sistema: antes esto solo refrescaba el estado en pantalla -- la
+                // cinta de Revit, armada al arrancar con las entitlements de ANTES de desactivar,
+                // seguía mostrando herramientas ya no licenciadas hasta un reinicio manual. Ahora
+                // pide reinicio igual que tras activar, para que la cinta quede consistente.
+                RestartReason = "PC liberado correctamente.";
+                RequestClose?.Invoke(true);
             }
             catch (Exception ex)
             {
