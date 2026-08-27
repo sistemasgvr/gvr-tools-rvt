@@ -10,12 +10,13 @@
 
 <section class="public-hero">
     <div class="container">
+        <img src="~/img/escudo-gvr.png" alt="GVR TOOLS-RVT" class="public-hero-logo mb-3" width="96" height="96" />
         <h1>GVR TOOLS-RVT para Revit</h1>
         <p class="lead text-body-secondary">
             Exportación masiva PDF/DWG y más herramientas para tu equipo BIM, directo desde la cinta de Revit.
         </p>
         <div class="d-flex flex-wrap gap-2 justify-content-center mt-4">
-            <a href="/download" class="btn btn-primary btn-lg">
+            <a href="/download/file" class="btn btn-primary btn-lg">
                 <i class="bi bi-download me-1" aria-hidden="true"></i>
                 @(Model.LatestInstaller is null
                     ? "Descargar"
@@ -54,7 +55,10 @@
                 <div class="public-step-number">1</div>
                 <div>
                     <h5>Descarga y ejecuta el instalador</h5>
-                    <p class="text-body-secondary mb-0">Usa el botón "Descargar" de arriba. Vas a necesitar permisos de administrador en tu PC.</p>
+                    <p class="text-body-secondary mb-2">Usa el botón de abajo (o el de la barra superior). Vas a necesitar permisos de administrador en tu PC.</p>
+                    <a href="/download/file" class="btn btn-primary btn-sm">
+                        <i class="bi bi-download me-1" aria-hidden="true"></i> Descargar instalador
+                    </a>
                 </div>
             </div>
         </div>

@@ -10,6 +10,7 @@
 
 <section class="public-hero">
     <div class="container">
+        <img src="~/img/escudo-gvr.png" alt="GVR TOOLS-RVT" class="public-hero-logo mb-3" width="96" height="96" />
         <p class="text-body-secondary text-uppercase small fw-semibold mb-2">Instalador</p>
         <h1>Descargar GVR TOOLS-RVT</h1>
         <p class="lead text-body-secondary">
@@ -23,14 +24,14 @@
                     <i class="bi bi-download me-1" aria-hidden="true"></i>
                     Descargar @(string.IsNullOrWhiteSpace(Model.LatestVersion) ? "ahora" : ("v" + Model.LatestVersion))
                 </a>
-                <a href="/#instalacion" class="btn btn-outline-secondary btn-lg">Pasos de instalación</a>
+                <a href="#pasos-instalacion" class="btn btn-outline-secondary btn-lg">Pasos de instalación</a>
             </div>
             <p class="text-body-secondary small mt-3 mb-0">
                 @if (Model.LatestPublishedAtUtc is not null)
                 {
                     <span>Publicada el @Model.LatestPublishedAtUtc.Value.ToString("dd/MM/yyyy").</span>
                 }
-                Al pulsar Descargar se inicia el archivo <code>.exe</code> (enlace temporal seguro).
+                Un clic inicia el <code>.exe</code> (enlace temporal seguro).
             </p>
             @if (!string.IsNullOrWhiteSpace(Model.LatestNotes))
             {
@@ -55,7 +56,7 @@
     </div>
 </section>
 
-<section class="container pb-5">
+<section id="pasos-instalacion" class="container pb-5">
     <div class="row g-4 justify-content-center">
         <div class="col-md-4">
             <div class="public-step">

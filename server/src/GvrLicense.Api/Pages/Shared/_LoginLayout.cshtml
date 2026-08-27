@@ -24,13 +24,18 @@
 
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="color-scheme" content="light dark" />
+    <link rel="icon" type="image/png" href="~/img/escudo-gvr.png" />
     <link rel="stylesheet" href="~/lib/fonts/source-sans-3/index.css" />
     <link rel="stylesheet" href="~/lib/bootstrap-icons/font/bootstrap-icons.min.css" />
     <link rel="stylesheet" href="~/lib/adminlte/css/adminlte.min.css" />
+    <link rel="stylesheet" href="~/css/admin-site.css" />
 </head>
 <body class="login-page bg-body-secondary">
 <main class="login-box">
-    <h1 class="login-logo"><b>GVR</b> License</h1>
+    <div class="login-logo text-center">
+        <img src="~/img/escudo-gvr.png" alt="GVR" class="gvr-login-logo mb-2" width="72" height="72" />
+        <h1 class="mb-0"><b>GVR</b> License</h1>
+    </div>
     <div class="card">
         <div class="card-body login-card-body">
             @RenderBody()
