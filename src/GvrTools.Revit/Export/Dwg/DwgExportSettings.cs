@@ -26,6 +26,15 @@ namespace GvrTools.Revit.Export.Dwg
         public bool UseSharedCoordinates { get; set; }
 
         /// <summary>
+        /// Nombre de una configuración DWG ya guardada en el proyecto (Administrar → Configuraciones
+        /// de exportación DWG/DXF). Si viene con valor, DwgExportEngine usa esas opciones tal cual
+        /// (incluye mapeo de capas y grosores de línea que este panel no expone) en vez de
+        /// FileVersion/MergeViews/UseSharedCoordinates de arriba. Null o vacío = usar los controles
+        /// de esta clase como siempre.
+        /// </summary>
+        public string SavedSetupName { get; set; }
+
+        /// <summary>
         /// When true, also drop a PNG next to each .dwg — same base name — using Revit's
         /// ImageExportOptions. Off by default because the extra file is only useful when the DWG
         /// will be shown as a raster preview elsewhere, and doubling the output size surprises

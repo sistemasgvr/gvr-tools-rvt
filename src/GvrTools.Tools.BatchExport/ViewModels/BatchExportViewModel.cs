@@ -109,7 +109,23 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _preferences = _settingsStore.Load<BatchExportPreferences>(BatchExportPreferences.StorageKey);
             ApplyPreferences(_preferences);
             FormatChoices = BuildFormatChoices();
+            FormatOptions = BuildFormatOptions();
             EnsureSelectedFormatAllowed();
+            SyncFormatOptionSelection();
+            BlockedFormatLabels = BuildBlockedFormatLabels();
+
+            // Arranca siempre en "(Personalizada)": no cambiar el comportamiento por defecto de la
+            // tool solo porque el proyecto tenga una configuración DWG marcada como predeterminada
+            // en Revit (esa marca puede existir por otro motivo, para exportar una sola lámina a
+            // mano). Cargarla es una elección explícita del usuario, no un default nuevo.
+            var savedDwgSetups = DwgExportSetupCatalog.ListNames(uiDocument.Document);
+            DwgSavedSetupChoices = new[] { CustomDwgOptionsLabel }.Concat(savedDwgSetups).ToList();
+            _dwgSavedSetupName = CustomDwgOptionsLabel;
+
+            string activeDwgSetup = DwgExportSetupCatalog.TryGetActiveName(uiDocument.Document);
+            DwgActiveSetupHint = !string.IsNullOrEmpty(activeDwgSetup) && savedDwgSetups.Contains(activeDwgSetup)
+                ? $"Tu proyecto marca \"{activeDwgSetup}\" como configuración DWG predeterminada."
+                : null;
 
             SelectAllCommand = new RelayCommand(() => SetVisibleSelection(true));
             SelectNoneCommand = new RelayCommand(() => SetVisibleSelection(false));
@@ -119,6 +135,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             OpenFolderCommand = new RelayCommand(() => _dialogs.Reveal(RevealTarget));
             ExportCommand = new RelayCommand(StartExport, () => CanExport);
             CancelCommand = new RelayCommand(RequestCancel, () => IsExporting);
+            GoBackCommand = new RelayCommand(GoBack, () => CanGoBack);
+            GoNextCommand = new RelayCommand(GoNext, () => CanGoNext);
+            GoToStepCommand = new RelayCommand(GoToStep, CanGoToStep);
+            SelectFormatCommand = new RelayCommand(SelectFormatOption);
+            ChangePlanCommand = new RelayCommand(() => RequestChangePlan?.Invoke());
 
             StatusText = Sheets.Count == 0
                 ? "El proyecto activo no tiene láminas para exportar."
@@ -143,6 +164,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public ObservableCollection<ExportResultViewModel> Results { get; } = new ObservableCollection<ExportResultViewModel>();
 
         public string DocumentTitle => _project.Title;
+
+        /// <summary>Expuesto solo para que el code-behind reutilice el mismo IUserDialogs al abrir ExportSuccessWindow.</summary>
+        public IUserDialogs Dialogs => _dialogs;
 
         private string _searchText = string.Empty;
         public string SearchText
@@ -264,6 +288,26 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public IReadOnlyList<ChoiceItem<FormatMode>> FormatChoices { get; private set; }
 
+        /// <summary>Todas las opciones de formato (incluidas las bloqueadas) para el paso 2 con candados.</summary>
+        public IReadOnlyList<FormatOptionItem> FormatOptions { get; private set; }
+
+        /// <summary>Formatos que existen en la tool pero no incluye el plan actual.</summary>
+        public IReadOnlyList<string> BlockedFormatLabels { get; private set; }
+
+        public bool HasBlockedFormats => BlockedFormatLabels.Count > 0;
+
+        public string BlockedFormatsText => "No incluido en tu plan: " + string.Join(", ", BlockedFormatLabels);
+
+        private static IReadOnlyList<string> BuildBlockedFormatLabels()
+        {
+            LicenseRuntime.EnsureInitialized();
+            var entitlements = LicenseRuntime.Entitlements;
+            var blocked = new List<string>();
+            if (!entitlements.CanUse(FeatureCodes.FormatPdf)) blocked.Add("PDF");
+            if (!entitlements.CanUse(FeatureCodes.FormatDwg)) blocked.Add("DWG");
+            return blocked;
+        }
+
         private static IReadOnlyList<ChoiceItem<FormatMode>> BuildFormatChoices()
         {
             LicenseRuntime.EnsureInitialized();
@@ -279,6 +323,42 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 list.Add(ChoiceItem.Of(FormatMode.PdfAndDwg, "PDF + DWG"));
 
             return list;
+        }
+
+        private static IReadOnlyList<FormatOptionItem> BuildFormatOptions()
+        {
+            LicenseRuntime.EnsureInitialized();
+            var entitlements = LicenseRuntime.Entitlements;
+            bool pdf = entitlements.CanUse(FeatureCodes.FormatPdf);
+            bool dwg = entitlements.CanUse(FeatureCodes.FormatDwg);
+            bool both = entitlements.CanUse(FeatureCodes.FormatPdfDwg) || (pdf && dwg);
+
+            return new[]
+            {
+                new FormatOptionItem(FormatMode.Pdf, "PDF", !pdf),
+                new FormatOptionItem(FormatMode.Dwg, "DWG", !dwg),
+                new FormatOptionItem(FormatMode.PdfAndDwg, "PDF + DWG", !both)
+            };
+        }
+
+        private void SyncFormatOptionSelection()
+        {
+            if (FormatOptions == null) return;
+            foreach (FormatOptionItem option in FormatOptions)
+                option.IsSelected = !option.IsLocked && Equals(option.Mode, _selectedFormatMode);
+        }
+
+        private void SelectFormatOption(object parameter)
+        {
+            var option = parameter as FormatOptionItem;
+            if (option == null) return;
+            if (option.IsLocked)
+            {
+                RequestChangePlan?.Invoke();
+                return;
+            }
+
+            SelectedFormatMode = option.Mode;
         }
 
         private void EnsureSelectedFormatAllowed()
@@ -297,6 +377,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             {
                 if (!Set(ref _selectedFormatMode, value)) return;
 
+                SyncFormatOptionSelection();
                 Raise(nameof(ShowPdfOptions), nameof(ShowDwgOptions), nameof(ExportButtonLabel),
                       nameof(StrategyDescription), nameof(ShowPrinterSelector), nameof(IsPdfPrinterMissing),
                       nameof(CanExport), nameof(DestinationFolder));
@@ -449,6 +530,32 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set => Set(ref _dwgAlsoExportImage, value);
         }
 
+        /// <summary>Primera opción del combo de configuraciones DWG guardadas -- "usar mis propios controles de arriba".</summary>
+        public const string CustomDwgOptionsLabel = "(Personalizada)";
+
+        /// <summary>"(Personalizada)" + los nombres de configuraciones DWG que ya existan en el proyecto (Administrar → Configuraciones DWG).</summary>
+        public IReadOnlyList<string> DwgSavedSetupChoices { get; }
+
+        /// <summary>Aviso opcional: nombre de la configuración DWG que el proyecto ya marca como predeterminada en Revit, o null si no hay ninguna.</summary>
+        public string DwgActiveSetupHint { get; private set; }
+
+        public bool HasDwgActiveSetupHint => !string.IsNullOrEmpty(DwgActiveSetupHint);
+
+        private string _dwgSavedSetupName;
+        public string DwgSavedSetupName
+        {
+            get => _dwgSavedSetupName;
+            set
+            {
+                if (!Set(ref _dwgSavedSetupName, value)) return;
+                Raise(nameof(IsUsingCustomDwgOptions));
+            }
+        }
+
+        /// <summary>Cuando es false, Versión/Combinar vistas/Coordenadas de arriba se ignoran: se usa la configuración DWG guardada elegida tal cual.</summary>
+        public bool IsUsingCustomDwgOptions =>
+            string.IsNullOrEmpty(DwgSavedSetupName) || string.Equals(DwgSavedSetupName, CustomDwgOptionsLabel, StringComparison.Ordinal);
+
         private bool _openFolderWhenDone = true;
         public bool OpenFolderWhenDone
         {
@@ -466,8 +573,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             {
                 if (!Set(ref _isExporting, value)) return;
 
-                Raise(nameof(CanEditOptions));
+                Raise(nameof(CanEditOptions), nameof(CanGoBack), nameof(CanGoNext));
                 RefreshCommands();
+                GoBackCommand.RaiseCanExecuteChanged();
+                GoNextCommand.RaiseCanExecuteChanged();
+                GoToStepCommand.RaiseCanExecuteChanged();
             }
         }
 
@@ -535,6 +645,115 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public RelayCommand CancelCommand { get; }
 
+        // ---------------------------------------------------------------- wizard steps (UI_FREEMIUM_PLAN.md §3.1)
+
+        /// <summary>1 = Selección, 2 = Formato, 3 = Crear. Solo controla qué panel se ve; ningún
+        /// binding ni comando existente cambia -- las tres secciones son las mismas de siempre.</summary>
+        private int _wizardStep = 1;
+        public int WizardStep
+        {
+            get => _wizardStep;
+            private set
+            {
+                if (!Set(ref _wizardStep, value)) return;
+                Raise(nameof(IsSelectionStep), nameof(IsFormatStep), nameof(IsCreateStep),
+                      nameof(ShowNextButton), nameof(CanGoBack), nameof(CanGoNext));
+                GoBackCommand.RaiseCanExecuteChanged();
+                GoNextCommand.RaiseCanExecuteChanged();
+                GoToStepCommand.RaiseCanExecuteChanged();
+            }
+        }
+
+        public bool IsSelectionStep => WizardStep == 1;
+        public bool IsFormatStep => WizardStep == 2;
+        public bool IsCreateStep => WizardStep == 3;
+
+        /// <summary>El footer muestra "Siguiente" en los pasos 1-2 y el botón Exportar (ya existente) en el 3.</summary>
+        public bool ShowNextButton => !IsCreateStep;
+
+        public bool CanGoBack => WizardStep > 1 && !IsExporting;
+        public bool CanGoNext => WizardStep < 3 && !IsExporting && (WizardStep != 1 || SelectedCount > 0);
+
+        public RelayCommand GoBackCommand { get; }
+        public RelayCommand GoNextCommand { get; }
+
+        /// <summary>Tabs del wizard clicables (ProSheets-like): saltar a un paso si las precondiciones se cumplen.</summary>
+        public RelayCommand GoToStepCommand { get; }
+
+        /// <summary>Clic en una opción de formato (bloqueada → Cambiar plan).</summary>
+        public RelayCommand SelectFormatCommand { get; }
+
+        /// <summary>Botón "Cambiar plan" del header/footer/diálogo de éxito -- abre Cuenta/Licencia (mismo flujo que la cinta).</summary>
+        public RelayCommand ChangePlanCommand { get; }
+        public event Action RequestChangePlan;
+
+        /// <summary>Se dispara cuando un lote termina con al menos una lámina exportada con éxito.</summary>
+        public event Action<ExportSummary> ExportSucceeded;
+
+        private void GoBack()
+        {
+            if (WizardStep > 1) WizardStep--;
+        }
+
+        private void GoNext()
+        {
+            if (WizardStep < 3) WizardStep++;
+        }
+
+        private static int ParseWizardStep(object parameter)
+        {
+            if (parameter is int i) return i;
+            if (parameter is string s && int.TryParse(s, out int n)) return n;
+            return 0;
+        }
+
+        private bool CanGoToStep(object parameter)
+        {
+            if (IsExporting) return false;
+            int step = ParseWizardStep(parameter);
+            if (step == 1) return true;
+            if (step == 2) return SelectedCount > 0;
+            if (step == 3) return SelectedCount > 0 && FormatChoices.Count > 0;
+            return false;
+        }
+
+        private void GoToStep(object parameter)
+        {
+            int step = ParseWizardStep(parameter);
+            if (!CanGoToStep(step)) return;
+            WizardStep = step;
+        }
+
+        /// <summary>"Plan X · Usadas A de B este mes" (UI_FREEMIUM_PLAN.md §3.3).</summary>
+        public string QuotaFooterText
+        {
+            get
+            {
+                LicenseRuntime.EnsureInitialized();
+                LicenseClient client = LicenseRuntime.Client;
+                if (!client.IsLicensed) return string.Empty;
+
+                string plan = string.IsNullOrWhiteSpace(client.PlanCode) ? "—" : client.PlanCode;
+                string usage = QuotaDisplay.FormatSheetsUsage(client.Entitlements);
+                return string.IsNullOrEmpty(usage) ? $"Plan {plan}" : $"Plan {plan} · {usage}";
+            }
+        }
+
+        public bool HasQuotaFooterText => !string.IsNullOrEmpty(QuotaFooterText);
+
+        /// <summary>Aviso suave cuando el plan free está cerca del tope de cuota.</summary>
+        public bool ShowQuotaNearLimitHint
+        {
+            get
+            {
+                LicenseRuntime.EnsureInitialized();
+                LicenseClient client = LicenseRuntime.Client;
+                return client.IsLicensed && QuotaDisplay.IsNearLimit(client.Entitlements, client.PlanCode);
+            }
+        }
+
+        public string QuotaNearLimitHint => "Cerca del límite de tu plan free — cambia de plan para exportar más.";
+
         // ---------------------------------------------------------------- multi-format state
 
         private bool _isMultiFormat;
@@ -577,8 +796,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         {
             if (e.PropertyName != nameof(SheetItemViewModel.IsSelected)) return;
 
-            Raise(nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport));
+            Raise(nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext));
             ExportCommand.RaiseCanExecuteChanged();
+            GoNextCommand.RaiseCanExecuteChanged();
+            GoToStepCommand.RaiseCanExecuteChanged();
         }
 
         private void SetVisibleSelection(bool selected)
@@ -800,7 +1021,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     MergeViews = DwgMergeViews,
                     UseSharedCoordinates = DwgSharedCoordinates,
                     AlsoExportImage = DwgAlsoExportImage,
-                    HideHelperGraphics = true
+                    HideHelperGraphics = true,
+                    SavedSetupName = IsUsingCustomDwgOptions ? null : DwgSavedSetupName
                 };
             }
 
@@ -884,6 +1106,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     _log.Warn("No se pudo descontar cuota local tras una lámina exitosa (remaining insuficiente).");
                     return;
                 }
+
+                Raise(nameof(QuotaFooterText), nameof(HasQuotaFooterText), nameof(ShowQuotaNearLimitHint));
             }
             catch (Exception ex)
             {
@@ -994,6 +1218,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             if (totalSucceeded > 0 && OpenFolderWhenDone)
                 _dialogs.Reveal(RevealTarget);
+
+            Raise(nameof(QuotaFooterText), nameof(HasQuotaFooterText), nameof(ShowQuotaNearLimitHint));
+
+            if (totalSucceeded > 0)
+                ExportSucceeded?.Invoke(new ExportSummary(totalSucceeded, totalFailed, folderText, RevealTarget));
         }
 
         private void RefreshCommands()
@@ -1061,5 +1290,22 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             SavePreferences();
         }
+    }
+
+    /// <summary>Resumen para ExportSuccessWindow -- solo datos ya calculados por FinishExport, sin lógica propia.</summary>
+    public sealed class ExportSummary
+    {
+        public ExportSummary(int succeededCount, int failedCount, string folderText, string revealTarget)
+        {
+            SucceededCount = succeededCount;
+            FailedCount = failedCount;
+            FolderText = folderText;
+            RevealTarget = revealTarget;
+        }
+
+        public int SucceededCount { get; }
+        public int FailedCount { get; }
+        public string FolderText { get; }
+        public string RevealTarget { get; }
     }
 }

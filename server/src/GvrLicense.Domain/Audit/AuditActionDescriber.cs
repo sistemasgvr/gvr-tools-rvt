@@ -28,10 +28,12 @@ public static class AuditActionDescriber
         {
             "license.create" => "Licencia creada",
             "license.suspend" => "Licencia suspendida",
-            "license.activate" => "Licencia reactivada",
+            "license.activate" => "Licencia activada con clave",
             "license.expire" => "Licencia vencida",
             "device.kick" => "PC liberado",
             "device.deactivate" => "Desactivación en cliente",
+            "license.activate_free" => "Alta plan Free",
+            "security.activate_free_denied" => "Registro Free rechazado",
             _ => action.Replace(".", " ", StringComparison.Ordinal)
         };
     }

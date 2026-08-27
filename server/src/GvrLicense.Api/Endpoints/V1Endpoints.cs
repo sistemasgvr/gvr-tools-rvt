@@ -11,12 +11,15 @@ public static class V1Endpoints
     /// <summary>Nombre del esquema de autorización para heartbeat/usage -- ver Program.cs (AddJwtBearer + AddPolicy).</summary>
     public const string BearerPolicy = "V1Bearer";
 
+    /// <summary>Nombre de la política de rate limiting de activate-free -- ver Program.cs (AddRateLimiter).</summary>
+    public const string ActivateFreeRateLimitPolicy = "activate-free";
+
     public static IEndpointRouteBuilder MapV1Endpoints(this IEndpointRouteBuilder app)
     {
         var v1 = app.MapGroup("/v1").WithTags("v1 (add-in)");
 
-        v1.MapPost("/activate", async (ActivateRequest request, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
-                await RunAsync(log, "activate", () => engine.ActivateAsync(request, ct)))
+        v1.MapPost("/activate", async (ActivateRequest request, HttpContext http, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "activate", () => engine.ActivateAsync(request, http.Connection.RemoteIpAddress?.ToString(), ct)))
             .AllowAnonymous()
             .WithSummary("Activa una license key en este dispositivo")
             .WithDescription("Valida la key, crea/renueva el seat (node-locked por fingerprint) y devuelve el blob de entitlements firmado + un JWT (AccessToken) para heartbeat/usage.")
@@ -24,6 +27,22 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status400BadRequest)
             .ProducesProblem(StatusCodes.Status403Forbidden)
             .ProducesProblem(StatusCodes.Status404NotFound);
+
+        v1.MapPost("/activate-free", async (ActivateFreeRequest request, HttpContext http, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+                await RunAsync(log, "activate-free", () =>
+                {
+                    var clientIp = http.Connection.RemoteIpAddress?.ToString();
+                    return engine.ActivateFreeAsync(request, clientIp, ct);
+                }))
+            .AllowAnonymous()
+            .RequireRateLimiting(ActivateFreeRateLimitPolicy)
+            .WithSummary("Registra este dispositivo en el plan free (sin license key)")
+            .WithDescription("UI_FREEMIUM_PLAN.md §4.1. Mismo fingerprint siempre resuelve a la misma licencia (free o de pago); no crea una free nueva por reinstalación.")
+            .Produces<ActivateResponse>()
+            .ProducesProblem(StatusCodes.Status400BadRequest)
+            .ProducesProblem(StatusCodes.Status403Forbidden)
+            .ProducesProblem(StatusCodes.Status429TooManyRequests)
+            .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
         v1.MapPost("/heartbeat", async (HeartbeatRequest request, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
                 await RunAsync(log, "heartbeat", () =>

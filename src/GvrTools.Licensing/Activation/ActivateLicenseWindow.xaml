@@ -20,11 +20,21 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <StackPanel Grid.Row="0" Margin="0,0,0,14">
-            <TextBlock Text="Activar licencia" Style="{StaticResource Gvr.Text.Title}"/>
-            <TextBlock Text="Pega la clave que te enviamos y tus datos. Usa siempre el mismo correo en todos tus PCs; cada persona distinta consume un usuario de la licencia."
-                       Style="{StaticResource Gvr.Text.Subtle}" Margin="0,4,0,0"/>
-        </StackPanel>
+        <Grid Grid.Row="0" Margin="0,0,0,14">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0" x:Name="HeaderIcon" Width="32" Height="32"
+                   Margin="0,0,10,0" VerticalAlignment="Top"/>
+
+            <StackPanel Grid.Column="1">
+                <TextBlock Text="Activar licencia" Style="{StaticResource Gvr.Text.Title}"/>
+                <TextBlock Text="Pega la clave que te enviamos y tus datos. Usa siempre el mismo correo en todos tus PCs; cada persona distinta consume un usuario de la licencia."
+                           Style="{StaticResource Gvr.Text.Subtle}" Margin="0,4,0,0"/>
+            </StackPanel>
+        </Grid>
 
         <StackPanel Grid.Row="1">
             <TextBlock Text="Clave de licencia" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>

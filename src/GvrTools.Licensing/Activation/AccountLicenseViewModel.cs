@@ -4,25 +4,39 @@ using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using GvrTools.Licensing.Entitlements;
+using GvrTools.Licensing.Storage;
+using GvrTools.Licensing.Validation;
 using GvrTools.UI.Mvvm;
 
 namespace GvrTools.Licensing.Activation
 {
+    /// <summary>
+    /// Ventana unificada "Cambiar plan" / Cuenta: resumen del plan, soporte, pegar key y
+    /// desactivar PC (UI_FREEMIUM_PLAN.md §3.2).
+    /// </summary>
     public sealed class AccountLicenseViewModel : ObservableObject
     {
         private readonly LicenseClient _client;
+        private readonly FileActivationProfileStore _profileStore;
+        private CancellationTokenSource _cts;
 
         public AccountLicenseViewModel(LicenseClient client)
         {
             _client = client ?? throw new ArgumentNullException(nameof(client));
-            ActivateCommand = new RelayCommand(() => RequestActivate?.Invoke());
+            _profileStore = new FileActivationProfileStore();
+
+            var profile = _profileStore.Load();
+            _fullName = profile.FullName;
+            _email = profile.Email;
+
+            ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy);
             DeactivateCommand = new RelayCommand(async () => await DeactivateAsync(), () => IsLicensed && !IsBusy);
-            CloseCommand = new RelayCommand(() => RequestClose?.Invoke());
+            CloseCommand = new RelayCommand(() => RequestClose?.Invoke(false));
             Refresh();
         }
 
-        public event Action RequestActivate;
-        public event Action RequestClose;
+        /// <summary>true = activó licencia (el host pide reinicio de Revit).</summary>
+        public event Action<bool> RequestClose;
 
         public void Refresh()
         {
@@ -32,25 +46,29 @@ namespace GvrTools.Licensing.Activation
                 nameof(GraceSummary),
                 nameof(QuotaSummary),
                 nameof(StatusHeadline),
-                nameof(SupportHint));
+                nameof(SupportHint),
+                nameof(ShowDeactivate));
             DeactivateCommand.RaiseCanExecuteChanged();
+            ActivateCommand.RaiseCanExecuteChanged();
         }
 
         public bool IsLicensed => _client.IsLicensed;
 
+        public bool ShowDeactivate => IsLicensed;
+
         public string StatusHeadline =>
             IsLicensed
-                ? "Licencia activa"
+                ? "Tu plan actual"
                 : (_client.NeedsReactivation
                     ? "Sesión expirada — reactiva"
-                    : "Sin licencia válida");
+                    : "Cambiar plan / Activar licencia");
 
         public string PlanSummary =>
             IsLicensed
                 ? ("Plan: " + (_client.PlanCode ?? "—"))
                 : (!string.IsNullOrWhiteSpace(_client.ReactivationReason)
                     ? _client.ReactivationReason
-                    : "Activa una clave de licencia para usar las herramientas.");
+                    : "Activa una clave de licencia para desbloquear más formatos y cuota.");
 
         public string GraceSummary
         {
@@ -67,14 +85,39 @@ namespace GvrTools.Licensing.Activation
             get
             {
                 if (!IsLicensed) return string.Empty;
-                var remaining = _client.Entitlements.Remaining(FeatureCodes.QuotaSheetsPerMonth);
-                if (remaining < 0) return "Cuota de láminas este mes: ilimitada";
-                return "Láminas restantes este mes: " + remaining.ToString(CultureInfo.CurrentCulture);
+                string usage = QuotaDisplay.FormatSheetsUsage(_client.Entitlements);
+                return string.IsNullOrEmpty(usage) ? string.Empty : "Cuota de láminas: " + usage;
             }
         }
 
         public string SupportHint =>
-            "Soporte: " + (_client.SupportEmailHint ?? "contacta a tu administrador GVR");
+            "Soporte: " + (_client.SupportEmailHint ?? "contacta a tu administrador GVR") +
+            ". Pega aquí la clave que te enviemos para subir de plan.";
+
+        private string _licenseKey;
+        public string LicenseKey
+        {
+            get => _licenseKey;
+            set
+            {
+                if (Set(ref _licenseKey, value))
+                    ActivateCommand.RaiseCanExecuteChanged();
+            }
+        }
+
+        private string _fullName;
+        public string FullName
+        {
+            get => _fullName;
+            set => Set(ref _fullName, value);
+        }
+
+        private string _email;
+        public string Email
+        {
+            get => _email;
+            set => Set(ref _email, value);
+        }
 
         private string _statusMessage;
         public string StatusMessage
@@ -90,13 +133,63 @@ namespace GvrTools.Licensing.Activation
             set
             {
                 if (Set(ref _isBusy, value))
+                {
                     DeactivateCommand.RaiseCanExecuteChanged();
+                    ActivateCommand.RaiseCanExecuteChanged();
+                }
             }
         }
 
         public RelayCommand ActivateCommand { get; }
         public RelayCommand DeactivateCommand { get; }
         public RelayCommand CloseCommand { get; }
+
+        private async Task ActivateAsync()
+        {
+            StatusMessage = null;
+
+            if (string.IsNullOrWhiteSpace(LicenseKey))
+            {
+                StatusMessage = "Completa la clave de licencia.";
+                return;
+            }
+
+            if (!PersonNameValidator.TryNormalize(FullName, out string fullName, out string nameError))
+            {
+                StatusMessage = nameError;
+                return;
+            }
+
+            if (!EmailValidator.TryNormalize(Email, out string email, out string emailError))
+            {
+                StatusMessage = emailError;
+                return;
+            }
+
+            IsBusy = true;
+            _cts = new CancellationTokenSource();
+            try
+            {
+                await _client.ActivateAsync(LicenseKey, fullName, email, _cts.Token).ConfigureAwait(true);
+                _profileStore.Save(fullName, email);
+                StatusMessage = "Licencia activada.";
+                RequestClose?.Invoke(true);
+            }
+            catch (Http.LicenseApiClientException ex)
+            {
+                StatusMessage = ex.Message;
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = "No se pudo activar: " + ex.Message;
+            }
+            finally
+            {
+                IsBusy = false;
+                _cts.Dispose();
+                _cts = null;
+            }
+        }
 
         private async Task DeactivateAsync()
         {

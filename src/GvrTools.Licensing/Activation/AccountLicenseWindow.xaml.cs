@@ -1,34 +1,32 @@
 using System.Windows;
+using GvrTools.UI.Icons;
 
 namespace GvrTools.Licensing.Activation
 {
     public partial class AccountLicenseWindow : Window
     {
         private readonly AccountLicenseViewModel _viewModel;
+        private bool _activated;
 
         public AccountLicenseWindow(AccountLicenseViewModel viewModel)
         {
             InitializeComponent();
             _viewModel = viewModel;
             DataContext = viewModel;
-            viewModel.RequestClose += Close;
-            viewModel.RequestActivate += OpenActivate;
+            viewModel.RequestClose += OnRequestClose;
+
+            Icon = BrandIcons.Escudo;
+            HeaderIcon.Source = BrandIcons.Escudo;
         }
 
-        private void OpenActivate()
-        {
-            var reason = LicenseRuntime.Client.NeedsReactivation
-                ? LicenseRuntime.Client.ReactivationReason
-                : null;
-            var activateVm = new ActivateLicenseViewModel(LicenseRuntime.Client, reason);
-            var dialog = new ActivateLicenseWindow(activateVm) { Owner = this };
-            if (dialog.ShowDialog() != true)
-                return;
+        /// <summary>true si el usuario activó una clave en esta sesión de diálogo.</summary>
+        public bool ActivatedSuccessfully => _activated;
 
-            // Cerrar Cuenta primero: si pedimos reinicio con este ShowDialog aún abierto,
-            // Revit puede caer en error irrecuperable.
+        private void OnRequestClose(bool activated)
+        {
+            _activated = activated;
+            DialogResult = activated;
             Close();
-            LicenseUi.PromptRestartAfterActivation();
         }
     }
 }

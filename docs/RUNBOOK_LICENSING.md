@@ -29,6 +29,30 @@ Extras puntuales (más cuota, DWG en Starter, etc.): edita la licencia → **ove
 - **PC atascado / cambio de máquina**: en la licencia, **Liberar** el device; o el usuario usa **Desactivar este PC**.
 - **Colaborador que se va**: **Miembros** del cliente → desactivar esa persona.
 
+## Plan Free (UI_FREEMIUM_PLAN.md §2.2/§4.1)
+
+Al instalar sin ninguna clave, el add-in llama solo a `POST /v1/activate-free` y queda licenciado
+con el plan `code = free` -- sin intervención tuya. Ese plan **siempre existe** (el servidor lo crea
+solo al primer arranque si falta) y sus límites viven **solo** en Admin → Planes, igual que Starter/Pro.
+
+- **Cambiar la oferta free** (subir cuota, habilitar DWG, etc.): Admin → Planes → editar el plan
+  `Free`. No hace falta redeploy del cliente ni del Setup; el add-in lo aplica en el próximo
+  heartbeat/reinicio.
+- **No borrar el plan `free`**. Si por error se desactiva (`IsActive = false`), `activate-free`
+  empieza a devolver 503 "registro gratuito temporalmente no disponible" -- reactívalo en Admin →
+  Planes para restaurar el alta automática.
+- **Camino free → pago**: el cliente pega una clave `GVR-…` de soporte igual que cualquier
+  activación (botón **Cambiar plan** en la tool o **Cuenta / Licencia** en la cinta). Ese PC pasa a
+  la licencia de pago; la licencia free que tenía queda huérfana (sin dispositivos), no se borra sola.
+- **Reinstalación / borrar archivos locales**: mismo fingerprint de máquina → misma licencia free de
+  siempre (o la de pago si ya hizo upgrade). Nunca genera una segunda free para el mismo PC.
+- **Auditar altas free**: Auditoría (o el widget del dashboard) muestra `license.activate_free`
+  (alta) y `security.activate_free_denied` (rechazado -- plan free ausente/desactivado); `Licencias`
+  agrupa las free bajo el cliente contenedor **"GVR Free installs"**.
+- **Abuso**: `/v1/activate-free` tiene rate limit de 5 solicitudes / 10 min por IP (además de que un
+  fingerprint repetido nunca crea una licencia nueva). Señales más finas (spikes por IP, mismo
+  fingerprint en variantes) quedan para la Fase 4 del plan.
+
 ## Esquema (Postgres)
 
 En **Development**, la API aplica migraciones EF al arrancar (`Database.Migrate()`). En **Production**, no: usa `dotnet ef database update` con `ConnectionStrings__Postgres` (ver [`DEPLOY_EASYPANEL.md`](DEPLOY_EASYPANEL.md) y `server/README.md`).

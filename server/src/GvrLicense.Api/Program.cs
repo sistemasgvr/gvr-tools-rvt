@@ -12,6 +12,8 @@ using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Threading.RateLimiting;
+using GvrLicense.Domain.Entities;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -132,10 +134,26 @@ builder.Services.AddSwaggerGen(options =>
 });
 
 // Pieza 3 "Seguridad anti-abuso", punto 7: rate limit de activate/heartbeat. Nativo desde .NET 7,
-// sin NuGet extra. Política real (ventanas, límites por IP/license) se afina en Fase 3.
+// sin NuGet extra.
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+
+    // UI_FREEMIUM_PLAN.md §4.1.3: activate-free es el único endpoint público que puede crear datos
+    // (una licencia nueva) sin ninguna key ni sesión previa -- los demás de /v1/* exigen una key ya
+    // emitida (activate) o un JWT ya emitido (heartbeat/usage). Ventana fija por IP: generosa para
+    // alguien que reinstala varias veces, dura para un bucle automatizado. El fingerprint no se
+    // parte aquí (partition key solo puede leerse antes de leer el body); la defensa por fingerprint
+    // vive en LicenseEngine.ActivateFreeAsync, que nunca crea una free nueva para uno ya conocido.
+    options.AddPolicy(V1Endpoints.ActivateFreeRateLimitPolicy, httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 5,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0
+            }));
 });
 
 var app = builder.Build();
@@ -156,6 +174,48 @@ if (app.Environment.IsDevelopment())
         var logger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         logger.LogError(ex, "Failed to apply EF migrations in Development. Stop the running API if files are locked, then fix the DB or run: dotnet ef database update --project ../GvrLicense.Infrastructure");
         throw;
+    }
+}
+
+// UI_FREEMIUM_PLAN.md §2.2/§4.1: el plan "free" debe existir SIEMPRE (invariante operacional: no
+// se borra, solo se puede desactivar a propósito). A diferencia del auto-migrate de arriba, esto
+// es un dato, no un cambio de esquema -- seguro de correr en cada arranque, también en producción.
+// Si el plan ya existe (el caso normal después del primer arranque) esto no hace nada.
+using (var seedScope = app.Services.CreateScope())
+{
+    try
+    {
+        var seedDb = seedScope.ServiceProvider.GetRequiredService<LicenseDbContext>();
+        if (!await seedDb.Plans.AnyAsync(p => p.Code == "free"))
+        {
+            seedDb.Plans.Add(new Plan
+            {
+                Id = Guid.NewGuid(),
+                Code = "free",
+                DisplayName = "Free",
+                IsActive = true,
+                Features = new Dictionary<string, string>
+                {
+                    ["tool.batch_export"] = "true",
+                    ["format.pdf"] = "true",
+                    ["format.dwg"] = "false",
+                    ["format.pdf_dwg"] = "false",
+                    ["quota.sheets_per_month"] = "20",
+                    ["limit.sheets_per_batch"] = "10",
+                    ["seat.max_devices_per_user"] = "1",
+                    ["updates.stable"] = "true"
+                }
+            });
+            await seedDb.SaveChangesAsync();
+        }
+    }
+    catch (Exception ex)
+    {
+        // No debe tumbar el arranque: si la tabla plan todavía no existe (DB nueva sin migrar en
+        // producción), activate-free simplemente devolverá 503 hasta que se migre -- comportamiento
+        // ya cubierto por LicenseEngine.ActivateFreeAsync.
+        var seedLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+        seedLogger.LogWarning(ex, "No se pudo asegurar el plan free al arrancar.");
     }
 }
 

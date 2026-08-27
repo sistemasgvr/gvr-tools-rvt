@@ -158,6 +158,36 @@ namespace GvrTools.Licensing
         }
 
         /// <summary>
+        /// UI_FREEMIUM_PLAN.md §4.1: primer arranque sin license.dat válido. Nunca lanza -- se llama
+        /// desde el warmup de arranque, donde nada debe tumbar el add-in; false simplemente significa
+        /// "seguir sin licencia" (offline, plan free desactivado, etc.), igual que un heartbeat fallido.
+        /// </summary>
+        public async Task<bool> TryActivateFreeAsync(CancellationToken ct)
+        {
+            try
+            {
+                var response = await _api.ActivateFreeAsync(new ActivateFreeRequest
+                {
+                    DeviceFingerprint = _fingerprint.GetFingerprint(),
+                    DeviceName = Environment.MachineName
+                }, ct).ConfigureAwait(false);
+
+                ApplyServerEntitlements(response.AccessToken, response.EntitlementJson, response.EntitlementSignatureBase64);
+                ClearReactivationFlag();
+                return true;
+            }
+            catch (OperationCanceledException)
+            {
+                throw;
+            }
+            catch (Exception ex)
+            {
+                LogFailure("No se pudo obtener el plan free al arrancar; se sigue sin licencia.", ex);
+                return false;
+            }
+        }
+
+        /// <summary>
         /// Renueva JWT + gracia. Devuelve true si se actualizó el cache. No lanza ante fallo de red
         /// (el llamador usa cache); sí lanza LicenseApiClientException 401/403 (sesión/licencia).
         /// </summary>

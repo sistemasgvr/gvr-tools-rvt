@@ -115,7 +115,17 @@ namespace GvrTools.Licensing
                 cts.CancelAfter(TimeSpan.FromSeconds(8));
                 try
                 {
-                    await _client.TryHeartbeatAsync(cts.Token).ConfigureAwait(false);
+                    var renewed = await _client.TryHeartbeatAsync(cts.Token).ConfigureAwait(false);
+
+                    // UI_FREEMIUM_PLAN.md §4.1: PC limpio (nunca activó nada, TryHeartbeatAsync
+                    // devuelve false sin llamar a la red porque no hay token) intenta el plan free
+                    // antes de dejar las tools ocultas. NeedsReactivation es distinto -- esa persona
+                    // SÍ tuvo una licencia y el servidor la rechazó (kick/suspensión); no hay que
+                    // inventarle una free por detrás, tiene que reactivar a propósito.
+                    if (!renewed && !_client.IsLicensed && !_client.NeedsReactivation)
+                    {
+                        await _client.TryActivateFreeAsync(cts.Token).ConfigureAwait(false);
+                    }
                 }
                 catch (OperationCanceledException)
                 {

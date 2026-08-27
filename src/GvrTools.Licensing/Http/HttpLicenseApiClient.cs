@@ -54,6 +54,12 @@ namespace GvrTools.Licensing.Http
                 .ConfigureAwait(false);
         }
 
+        public async Task<ActivateResponse> ActivateFreeAsync(ActivateFreeRequest request, CancellationToken ct)
+        {
+            return await PostJsonAsync<ActivateFreeRequest, ActivateResponse>("v1/activate-free", request, accessToken: null, ct)
+                .ConfigureAwait(false);
+        }
+
         public async Task<HeartbeatResponse> HeartbeatAsync(string accessToken, HeartbeatRequest request, CancellationToken ct)
         {
             return await PostJsonAsync<HeartbeatRequest, HeartbeatResponse>("v1/heartbeat", request, accessToken, ct)

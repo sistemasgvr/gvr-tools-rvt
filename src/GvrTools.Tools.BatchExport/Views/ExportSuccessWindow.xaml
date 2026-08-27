@@ -1,0 +1,57 @@
+<Window x:Class="GvrTools.Tools.BatchExport.Views.ExportSuccessWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="GVR Tools · Exportación completada"
+        Height="260" Width="460" MinHeight="220" MinWidth="380"
+        WindowStartupLocation="CenterOwner"
+        ResizeMode="NoResize"
+        ShowInTaskbar="False"
+        FontFamily="Segoe UI" FontSize="13">
+
+    <Window.Resources>
+        <ResourceDictionary Source="pack://application:,,,/GvrTools.UI;component/Theme/GvrTheme.xaml"/>
+    </Window.Resources>
+
+    <Grid Margin="{StaticResource Gvr.Padding.Window}">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>   <!-- 0 icon + title -->
+            <RowDefinition Height="Auto"/>   <!-- 1 summary -->
+            <RowDefinition Height="Auto"/>   <!-- 2 folder -->
+            <RowDefinition Height="*"/>      <!-- 3 spacer -->
+            <RowDefinition Height="Auto"/>   <!-- 4 actions -->
+        </Grid.RowDefinitions>
+
+        <Grid Grid.Row="0" Margin="0,0,0,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Image Grid.Column="0" x:Name="HeaderIcon" Width="36" Height="36"
+                   Margin="0,0,10,0" VerticalAlignment="Center"/>
+            <TextBlock Grid.Column="1" Text="Exportación completada" Style="{StaticResource Gvr.Text.Title}"
+                       VerticalAlignment="Center"/>
+        </Grid>
+
+        <TextBlock Grid.Row="1" Style="{StaticResource Gvr.Text.Subtle}"
+                   Text="{Binding SummaryText}" FontSize="14" Foreground="{StaticResource Gvr.Brush.Ink}"/>
+
+        <TextBlock Grid.Row="2" Margin="0,10,0,0" Style="{StaticResource Gvr.Text.Subtle}"
+                   Text="{Binding FolderText, StringFormat='Carpeta: {0}'}" TextTrimming="CharacterEllipsis"/>
+
+        <TextBlock Grid.Row="3" Margin="0,10,0,0" Style="{StaticResource Gvr.Text.Subtle}"
+                   Text="{Binding QuotaText}"
+                   Visibility="{Binding HasQuotaText, Converter={StaticResource Gvr.BoolToVisibility}}"/>
+
+        <StackPanel Grid.Row="4" Orientation="Horizontal" HorizontalAlignment="Right" Margin="0,14,0,0">
+            <Button Content="Cambiar plan" Style="{StaticResource Gvr.Button.Action}"
+                    Command="{Binding ChangePlanCommand}"
+                    ToolTip="Ver tu plan actual o activar una licencia."/>
+            <Button Content="Abrir carpeta" Style="{StaticResource Gvr.Button.Action}"
+                    Command="{Binding OpenFolderCommand}"
+                    ToolTip="Abre el explorador de Windows en la carpeta destino."/>
+            <Button Content="Cerrar" Style="{StaticResource Gvr.Button.Primary}"
+                    Command="{Binding CloseCommand}"/>
+        </StackPanel>
+    </Grid>
+</Window>

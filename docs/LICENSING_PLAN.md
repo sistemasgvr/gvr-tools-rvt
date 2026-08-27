@@ -2,6 +2,8 @@
 
 Sistema de licencias **self-hosted** en VPS (EasyPanel): panel admin para activar planes/cuotas a mano, distribución profesional tipo DiRoots/ProSheets (instalador `.exe`), add-in Revit multi-versión con prerequisitos (PDF en 2021), validación en línea con gracia offline corta, actualizaciones firmadas y endurecimiento anti-abuso realista.
 
+UI tipo ProSheets + freemium / anti-reinstalación: [`UI_FREEMIUM_PLAN.md`](UI_FREEMIUM_PLAN.md).
+
 ## Realidad del producto (importante)
 
 ### Qué es el producto vs qué entregas al cliente

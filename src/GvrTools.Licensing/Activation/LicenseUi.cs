@@ -29,13 +29,22 @@ namespace GvrTools.Licensing.Activation
             return accepted;
         }
 
+        /// <summary>
+        /// Ventana unificada Cuenta / Cambiar plan: resumen + soporte + pegar key + desactivar
+        /// (UI_FREEMIUM_PLAN.md §3.2). Alias de <see cref="ShowChangePlan"/>.
+        /// </summary>
         public static void ShowAccount(LicenseClient client = null, System.IntPtr ownerHwnd = default)
+            => ShowChangePlan(client, ownerHwnd);
+
+        /// <summary>Misma ventana que Cuenta: pensada para el CTA "Cambiar plan ★" de las tools.</summary>
+        public static void ShowChangePlan(LicenseClient client = null, System.IntPtr ownerHwnd = default)
         {
             var vm = new AccountLicenseViewModel(client ?? LicenseRuntime.Client);
             var window = new AccountLicenseWindow(vm);
             AttachOwner(window, ownerHwnd);
-            window.ShowDialog();
-            // Si se activó desde Cuenta, la ventana ya pidió reinicio al cerrarse.
+            bool? result = window.ShowDialog();
+            if (result == true || window.ActivatedSuccessfully)
+                PromptRestartAfterActivation();
         }
 
         /// <summary>

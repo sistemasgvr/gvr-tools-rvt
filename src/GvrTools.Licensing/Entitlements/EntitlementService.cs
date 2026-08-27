@@ -118,6 +118,20 @@ namespace GvrTools.Licensing.Entitlements
             }
         }
 
+        public int QuotaLimit(string featureCode)
+        {
+            if (string.IsNullOrEmpty(featureCode)) return 0;
+
+            lock (_gate)
+            {
+                if (_blob == null || !IsWithinGrace(_blob)) return 0;
+                var limitCode = featureCode + ".limit";
+                if (!_features.TryGetValue(limitCode, out var value)) return 0;
+                if (!int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var n)) return 0;
+                return n;
+            }
+        }
+
         public bool TryConsume(string featureCode, int quantity)
         {
             if (quantity <= 0) return true;

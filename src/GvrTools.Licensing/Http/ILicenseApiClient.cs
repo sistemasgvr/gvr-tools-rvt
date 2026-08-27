@@ -15,6 +15,8 @@ namespace GvrTools.Licensing.Http
 
         Task<ActivateResponse> ActivateAsync(ActivateRequest request, CancellationToken ct);
 
+        Task<ActivateResponse> ActivateFreeAsync(ActivateFreeRequest request, CancellationToken ct);
+
         Task<HeartbeatResponse> HeartbeatAsync(string accessToken, HeartbeatRequest request, CancellationToken ct);
 
         Task<UsageEventResponse> ReportUsageAsync(string accessToken, UsageEventDto usageEvent, CancellationToken ct);

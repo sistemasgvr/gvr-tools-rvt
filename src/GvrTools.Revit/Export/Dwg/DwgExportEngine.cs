@@ -45,7 +45,7 @@ namespace GvrTools.Revit.Export.Dwg
                     ExportFormatInfo.Extension(ExportFormat.Dwg),
                     request.Project.ToTokens());
 
-                _options = BuildOptions(settings);
+                _options = BuildOptions(_document, settings);
                 _exportImage = settings.AlsoExportImage;
                 _imageExporter = _exportImage ? new SheetImageExporter(request.Log) : null;
             }
@@ -148,18 +148,37 @@ namespace GvrTools.Revit.Export.Dwg
                 // Nothing to undo: this engine changes no document or application state.
             }
 
-            private static DWGExportOptions BuildOptions(DwgExportSettings settings) => new DWGExportOptions
+            /// <summary>
+            /// Si el usuario eligió una configuración DWG ya guardada en el proyecto, se usa tal
+            /// cual (trae su propio mapeo de capas/grosores que este panel no expone) -- solo se le
+            /// respeta encima el candado de "ocultar gráficos auxiliares", que es nuestro y no algo
+            /// que el diálogo nativo de configuración DWG de Revit cubra. Si el nombre guardado ya
+            /// no existe (se borró en Revit desde la última vez), cae de vuelta a nuestros controles.
+            /// </summary>
+            private static DWGExportOptions BuildOptions(Document document, DwgExportSettings settings)
             {
-                FileVersion = ToAcadVersion(settings.FileVersion),
-                Colors = ExportColorMode.TrueColorPerView,
-                TargetUnit = ExportUnit.Default,
-                PreserveCoincidentLines = true,
-                MergedViews = settings.MergeViews,
-                SharedCoords = settings.UseSharedCoordinates,
-                HideUnreferenceViewTags = settings.HideHelperGraphics,
-                HideReferencePlane = settings.HideHelperGraphics,
-                HideScopeBox = settings.HideHelperGraphics
-            };
+                DWGExportOptions saved = DwgExportSetupCatalog.TryGetOptions(document, settings.SavedSetupName);
+                if (saved != null)
+                {
+                    saved.HideUnreferenceViewTags = settings.HideHelperGraphics;
+                    saved.HideReferencePlane = settings.HideHelperGraphics;
+                    saved.HideScopeBox = settings.HideHelperGraphics;
+                    return saved;
+                }
+
+                return new DWGExportOptions
+                {
+                    FileVersion = ToAcadVersion(settings.FileVersion),
+                    Colors = ExportColorMode.TrueColorPerView,
+                    TargetUnit = ExportUnit.Default,
+                    PreserveCoincidentLines = true,
+                    MergedViews = settings.MergeViews,
+                    SharedCoords = settings.UseSharedCoordinates,
+                    HideUnreferenceViewTags = settings.HideHelperGraphics,
+                    HideReferencePlane = settings.HideHelperGraphics,
+                    HideScopeBox = settings.HideHelperGraphics
+                };
+            }
 
             private static ACADVersion ToAcadVersion(DwgFileVersion version)
             {

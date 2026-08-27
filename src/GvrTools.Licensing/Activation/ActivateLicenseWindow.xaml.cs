@@ -1,4 +1,5 @@
 using System.Windows;
+using GvrTools.UI.Icons;
 
 namespace GvrTools.Licensing.Activation
 {
@@ -16,6 +17,9 @@ namespace GvrTools.Licensing.Activation
                 DialogResult = accepted;
                 Close();
             };
+
+            Icon = BrandIcons.Escudo;
+            HeaderIcon.Source = BrandIcons.Escudo;
         }
     }
 }

@@ -5,6 +5,73 @@
     ViewData["Title"] = "Auditoría";
 }
 
+@if (Model.RiskyIps.Count > 0 || Model.SharedFingerprints.Count > 0)
+{
+    <div class="card">
+        <div class="card-header">
+            <h3 class="card-title">Señales de riesgo</h3>
+        </div>
+        <div class="card-body">
+            <p class="text-body-secondary small mb-3">
+                Umbrales simples, no es un veredicto de abuso -- revisa el contexto antes de actuar (UI_FREEMIUM_PLAN.md §4.2).
+            </p>
+
+            @if (Model.RiskyIps.Count > 0)
+            {
+                <h6>IPs con varios intentos de alta free</h6>
+                <div class="table-responsive mb-3">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr><th>IP</th><th>Intentos</th><th>Rechazados</th><th>Último</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in Model.RiskyIps)
+                            {
+                                <tr>
+                                    <td><code>@row.Ip</code></td>
+                                    <td>@row.AttemptCount</td>
+                                    <td>
+                                        @if (row.DeniedCount > 0)
+                                        {
+                                            <span class="badge bg-danger">@row.DeniedCount</span>
+                                        }
+                                        else
+                                        {
+                                            @:0
+                                        }
+                                    </td>
+                                    <td>@row.LastSeenUtc.ToLocalTime().ToString("dd/MM/yyyy HH:mm")</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+
+            @if (Model.SharedFingerprints.Count > 0)
+            {
+                <h6>El mismo dispositivo aparece en varias licencias</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm">
+                        <thead>
+                            <tr><th>Fingerprint</th><th>Licencias</th></tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var row in Model.SharedFingerprints)
+                            {
+                                <tr>
+                                    <td><code>@row.Fingerprint[..Math.Min(20, row.Fingerprint.Length)]…</code></td>
+                                    <td>@string.Join(", ", row.LicenseKeys)</td>
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                </div>
+            }
+        </div>
+    </div>
+}
+
 <div class="card">
     <div class="card-header">
         <h3 class="card-title">Historial de cambios</h3>

@@ -31,7 +31,7 @@ public sealed class LicenseEngine(
     // GvrLicense.Contracts/EntitlementBlob.cs).
     private static readonly JsonSerializerOptions WireJsonOptions = new();
 
-    public async Task<ActivateResponse> ActivateAsync(ActivateRequest request, CancellationToken ct)
+    public async Task<ActivateResponse> ActivateAsync(ActivateRequest request, string? clientIp, CancellationToken ct)
     {
         var normalizedKey = LicenseKeyGenerator.Normalize(request.LicenseKey);
         if (!LicenseKeyGenerator.TryValidateFormat(normalizedKey))
@@ -147,6 +147,19 @@ public sealed class LicenseEngine(
             }
         }
 
+        // UI_FREEMIUM_PLAN.md §4.2: hasta ahora activate con key de pago no dejaba rastro propio
+        // (solo el trigger de status change). Sin esto, "quién activó qué y cuándo" era invisible
+        // en Auditoría para el caso más común de todos.
+        db.AuditLogs.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            LicenseId = license.Id,
+            Actor = userEmail,
+            Action = "license.activate",
+            DetailsJson = JsonSerializer.Serialize(new { fingerprint = request.DeviceFingerprint, deviceName = request.DeviceName, ip = clientIp }),
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        });
+
         await EnsureCurrentPeriodCountersAsync(license, ct);
         await db.SaveChangesAsync(ct);
 
@@ -159,6 +172,166 @@ public sealed class LicenseEngine(
             EntitlementJson = json,
             EntitlementSignatureBase64 = Convert.ToBase64String(signature)
         };
+    }
+
+    /// <summary>
+    /// UI_FREEMIUM_PLAN.md §2.2/§4.1: primer arranque sin license.dat válido. A diferencia de
+    /// <see cref="ActivateAsync"/>, no hay ninguna key que ya identifique un cliente -- el mismo
+    /// fingerprint siempre resuelve a la MISMA licencia (free o de pago si ya hizo upgrade), nunca
+    /// crea una free nueva por reinstalación (§2.2 "Anti-reinstalación").
+    /// </summary>
+    public async Task<ActivateResponse> ActivateFreeAsync(ActivateFreeRequest request, string? clientIp, CancellationToken ct)
+    {
+        if (string.IsNullOrWhiteSpace(request.DeviceFingerprint))
+        {
+            throw new LicenseApiException(400, "Fingerprint requerido.");
+        }
+
+        var existingDevice = await db.Devices
+            .Include(d => d.License).ThenInclude(l => l!.Plan)
+            .FirstOrDefaultAsync(d => d.Fingerprint == request.DeviceFingerprint, ct);
+
+        if (existingDevice != null)
+        {
+            var reusedLicense = existingDevice.License!;
+            EnsureLicenseUsable(reusedLicense);
+
+            existingDevice.LastSeenUtc = DateTimeOffset.UtcNow;
+            await EnsureCurrentPeriodCountersAsync(reusedLicense, ct);
+            await db.SaveChangesAsync(ct);
+
+            var (reusedJson, reusedSignature) = await BuildSignedBlobAsync(reusedLicense, existingDevice, ct);
+            return new ActivateResponse
+            {
+                AccessToken = jwt.Issue(reusedLicense.Id, existingDevice.Id),
+                EntitlementJson = reusedJson,
+                EntitlementSignatureBase64 = Convert.ToBase64String(reusedSignature)
+            };
+        }
+
+        var freePlan = await db.Plans.FirstOrDefaultAsync(p => p.Code == FreePlanCode && p.IsActive, ct);
+        if (freePlan is null)
+        {
+            // Invariante operacional del plan (§2.2): no debe pasar en operación normal, pero si el
+            // plan free se desactivó a propósito o por error, esto tiene que fallar con un mensaje
+            // claro -- nunca inventar un plan fantasma en código.
+            await AuditDeniedAsync(clientIp, request.DeviceFingerprint, "Plan free ausente o desactivado.", ct);
+            throw new LicenseApiException(503, "Registro gratuito temporalmente no disponible. Contacta a soporte.");
+        }
+
+        var freeCustomer = await db.Customers.FirstOrDefaultAsync(c => c.CompanyName == FreeCustomerName, ct);
+        if (freeCustomer is null)
+        {
+            freeCustomer = new Customer
+            {
+                Id = Guid.NewGuid(),
+                CompanyName = FreeCustomerName,
+                ContactName = "GVR Tools",
+                ContactEmail = "-",
+                IsActive = true,
+                CreatedAtUtc = DateTimeOffset.UtcNow
+            };
+            db.Customers.Add(freeCustomer);
+        }
+
+        CompanyUser companyUser;
+        if (PersonNameValidator.TryNormalize(request.UserFullName, out var fullName, out _) &&
+            EmailValidator.TryNormalize(request.UserEmail, out var email, out _))
+        {
+            companyUser = await FindOrCreateCompanyUserAsync(freeCustomer.Id, fullName, email, ct);
+        }
+        else
+        {
+            // Sin nombre/correo real: cada fingerprint es su propia "persona" -- un correo sintético
+            // estable por fingerprint para que reintentar desde el mismo PC nunca duplique el
+            // CompanyUser (aunque en la práctica ya no debería llegar aquí una segunda vez: el mismo
+            // fingerprint sale por la rama "existingDevice" de arriba).
+            var fingerprintTag = request.DeviceFingerprint[..Math.Min(20, request.DeviceFingerprint.Length)];
+            var syntheticEmail = $"free-{fingerprintTag}@device.local";
+            var displayName = string.IsNullOrWhiteSpace(request.DeviceName) ? "Usuario gratuito" : request.DeviceName!;
+            companyUser = await FindOrCreateCompanyUserAsync(freeCustomer.Id, displayName, syntheticEmail, ct);
+        }
+
+        string key;
+        for (var attempt = 0; ; attempt++)
+        {
+            key = LicenseKeyGenerator.Generate();
+            if (!await db.Licenses.AnyAsync(l => l.Key == key, ct)) break;
+            if (attempt >= 5)
+            {
+                throw new LicenseApiException(503, "No se pudo generar una licencia gratuita. Intenta de nuevo.");
+            }
+        }
+
+        var license = new License
+        {
+            Id = Guid.NewGuid(),
+            Key = key,
+            CustomerId = freeCustomer.Id,
+            PlanId = freePlan.Id,
+            Status = LicenseStatus.Active,
+            // "Permanente" (§2.2): no vence por fecha: solo por que el plan free se desactive o el
+            // admin suspenda la licencia puntual.
+            ValidUntil = DateTimeOffset.UtcNow.AddYears(100),
+            MaxUsers = 1,
+            CreatedAtUtc = DateTimeOffset.UtcNow
+        };
+        db.Licenses.Add(license);
+
+        var device = new Device
+        {
+            Id = Guid.NewGuid(),
+            LicenseId = license.Id,
+            CompanyUserId = companyUser.Id,
+            Fingerprint = request.DeviceFingerprint,
+            DisplayName = request.DeviceName,
+            ActivatedAtUtc = DateTimeOffset.UtcNow,
+            LastSeenUtc = DateTimeOffset.UtcNow
+        };
+        db.Devices.Add(device);
+
+        db.AuditLogs.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            LicenseId = license.Id,
+            Actor = "system",
+            Action = "license.activate_free",
+            DetailsJson = JsonSerializer.Serialize(new { fingerprint = request.DeviceFingerprint, ip = clientIp }),
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        });
+
+        // EnsureCurrentPeriodCountersAsync hace un INSERT en SQL crudo que referencia license_id
+        // por FK -- a diferencia de ActivateAsync/HeartbeatAsync (donde license ya existía en la
+        // fila), aquí license es una entidad nueva todavía sin persistir. Sin este SaveChangesAsync
+        // primero, el INSERT crudo revienta con 23503 (violación de FK) porque la fila license
+        // todavía no existe de verdad en Postgres.
+        await db.SaveChangesAsync(ct);
+        await EnsureCurrentPeriodCountersAsync(license, ct);
+
+        var (json, signature) = await BuildSignedBlobAsync(license, device, ct);
+        return new ActivateResponse
+        {
+            AccessToken = jwt.Issue(license.Id, device.Id),
+            EntitlementJson = json,
+            EntitlementSignatureBase64 = Convert.ToBase64String(signature)
+        };
+    }
+
+    private const string FreePlanCode = "free";
+    private const string FreeCustomerName = "GVR Free installs";
+
+    private async Task AuditDeniedAsync(string? clientIp, string fingerprint, string reason, CancellationToken ct)
+    {
+        db.AuditLogs.Add(new AuditLog
+        {
+            Id = Guid.NewGuid(),
+            LicenseId = null,
+            Actor = "system",
+            Action = "security.activate_free_denied",
+            DetailsJson = JsonSerializer.Serialize(new { fingerprint, ip = clientIp, reason }),
+            OccurredAtUtc = DateTimeOffset.UtcNow
+        });
+        await db.SaveChangesAsync(ct);
     }
 
     /// <summary>
@@ -475,11 +648,14 @@ public sealed class LicenseEngine(
     private async Task EnsureCurrentPeriodCountersAsync(License license, CancellationToken ct)
     {
         var period = CurrentPeriod();
-        var quotaFeatures = GetEffectiveFeatures(license).Where(f => f.Key.StartsWith("quota.", StringComparison.OrdinalIgnoreCase));
+        var quotaFeatures = GetEffectiveFeatures(license)
+            .Where(f => f.Key.StartsWith("quota.", StringComparison.OrdinalIgnoreCase)
+                        && !f.Key.EndsWith(".limit", StringComparison.OrdinalIgnoreCase));
 
         foreach (var (code, rawValue) in quotaFeatures)
         {
             var featureCode = code.Trim().ToLowerInvariant();
+
             var limit = int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
             var id = Guid.NewGuid();
 
@@ -502,16 +678,48 @@ public sealed class LicenseEngine(
         var features = new List<FeatureEntry>();
         foreach (var (code, value) in GetEffectiveFeatures(license))
         {
+            var normalized = code.Trim().ToLowerInvariant();
+            // Companions de UI; nunca se definen en el plan.
+            if (normalized.EndsWith(".limit", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
             // Para quota.*, el blob lleva el REMANENTE vivo (limit - consumed), no el tope estático
             // del plan -- así el cliente cachea un número que ya refleja lo gastado este mes.
-            var effectiveValue = code.StartsWith("quota.", StringComparison.OrdinalIgnoreCase) && counters.TryGetValue(code, out var counter)
-                ? RemainingOf(counter).ToString(CultureInfo.InvariantCulture)
-                : value;
+            // Además envía `{code}.limit` para el footer "Usadas X de Y" (UI_FREEMIUM_PLAN.md §3.3).
+            if (normalized.StartsWith("quota.", StringComparison.OrdinalIgnoreCase))
+            {
+                int remaining;
+                int limit;
+                if (counters.TryGetValue(normalized, out var counter))
+                {
+                    remaining = RemainingOf(counter);
+                    limit = counter.QuotaLimit;
+                }
+                else
+                {
+                    limit = int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
+                    remaining = limit;
+                }
+
+                features.Add(new FeatureEntry
+                {
+                    Code = normalized,
+                    Value = remaining.ToString(CultureInfo.InvariantCulture)
+                });
+                features.Add(new FeatureEntry
+                {
+                    Code = normalized + ".limit",
+                    Value = limit.ToString(CultureInfo.InvariantCulture)
+                });
+                continue;
+            }
 
             features.Add(new FeatureEntry
             {
-                Code = code.Trim().ToLowerInvariant(),
-                Value = effectiveValue
+                Code = normalized,
+                Value = value
             });
         }
 

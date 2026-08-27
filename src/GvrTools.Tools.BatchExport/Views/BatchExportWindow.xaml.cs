@@ -1,6 +1,8 @@
 using System;
 using System.ComponentModel;
 using System.Windows;
+using System.Windows.Interop;
+using GvrTools.Licensing.Activation;
 using GvrTools.Tools.BatchExport.ViewModels;
 using GvrTools.UI.Icons;
 
@@ -32,6 +34,24 @@ namespace GvrTools.Tools.BatchExport.Views
             // pull the frozen image from its lazy holder here.
             Icon = BrandIcons.Escudo;
             HeaderIcon.Source = BrandIcons.Escudo;
+
+            viewModel.RequestChangePlan += OnRequestChangePlan;
+            viewModel.ExportSucceeded += OnExportSucceeded;
+        }
+
+        /// <summary>"Cambiar plan": mismo flujo que Cuenta/Licencia en la cinta (LicenseUi.ShowAccount), sin duplicar esa lógica.</summary>
+        private void OnRequestChangePlan()
+        {
+            IntPtr hwnd = new WindowInteropHelper(this).Handle;
+            LicenseUi.ShowChangePlan(ownerHwnd: hwnd);
+        }
+
+        private void OnExportSucceeded(ExportSummary summary)
+        {
+            var successVm = new ExportSuccessViewModel(summary, _viewModel.QuotaFooterText, _viewModel.Dialogs);
+            successVm.RequestChangePlan += OnRequestChangePlan;
+            var window = new ExportSuccessWindow(successVm) { Owner = this };
+            window.Show();
         }
 
         /// <summary>

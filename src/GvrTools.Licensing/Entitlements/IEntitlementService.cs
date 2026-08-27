@@ -14,6 +14,12 @@ namespace GvrTools.Licensing.Entitlements
         int Remaining(string featureCode);
 
         /// <summary>
+        /// Tope del periodo para un feature de cuota (ej. "quota.sheets_per_month"), o -1 si es
+        /// ilimitado. Viene del companion `{code}.limit` en el blob; 0 si no hay licencia/dato.
+        /// </summary>
+        int QuotaLimit(string featureCode);
+
+        /// <summary>
         /// Reserva/consume cuota antes de iniciar un lote. Devuelve false si no alcanza -- el
         /// llamador debe bloquear la operación completa, nunca empezarla a medias (regla 3 de
         /// "Reglas de consumo" en el plan).
