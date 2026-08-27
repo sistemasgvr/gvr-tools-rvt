@@ -61,19 +61,29 @@ namespace GvrTools.Revit.Export.Pdf
 
             public BatchItemResult Export(SheetSnapshot sheet)
             {
-                ViewSheet viewSheet = SheetRepository.Resolve(_document, sheet);
-                if (viewSheet == null)
-                    return BatchItemResult.Failure(sheet.Label, "La lámina ya no existe en el proyecto.");
+                View view = SheetRepository.ResolveView(_document, sheet);
+                if (view == null)
+                {
+                    string missing = sheet.Kind == ExportItemKind.View
+                        ? "La vista ya no existe en el proyecto."
+                        : "La lámina ya no existe en el proyecto.";
+                    return BatchItemResult.Failure(sheet.Label, missing);
+                }
 
                 string baseName = _namer.ReserveBaseName(sheet);
                 string expectedPath = Path.Combine(_folder, baseName + ".pdf");
 
-                using (PDFExportOptions options = BuildOptions(viewSheet, baseName))
+                using (PDFExportOptions options = BuildOptions(view, baseName))
                 {
                     bool exported = _document.Export(_folder, new List<ElementId> { sheet.Id }, options);
 
                     if (!exported)
-                        return BatchItemResult.Failure(sheet.Label, "Revit rechazó la exportación de esta lámina.");
+                    {
+                        string rejected = sheet.Kind == ExportItemKind.View
+                            ? "Revit rechazó la exportación de esta vista."
+                            : "Revit rechazó la exportación de esta lámina.";
+                        return BatchItemResult.Failure(sheet.Label, rejected);
+                    }
                 }
 
                 if (!File.Exists(expectedPath))
@@ -90,7 +100,7 @@ namespace GvrTools.Revit.Export.Pdf
                 // Nothing to undo: this engine changes no document or application state.
             }
 
-            private PDFExportOptions BuildOptions(ViewSheet sheet, string baseName)
+            private PDFExportOptions BuildOptions(View view, string baseName)
             {
                 var options = new PDFExportOptions
                 {
@@ -99,10 +109,10 @@ namespace GvrTools.Revit.Export.Pdf
                     Combine = true,
                     FileName = baseName,
                     StopOnError = false,
-                    AlwaysUseRaster = false,
-                    ReplaceHalftoneWithThinLines = false,
-                    ViewLinksInBlue = false,
-                    MaskCoincidentLines = true,
+                    AlwaysUseRaster = _settings.HiddenLineProcessing == PdfHiddenLineProcessing.Raster,
+                    ReplaceHalftoneWithThinLines = _settings.ReplaceHalftoneWithThinLines,
+                    ViewLinksInBlue = _settings.ViewLinksInBlue,
+                    MaskCoincidentLines = _settings.MaskCoincidentLines,
                     ColorDepth = ToColorDepth(_settings.ColorMode),
                     RasterQuality = ToRasterQuality(_settings.RasterQuality),
                     ExportQuality = PDFExportQualityType.DPI600,
@@ -117,7 +127,7 @@ namespace GvrTools.Revit.Export.Pdf
                     // Default asks Revit to use the sheet's own size, which is both more accurate
                     // and cheaper than measuring the title block and matching a named format.
                     PaperFormat = ExportPaperFormat.Default,
-                    PaperOrientation = ResolveOrientation(sheet)
+                    PaperOrientation = ResolveOrientation(view)
                 };
 
 #if REVIT2025_OR_GREATER
@@ -131,11 +141,12 @@ namespace GvrTools.Revit.Export.Pdf
 
             /// <summary>
             /// Auto is right for sheets whose size Revit can work out on its own; measuring the
-            /// title block only pays off when the user asked us to respect each sheet's own size.
+            /// title block only pays off when the user asked us to respect each sheet's own size. A
+            /// standalone view has no title block to measure, so it always falls back to Auto.
             /// </summary>
-            private PageOrientationType ResolveOrientation(ViewSheet sheet)
+            private PageOrientationType ResolveOrientation(View view)
             {
-                if (!_settings.MatchSheetSize) return PageOrientationType.Auto;
+                if (!_settings.MatchSheetSize || !(view is ViewSheet sheet)) return PageOrientationType.Auto;
 
                 SheetSize size = SheetSizeReader.Read(_document, sheet);
                 if (!size.IsKnown) return PageOrientationType.Auto;

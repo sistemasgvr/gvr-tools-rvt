@@ -19,6 +19,8 @@
     <Color x:Key="Gvr.Color.Muted">#FF6B7280</Color>
     <Color x:Key="Gvr.Color.Line">#FFDCE0E4</Color>
     <Color x:Key="Gvr.Color.Surface">#FFF6F7F9</Color>
+    <!-- CTA de "subir de plan" en todo el add-in: color en vez de un ícono de estrella. -->
+    <Color x:Key="Gvr.Color.Gold">#FFB8860B</Color>
 
     <SolidColorBrush x:Key="Gvr.Brush.Accent" Color="{StaticResource Gvr.Color.Accent}"/>
     <SolidColorBrush x:Key="Gvr.Brush.Success" Color="{StaticResource Gvr.Color.Success}"/>
@@ -27,6 +29,7 @@
     <SolidColorBrush x:Key="Gvr.Brush.Muted" Color="{StaticResource Gvr.Color.Muted}"/>
     <SolidColorBrush x:Key="Gvr.Brush.Line" Color="{StaticResource Gvr.Color.Line}"/>
     <SolidColorBrush x:Key="Gvr.Brush.Surface" Color="{StaticResource Gvr.Color.Surface}"/>
+    <SolidColorBrush x:Key="Gvr.Brush.Gold" Color="{StaticResource Gvr.Color.Gold}"/>
 
     <!-- Metrics. Only WPF's own types are declared here on purpose: pulling System.Double into a
          dictionary needs a clr-namespace mapping whose assembly name differs between .NET Framework
@@ -36,8 +39,8 @@
 
     <BooleanToVisibilityConverter x:Key="Gvr.BoolToVisibility"/>
 
-    <!-- Small vector glyphs (upgrade star / lock). Prefer Path over ★ / emoji in UI strings. -->
-    <Geometry x:Key="Gvr.Icon.Star">M6,0.5 L7.35,4.55 L11.5,4.6 L8.15,7.2 L9.4,11.3 L6,8.85 L2.6,11.3 L3.85,7.2 L0.5,4.6 L4.65,4.55 Z</Geometry>
+    <!-- Small vector glyph (lock). El de estrella se quitó a propósito: el CTA de "subir de plan"
+         usa Gvr.Button.Upgrade (dorado) en vez de un ícono, ver más abajo. -->
     <Geometry x:Key="Gvr.Icon.Lock">M4.2,5.2 V3.5 C4.2,2.1 5.1,1.2 6,1.2 C6.9,1.2 7.8,2.1 7.8,3.5 V5.2 H8.8 V10.8 H3.2 V5.2 H4.2 M5.1,5.2 V3.5 C5.1,2.7 5.5,2.1 6,2.1 C6.5,2.1 6.9,2.7 6.9,3.5 V5.2 Z M5.5,7 A0.55,0.55 0 0 1 6.5,7.5 V8.9 H5.5 Z</Geometry>
     <Style x:Key="Gvr.IconPath" TargetType="Path">
         <Setter Property="Width" Value="12"/>
@@ -112,6 +115,20 @@
 
     <Style x:Key="Gvr.Button.Primary" TargetType="Button" BasedOn="{StaticResource Gvr.Button.Action}">
         <Setter Property="Background" Value="{StaticResource Gvr.Brush.Success}"/>
+        <Setter Property="Foreground" Value="White"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+        <Style.Triggers>
+            <Trigger Property="IsEnabled" Value="False">
+                <Setter Property="Background" Value="{StaticResource Gvr.Brush.Line}"/>
+                <Setter Property="Foreground" Value="{StaticResource Gvr.Brush.Muted}"/>
+            </Trigger>
+        </Style.Triggers>
+    </Style>
+
+    <!-- "Cambiar plan" / subir de plan en todo el add-in: dorado en vez de un ícono de estrella
+         (auditoría del sistema: nada de ★ ni emoji en la UI, esto reemplaza al Path de estrella). -->
+    <Style x:Key="Gvr.Button.Upgrade" TargetType="Button" BasedOn="{StaticResource Gvr.Button.Action}">
+        <Setter Property="Background" Value="{StaticResource Gvr.Brush.Gold}"/>
         <Setter Property="Foreground" Value="White"/>
         <Setter Property="FontWeight" Value="SemiBold"/>
         <Style.Triggers>

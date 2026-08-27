@@ -58,20 +58,69 @@ namespace GvrTools.Revit.Sheets
         }
 
         /// <summary>
-        /// Re-resolves a snapshot to the live sheet. Returns null when the sheet no longer exists,
-        /// which the exporters report as a per-sheet failure.
+        /// Printable standalone views (plans, sections, elevations, 3D, drafting...), excluding
+        /// sheets, templates and schedules. Schedules are left out for now: they are tabular, not
+        /// geometry, and neither Revit's PDF exporter nor <c>DWGExportOptions</c> treats them like a
+        /// normal view -- a later pass can add them as their own kind if there is demand.
         /// </summary>
-        public static ViewSheet Resolve(Document document, SheetSnapshot snapshot)
+        public static IReadOnlyList<SheetSnapshot> GetViews(Document document)
+        {
+            return new FilteredElementCollector(document)
+                .OfClass(typeof(View))
+                .Cast<View>()
+                .Where(view => !view.IsTemplate
+                    && !(view is ViewSheet)
+                    && !(view is ViewSchedule)
+                    && IsPrintable(view))
+                .OrderBy(view => view.Name, NaturalSortComparer.Instance)
+                .Select(ViewSnapshot)
+                .ToList();
+        }
+
+        /// <summary>
+        /// Re-resolves a snapshot (sheet or view) to the live <see cref="View"/>. Returns null when
+        /// the element no longer exists or is no longer a view, reported as a per-item failure.
+        /// </summary>
+        public static View ResolveView(Document document, SheetSnapshot snapshot)
         {
             try
             {
-                return document.GetElement(snapshot.Id) as ViewSheet;
+                return document.GetElement(snapshot.Id) as View;
             }
             catch (Exception)
             {
                 return null;
             }
         }
+
+        /// <summary>
+        /// <c>View.CanBePrinted</c> throws for a handful of view kinds instead of returning false
+        /// (e.g. some legend/internal views on older API versions), so this is defensive rather than
+        /// a direct property read.
+        /// </summary>
+        private static bool IsPrintable(View view)
+        {
+            try
+            {
+                return view.CanBePrinted;
+            }
+            catch (Exception)
+            {
+                return false;
+            }
+        }
+
+        private static SheetSnapshot ViewSnapshot(View view) => new SheetSnapshot(
+            view.Id,
+            view.UniqueId,
+            string.Empty,
+            view.Name,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            string.Empty,
+            ExportItemKind.View,
+            view.ViewType.ToString());
 
         private static SheetSnapshot Snapshot(ViewSheet sheet) => new SheetSnapshot(
             sheet.Id,

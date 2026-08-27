@@ -34,6 +34,8 @@ namespace GvrTools.Revit.Export.Dwg
             private readonly string _folder;
             private readonly bool _exportImage;
             private readonly SheetImageExporter _imageExporter;
+            private readonly ILog _log;
+            private bool _imageSkipWarned;
 
             internal Session(ExportRequest request, DwgExportSettings settings)
             {
@@ -47,16 +49,27 @@ namespace GvrTools.Revit.Export.Dwg
 
                 _options = BuildOptions(_document, settings);
                 _exportImage = settings.AlsoExportImage;
+                _log = request.Log;
                 _imageExporter = _exportImage ? new SheetImageExporter(request.Log) : null;
             }
 
             public BatchItemResult Export(SheetSnapshot sheet)
             {
-                ViewSheet viewSheet = SheetRepository.Resolve(_document, sheet);
-                if (viewSheet == null)
-                    return BatchItemResult.Failure(sheet.Label, "La lámina ya no existe en el proyecto.");
+                View view = SheetRepository.ResolveView(_document, sheet);
+                if (view == null)
+                {
+                    string missing = sheet.Kind == ExportItemKind.View
+                        ? "La vista ya no existe en el proyecto."
+                        : "La lámina ya no existe en el proyecto.";
+                    return BatchItemResult.Failure(sheet.Label, missing);
+                }
 
-                IReadOnlyList<string> viewSuffixes = _options.MergedViews
+                // The per-view-sibling-file naming and the legacy-DWG cleanup below only make sense
+                // for a sheet, which can have several views placed on it; a standalone view is
+                // exported as a single file and never produces those siblings.
+                ViewSheet viewSheet = view as ViewSheet;
+
+                IReadOnlyList<string> viewSuffixes = _options.MergedViews || viewSheet == null
                     ? null
                     : CollectViewSuffixes(viewSheet);
 
@@ -71,21 +84,35 @@ namespace GvrTools.Revit.Export.Dwg
                     ? null
                     : $" (como {baseName}.dwg porque ya existía uno anterior)";
 
-                MoveAsideLegacyRevitDwgs(viewSheet);
+                if (viewSheet != null)
+                    MoveAsideLegacyRevitDwgs(viewSheet);
 
                 bool exported = _document.Export(_folder, baseName, new List<ElementId> { sheet.Id }, _options);
 
                 if (!exported)
-                    return BatchItemResult.Failure(
-                        sheet.Label,
-                        "Revit rechazó la exportación DWG de esta lámina." + (detailSuffix ?? string.Empty));
+                {
+                    string rejected = sheet.Kind == ExportItemKind.View
+                        ? "Revit rechazó la exportación DWG de esta vista."
+                        : "Revit rechazó la exportación DWG de esta lámina.";
+                    return BatchItemResult.Failure(sheet.Label, rejected + (detailSuffix ?? string.Empty));
+                }
 
                 if (!File.Exists(expectedPath))
                     return BatchItemResult.Failure(sheet.Label, "Revit no generó el archivo DWG esperado.");
 
                 // Image export is a companion, not a gate: if it fails, the DWG is still a success.
-                if (_exportImage)
+                // Only wired for sheets today (SheetImageExporter reads sheet-specific geometry) --
+                // for a standalone view the checkbox is silently a no-op, so at least one warning
+                // goes to the log instead of the image just never appearing with no explanation.
+                if (_exportImage && viewSheet != null)
+                {
                     _imageExporter.ExportAlongside(_document, viewSheet, expectedPath);
+                }
+                else if (_exportImage && !_imageSkipWarned)
+                {
+                    _imageSkipWarned = true;
+                    _log.Warn("\"Exportar también imagen\" no aplica en modo Vistas; se omite para todas las vistas de este lote.");
+                }
 
                 return BatchItemResult.Success(
                     sheet.Label,

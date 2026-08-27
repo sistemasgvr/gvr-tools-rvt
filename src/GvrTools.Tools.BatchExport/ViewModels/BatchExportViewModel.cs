@@ -66,6 +66,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// </summary>
         private Dictionary<ExportFormat, string> _runDestinationFolders;
 
+        private ExportItemKind _itemKind = ExportItemKind.Sheet;
+
         public BatchExportViewModel(
             UIDocument uiDocument,
             RevitJobScheduler scheduler,
@@ -91,15 +93,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             foreach (KeyValuePair<string, DateTime> entry in _historyStore.Load(_project.ProjectKey))
                 _exportHistory[entry.Key] = entry.Value;
 
-            foreach (SheetSnapshot sheet in SheetRepository.GetSheets(uiDocument.Document))
-            {
-                var item = new SheetItemViewModel(sheet);
-                if (!string.IsNullOrEmpty(sheet.UniqueId) && _exportHistory.TryGetValue(sheet.UniqueId, out DateTime lastExported))
-                    item.LastExportedUtc = lastExported;
-
-                item.PropertyChanged += OnSheetItemChanged;
-                Sheets.Add(item);
-            }
+            LoadItems(ExportItemKind.Sheet);
 
             SheetSetNames = new[] { AllSheetsLabel }
                 .Concat(_sheetSets.Select(set => set.Name))
@@ -147,8 +141,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             ChangePlanCommand = new RelayCommand(() => RequestChangePlan?.Invoke());
 
             StatusText = Sheets.Count == 0
-                ? "El proyecto activo no tiene láminas para exportar."
-                : $"{Sheets.Count} lámina(s) en el proyecto.";
+                ? $"El proyecto activo no tiene {ItemNounPlural} para exportar."
+                : $"{Sheets.Count} {ItemNounPlural} en el proyecto.";
 
             RefreshIdleProgressScale();
         }
@@ -166,7 +160,83 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// with none, the combo would only offer "(Todas las láminas)", which is UI noise and made
         /// people wonder what it was for; the window binds its visibility to this.
         /// </summary>
-        public bool HasSheetSets => _sheetSets.Count > 0;
+        public bool HasSheetSets => _itemKind == ExportItemKind.Sheet && _sheetSets.Count > 0;
+
+        // ---------------------------------------------------------------- sheets / views toggle
+
+        /// <summary>Grid shows sheets when true, standalone views when <see cref="IsViewsMode"/> is true.</summary>
+        public bool IsSheetsMode
+        {
+            get => _itemKind == ExportItemKind.Sheet;
+            set { if (value) SetItemKind(ExportItemKind.Sheet); }
+        }
+
+        public bool IsViewsMode
+        {
+            get => _itemKind == ExportItemKind.View;
+            set { if (value) SetItemKind(ExportItemKind.View); }
+        }
+
+        /// <summary>"lámina(s)"/"vista(s)", for the couple of status labels that name the item kind.</summary>
+        private string ItemNounPlural => _itemKind == ExportItemKind.View ? "vista(s)" : "lámina(s)";
+
+        private string ItemNounSingular => _itemKind == ExportItemKind.View ? "vista" : "lámina";
+
+        /// <summary>
+        /// Switches what the grid lists. Disabled once a run has started (bound to
+        /// <c>!IsExporting</c> in the window) since reloading the grid mid-batch would desync it from
+        /// the job actually running; the guard here is the same rule enforced defensively in code.
+        /// </summary>
+        private void SetItemKind(ExportItemKind kind)
+        {
+            if (_itemKind == kind || IsExporting) return;
+
+            string previousDefault = _itemKind == ExportItemKind.View ? NamingTokens.DefaultViewPattern : NamingTokens.DefaultPattern;
+            _itemKind = kind;
+
+            // Only swap the pattern away from a default the user never touched -- a custom pattern
+            // is never overwritten just because the mode changed.
+            if (string.Equals(NamingPattern, previousDefault, StringComparison.Ordinal))
+                NamingPattern = kind == ExportItemKind.View ? NamingTokens.DefaultViewPattern : NamingTokens.DefaultPattern;
+
+            LoadItems(kind);
+            SelectedSheetSet = AllSheetsLabel;
+            SheetsView.Refresh();
+
+            StatusText = Sheets.Count == 0
+                ? $"El proyecto activo no tiene {ItemNounPlural} para exportar."
+                : $"{Sheets.Count} {ItemNounPlural} en el proyecto.";
+
+            Raise(nameof(IsSheetsMode), nameof(IsViewsMode), nameof(HasSheetSets));
+            NotifySelectionChanged();
+            Raise(nameof(NamingPreview));
+            RefreshIdleProgressScale();
+        }
+
+        /// <summary>
+        /// (Re)populates <see cref="Sheets"/> from the repository for the given kind, wiring history
+        /// and change notification exactly as the constructor did for the sheet-only original list.
+        /// </summary>
+        private void LoadItems(ExportItemKind kind)
+        {
+            foreach (SheetItemViewModel existing in Sheets)
+                existing.PropertyChanged -= OnSheetItemChanged;
+            Sheets.Clear();
+
+            IReadOnlyList<SheetSnapshot> items = kind == ExportItemKind.View
+                ? SheetRepository.GetViews(_uiDocument.Document)
+                : SheetRepository.GetSheets(_uiDocument.Document);
+
+            foreach (SheetSnapshot snapshot in items)
+            {
+                var item = new SheetItemViewModel(snapshot);
+                if (!string.IsNullOrEmpty(snapshot.UniqueId) && _exportHistory.TryGetValue(snapshot.UniqueId, out DateTime lastExported))
+                    item.LastExportedUtc = lastExported;
+
+                item.PropertyChanged += OnSheetItemChanged;
+                Sheets.Add(item);
+            }
+        }
 
         public ObservableCollection<ExportResultViewModel> Results { get; } = new ObservableCollection<ExportResultViewModel>();
 
@@ -201,7 +271,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public int SelectedCount => Sheets.Count(sheet => sheet.IsSelected);
 
-        public string SelectionSummary => $"{SelectedCount} de {Sheets.Count} lámina(s) seleccionadas";
+        public string SelectionSummary => $"{SelectedCount} de {Sheets.Count} {ItemNounPlural} seleccionadas";
 
         /// <summary>
         /// Checkbox del encabezado del grid (estilo ProSheets). true = todas las visibles;
@@ -326,7 +396,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             get
             {
                 SheetSnapshot sample = Sheets.Count > 0 ? Sheets[0].Sheet : null;
-                if (sample == null) return string.IsNullOrWhiteSpace(NamingPattern) ? string.Empty : "(sin láminas para previsualizar)";
+                if (sample == null) return string.IsNullOrWhiteSpace(NamingPattern) ? string.Empty : $"(sin {ItemNounPlural} para previsualizar)";
 
                 var namer = new ExportFileNamer(string.Empty, NamingPattern, string.Empty, _project.ToTokens());
                 return namer.Preview(sample);
@@ -564,6 +634,41 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         {
             get => _pdfRasterQuality;
             set => Set(ref _pdfRasterQuality, value);
+        }
+
+        private PdfHiddenLineProcessing _pdfHiddenLineProcessing = PdfHiddenLineProcessing.Vector;
+        public PdfHiddenLineProcessing PdfHiddenLineProcessing
+        {
+            get => _pdfHiddenLineProcessing;
+            set => Set(ref _pdfHiddenLineProcessing, value);
+        }
+
+        /// <summary>Atajo de UI para HiddenLineProcessing: una sola casilla en vez de un combo de dos opciones.</summary>
+        public bool PdfProcessAsRaster
+        {
+            get => _pdfHiddenLineProcessing == PdfHiddenLineProcessing.Raster;
+            set => PdfHiddenLineProcessing = value ? PdfHiddenLineProcessing.Raster : PdfHiddenLineProcessing.Vector;
+        }
+
+        private bool _pdfViewLinksInBlue;
+        public bool PdfViewLinksInBlue
+        {
+            get => _pdfViewLinksInBlue;
+            set => Set(ref _pdfViewLinksInBlue, value);
+        }
+
+        private bool _pdfReplaceHalftoneWithThinLines;
+        public bool PdfReplaceHalftoneWithThinLines
+        {
+            get => _pdfReplaceHalftoneWithThinLines;
+            set => Set(ref _pdfReplaceHalftoneWithThinLines, value);
+        }
+
+        private bool _pdfMaskCoincidentLines = true;
+        public bool PdfMaskCoincidentLines
+        {
+            get => _pdfMaskCoincidentLines;
+            set => Set(ref _pdfMaskCoincidentLines, value);
         }
 
         private DwgFileVersion _dwgFileVersion = DwgFileVersion.Default;
@@ -899,7 +1004,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         {
             if (!(candidate is SheetItemViewModel item)) return false;
 
-            if (!string.Equals(SelectedSheetSet, AllSheetsLabel, StringComparison.Ordinal))
+            // Saved sheet sets only ever contain ViewSheet ids -- meaningless in Views mode, where
+            // HasSheetSets is already false and the combo is hidden, but guarded here too in case
+            // SelectedSheetSet still holds a stale value from before the mode switch.
+            if (_itemKind == ExportItemKind.Sheet && !string.Equals(SelectedSheetSet, AllSheetsLabel, StringComparison.Ordinal))
             {
                 SheetSetSnapshot set = _sheetSets.FirstOrDefault(s =>
                     string.Equals(s.Name, SelectedSheetSet, StringComparison.Ordinal));
@@ -992,7 +1100,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void BrowseFolder()
         {
             string picked = _dialogs.PickFolder(
-                "Selecciona la carpeta donde se exportarán las láminas",
+                $"Selecciona la carpeta donde se exportarán las {ItemNounPlural}",
                 string.IsNullOrWhiteSpace(OutputFolder) ? _project.LocalFolder : OutputFolder);
 
             if (picked == null) return;
@@ -1191,7 +1299,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void RequestCancel()
         {
             _scheduler.RequestCancel();
-            StatusText = "Cancelando al terminar la lámina actual...";
+            StatusText = $"Cancelando al terminar la {ItemNounSingular} actual...";
         }
 
         private IExportFormatSettings BuildFormatSettings(ExportFormat format)
@@ -1217,7 +1325,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 NoMargin = PdfNoMargin,
                 ColorMode = PdfColorMode,
                 RasterQuality = PdfRasterQuality,
-                HideHelperGraphics = true
+                HideHelperGraphics = true,
+                HiddenLineProcessing = PdfHiddenLineProcessing,
+                ViewLinksInBlue = PdfViewLinksInBlue,
+                ReplaceHalftoneWithThinLines = PdfReplaceHalftoneWithThinLines,
+                MaskCoincidentLines = PdfMaskCoincidentLines
             };
         }
 
@@ -1410,7 +1522,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
                 if (_firstPhaseResult.HasSetupError && lastResult.HasSetupError)
                 {
-                    StatusText = "No se exportó ninguna lámina.";
+                    StatusText = $"No se exportó ninguna {ItemNounSingular}.";
                     _dialogs.ShowError(DialogTitle,
                         $"PDF: {_firstPhaseResult.SetupError}\nDWG: {lastResult.SetupError}");
                     return;
@@ -1418,7 +1530,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
             else if (lastResult.HasSetupError)
             {
-                StatusText = "No se exportó ninguna lámina.";
+                StatusText = $"No se exportó ninguna {ItemNounSingular}.";
                 _dialogs.ShowError(DialogTitle, lastResult.SetupError);
                 return;
             }
@@ -1480,6 +1592,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _pdfNoMargin = preferences.PdfNoMargin;
             _pdfColorMode = preferences.PdfColorMode;
             _pdfRasterQuality = preferences.PdfRasterQuality;
+            _pdfHiddenLineProcessing = preferences.PdfHiddenLineProcessing;
+            _pdfViewLinksInBlue = preferences.PdfViewLinksInBlue;
+            _pdfReplaceHalftoneWithThinLines = preferences.PdfReplaceHalftoneWithThinLines;
+            _pdfMaskCoincidentLines = preferences.PdfMaskCoincidentLines;
 
             _dwgFileVersion = preferences.DwgFileVersion;
             _dwgMergeViews = preferences.DwgMergeViews;
@@ -1502,6 +1618,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _preferences.PdfNoMargin = PdfNoMargin;
             _preferences.PdfColorMode = PdfColorMode;
             _preferences.PdfRasterQuality = PdfRasterQuality;
+            _preferences.PdfHiddenLineProcessing = PdfHiddenLineProcessing;
+            _preferences.PdfViewLinksInBlue = PdfViewLinksInBlue;
+            _preferences.PdfReplaceHalftoneWithThinLines = PdfReplaceHalftoneWithThinLines;
+            _preferences.PdfMaskCoincidentLines = PdfMaskCoincidentLines;
             _preferences.DwgFileVersion = DwgFileVersion;
             _preferences.DwgMergeViews = DwgMergeViews;
             _preferences.DwgSharedCoordinates = DwgSharedCoordinates;

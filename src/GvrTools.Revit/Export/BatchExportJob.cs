@@ -56,7 +56,8 @@ namespace GvrTools.Revit.Export
             _stopwatch.Restart();
             CreateDestinationFolder();
 
-            _request.Log.Info($"{Name}: {_sheets.Count} lámina(s) hacia '{_request.DestinationFolder}' " +
+            string noun = _sheets.Count > 0 && _sheets[0].Kind == ExportItemKind.View ? "vista(s)" : "lámina(s)";
+            _request.Log.Info($"{Name}: {_sheets.Count} {noun} hacia '{_request.DestinationFolder}' " +
                               $"({_engine.StrategyDescription}).");
 
             _session = _engine.BeginSession(_request);
@@ -116,7 +117,7 @@ namespace GvrTools.Revit.Export
             }
             catch (Exception ex)
             {
-                _request.Log.Error($"Fallo al exportar la lámina {sheet.Label}.", ex);
+                _request.Log.Error($"Fallo al exportar {sheet.Label}.", ex);
                 return BatchItemResult.Failure(sheet.Label, ex.Message);
             }
         }

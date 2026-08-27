@@ -24,6 +24,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public string RevisionDescription => Sheet.RevisionDescription;
 
+        /// <summary>Tipo de vista ("FloorPlan", "Section"...) -- vacío para una lámina.</summary>
+        public string ViewTypeLabel => Sheet.ViewTypeLabel;
+
         public bool IsSelected
         {
             get => _isSelected;

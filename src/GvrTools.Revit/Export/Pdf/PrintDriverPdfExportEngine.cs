@@ -171,18 +171,33 @@ namespace GvrTools.Revit.Export.Pdf
 
             public BatchItemResult Export(SheetSnapshot sheet)
             {
-                ViewSheet viewSheet = SheetRepository.Resolve(_document, sheet);
-                if (viewSheet == null)
-                    return BatchItemResult.Failure(sheet.Label, "La lámina ya no existe en el proyecto.");
+                View view = SheetRepository.ResolveView(_document, sheet);
+                if (view == null)
+                {
+                    string missing = sheet.Kind == ExportItemKind.View
+                        ? "La vista ya no existe en el proyecto."
+                        : "La lámina ya no existe en el proyecto.";
+                    return BatchItemResult.Failure(sheet.Label, missing);
+                }
 
                 string destinationPath = _namer.ReservePath(sheet);
                 string appliedSettings = "impresora: " + _printer.Name;
 
-                _uiDocument.ActiveView = viewSheet;
+                try
+                {
+                    _uiDocument.ActiveView = view;
+                }
+                catch (Exception ex)
+                {
+                    // A handful of view kinds (e.g. a 3D walkthrough) refuse to become the active
+                    // view; a plotted sheet never hits this. Reported as a per-item failure instead
+                    // of letting Revit's raw exception bubble up as the message the user sees.
+                    return BatchItemResult.Failure(sheet.Label, "Revit no permite activar esta vista para imprimirla: " + ex.Message);
+                }
 
                 try
                 {
-                    appliedSettings = ApplyPrintSettings(viewSheet);
+                    appliedSettings = ApplyPrintSettings(view);
                 }
                 catch (Exception ex)
                 {
@@ -266,14 +281,17 @@ namespace GvrTools.Revit.Export.Pdf
                 _printManager.CombinedFile = true;
             }
 
-            /// <summary>Configures paper, orientation, zoom and margins for one sheet.</summary>
-            private string ApplyPrintSettings(ViewSheet sheet)
+            /// <summary>Configures paper, orientation, zoom and margins for one sheet or view.</summary>
+            private string ApplyPrintSettings(View view)
             {
                 PrintSetup setup = _printManager.PrintSetup;
                 setup.CurrentPrintSetting = setup.InSession;
                 PrintParameters parameters = setup.CurrentPrintSetting.PrintParameters;
 
-                SheetSize size = SheetSizeReader.Read(_document, sheet);
+                // A standalone view has no title block to measure, so it always reports "unknown"
+                // and falls back to whatever paper the printer defaults to (same as a sheet whose
+                // size Revit couldn't read).
+                SheetSize size = view is ViewSheet sheet ? SheetSizeReader.Read(_document, sheet) : SheetSize.Unknown;
                 PaperSize matched = _settings.MatchSheetSize
                     ? PaperSizeMatcher.FindBestMatch(_printManager.PaperSizes, _printer.Name, size)
                     : null;
@@ -316,14 +334,18 @@ namespace GvrTools.Revit.Export.Pdf
                 parameters.HideScopeBoxes = _settings.HideHelperGraphics;
                 parameters.HideUnreferencedViewTags = _settings.HideHelperGraphics;
                 parameters.HideReforWorkPlanes = _settings.HideHelperGraphics;
-                parameters.MaskCoincidentLines = true;
-                parameters.ViewLinksinBlue = false;
+                parameters.MaskCoincidentLines = _settings.MaskCoincidentLines;
+                parameters.ViewLinksinBlue = _settings.ViewLinksInBlue;
+                parameters.ReplaceHalftoneWithThinLines = _settings.ReplaceHalftoneWithThinLines;
+                parameters.HiddenLineViews = _settings.HiddenLineProcessing == PdfHiddenLineProcessing.Raster
+                    ? HiddenLineViewsType.RasterProcessing
+                    : HiddenLineViewsType.VectorProcessing;
 
                 string paper = sizeApplied
                     ? matched.Name
                     : _settings.MatchSheetSize ? "sin coincidencia" : "detección desactivada";
 
-                return $"impresora: {_printer.Name}, lámina: {size}, papel: {paper}";
+                return $"impresora: {_printer.Name}, tamaño: {size}, papel: {paper}";
             }
 
             private static ColorDepthType ToColorDepth(PdfColorMode mode)

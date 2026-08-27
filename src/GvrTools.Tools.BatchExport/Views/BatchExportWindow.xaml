@@ -43,16 +43,9 @@
                            Margin="0,2,0,0"/>
             </StackPanel>
 
-            <Button Grid.Column="2" Style="{StaticResource Gvr.Button.Action}"
+            <Button Grid.Column="2" Content="Cambiar plan" Style="{StaticResource Gvr.Button.Upgrade}"
                     Command="{Binding ChangePlanCommand}" VerticalAlignment="Center"
-                    ToolTip="Ver tu plan actual, activar una clave de licencia o desactivar este PC.">
-                <StackPanel Orientation="Horizontal">
-                    <TextBlock Text="Cambiar plan" VerticalAlignment="Center"/>
-                    <Path Style="{StaticResource Gvr.IconPath}" Data="{StaticResource Gvr.Icon.Star}"
-                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                          Margin="6,0,0,0"/>
-                </StackPanel>
-            </Button>
+                    ToolTip="Ver tu plan actual, activar una clave de licencia o desactivar este PC."/>
         </Grid>
 
         <!-- Step tabs clicables (estilo ProSheets: pastillas con fondo activo). -->
@@ -113,13 +106,28 @@
             <!-- Paso 1: Selección -->
             <Grid Visibility="{Binding IsSelectionStep, Converter={StaticResource Gvr.BoolToVisibility}}">
                 <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>   <!-- sheets/views toggle -->
                     <RowDefinition Height="Auto"/>   <!-- toolbar -->
                     <RowDefinition Height="*"/>      <!-- grid -->
                 </Grid.RowDefinitions>
 
+                <!-- Qué se exporta: láminas (comportamiento habitual) o vistas independientes. -->
+                <StackPanel Grid.Row="0" Orientation="Horizontal" Margin="0,0,0,10"
+                            IsEnabled="{Binding CanEditOptions}">
+                    <TextBlock Text="Mostrar:" Style="{StaticResource Gvr.Text.Label}" VerticalAlignment="Center" Margin="0,0,10,0"/>
+                    <RadioButton GroupName="GvrItemKind" Content="Láminas" VerticalAlignment="Center"
+                                 Foreground="{StaticResource Gvr.Brush.Ink}" Margin="0,0,16,0"
+                                 IsChecked="{Binding IsSheetsMode}"
+                                 ToolTip="Exportar láminas del proyecto (comportamiento habitual)."/>
+                    <RadioButton GroupName="GvrItemKind" Content="Vistas" VerticalAlignment="Center"
+                                 Foreground="{StaticResource Gvr.Brush.Ink}"
+                                 IsChecked="{Binding IsViewsMode}"
+                                 ToolTip="Exportar vistas independientes (plantas, cortes, 3D, detalle...) en vez de láminas."/>
+                </StackPanel>
+
                 <!-- Selection toolbar. Search is always visible; the Set filter only appears when the
                      project actually has saved sheet sets. -->
-                <Grid Grid.Row="0" Margin="0,0,0,8">
+                <Grid Grid.Row="1" Margin="0,0,0,8">
                     <Grid.ColumnDefinitions>
                         <ColumnDefinition Width="Auto"/>
                         <ColumnDefinition Width="Auto"/>
@@ -160,7 +168,7 @@
                 </Grid>
 
                 <!-- Sheet grid + count summary -->
-                <DockPanel Grid.Row="1">
+                <DockPanel Grid.Row="2">
                     <TextBlock DockPanel.Dock="Bottom" Text="{Binding SelectionSummary}"
                                Style="{StaticResource Gvr.Text.Subtle}"
                                HorizontalAlignment="Right" Margin="0,4,2,0"/>
@@ -191,6 +199,8 @@
                             </DataGridTemplateColumn>
                             <DataGridTextColumn Header="N° lámina" Binding="{Binding Number}" Width="110" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Nombre" Binding="{Binding Name}" Width="*" IsReadOnly="True"/>
+                            <DataGridTextColumn Header="Tipo" Binding="{Binding ViewTypeLabel}" Width="110" IsReadOnly="True"
+                                                 ToolTipService.ToolTip="Tipo de vista (solo en modo Vistas)."/>
                             <DataGridTextColumn Header="Rev." Binding="{Binding RevisionNumber}" Width="60" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Descripción de revisión" Binding="{Binding RevisionDescription}" Width="210" IsReadOnly="True"/>
                             <DataGridTextColumn Header="Exportación" Binding="{Binding ExportStatusLabel}" Width="160" IsReadOnly="True">
@@ -245,20 +255,6 @@
                                                     </Path.Style>
                                                 </Path>
                                                 <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
-                                                <Path Data="{StaticResource Gvr.Icon.Star}"
-                                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                                      Margin="5,0,0,0" Width="11" Height="11">
-                                                    <Path.Style>
-                                                        <Style TargetType="Path" BasedOn="{StaticResource Gvr.IconPath}">
-                                                            <Setter Property="Visibility" Value="Collapsed"/>
-                                                            <Style.Triggers>
-                                                                <DataTrigger Binding="{Binding IsLocked}" Value="True">
-                                                                    <Setter Property="Visibility" Value="Visible"/>
-                                                                </DataTrigger>
-                                                            </Style.Triggers>
-                                                        </Style>
-                                                    </Path.Style>
-                                                </Path>
                                             </StackPanel>
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource Gvr.FormatOption}">
@@ -343,6 +339,25 @@
                                           IsChecked="{Binding PdfNoMargin}"
                                           ToolTip="Centra el dibujo sin dejar margen. Si se desmarca, se respeta el margen mínimo que declara la impresora."/>
                             </StackPanel>
+
+                            <TextBlock Text="Opciones avanzadas" Style="{StaticResource Gvr.Text.Subtle}"
+                                       FontWeight="SemiBold" Margin="0,12,0,6"/>
+                            <StackPanel Orientation="Horizontal">
+                                <CheckBox Content="Procesar líneas ocultas como raster" Style="{StaticResource Gvr.CheckBox}"
+                                          IsChecked="{Binding PdfProcessAsRaster}"
+                                          ToolTip="Vectorial (por defecto) resuelve más rápido y con más nitidez. Actívalo solo si ves artefactos en geometría muy compleja."/>
+                                <CheckBox Content="Vínculos de vista en azul" Style="{StaticResource Gvr.CheckBox}"
+                                          IsChecked="{Binding PdfViewLinksInBlue}"
+                                          ToolTip="Resalta en azul los vínculos de vista (view links) en el PDF."/>
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
+                                <CheckBox Content="Reemplazar medio tono con líneas finas" Style="{StaticResource Gvr.CheckBox}"
+                                          IsChecked="{Binding PdfReplaceHalftoneWithThinLines}"
+                                          ToolTip="Útil si el PDF se va a imprimir o fotocopiar en blanco y negro: evita que el medio tono se pierda."/>
+                                <CheckBox Content="Enmascarar líneas coincidentes en bordes" Style="{StaticResource Gvr.CheckBox}"
+                                          IsChecked="{Binding PdfMaskCoincidentLines}"
+                                          ToolTip="En los bordes de una región recortada, oculta líneas que coinciden exactamente con el borde del recorte."/>
+                            </StackPanel>
                         </StackPanel>
 
                         <!-- DWG options -->
@@ -414,18 +429,11 @@
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="{Binding QuotaFooterText}" Style="{StaticResource Gvr.Text.Subtle}"
                                        VerticalAlignment="Center"/>
-                            <Button Style="{StaticResource Gvr.Button}"
-                                    Padding="6,1" MinWidth="0" Margin="12,0,0,0"
+                            <Button Content="{Binding UpgradeHintText}" Style="{StaticResource Gvr.Button.Upgrade}"
+                                    Padding="8,2" MinWidth="0" Margin="12,0,0,0"
                                     Command="{Binding ChangePlanCommand}"
                                     Visibility="{Binding ShowUpgradeHint, Converter={StaticResource Gvr.BoolToVisibility}}"
-                                    ToolTip="Abre Cambiar plan para subir a Starter/Pro.">
-                                <StackPanel Orientation="Horizontal">
-                                    <TextBlock Text="{Binding UpgradeHintText}" VerticalAlignment="Center"/>
-                                    <Path Style="{StaticResource Gvr.IconPath}" Data="{StaticResource Gvr.Icon.Star}"
-                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
-                                          Margin="5,0,0,0"/>
-                                </StackPanel>
-                            </Button>
+                                    ToolTip="Abre Cambiar plan para subir a Starter/Pro."/>
                         </StackPanel>
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource Gvr.Text.Subtle}"
                                    Margin="0,6,0,0" TextWrapping="Wrap"/>

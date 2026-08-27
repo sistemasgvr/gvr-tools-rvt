@@ -39,6 +39,14 @@ namespace GvrTools.Tools.BatchExport
 
         public PdfRasterQuality PdfRasterQuality { get; set; } = PdfRasterQuality.High;
 
+        public PdfHiddenLineProcessing PdfHiddenLineProcessing { get; set; } = PdfHiddenLineProcessing.Vector;
+
+        public bool PdfViewLinksInBlue { get; set; }
+
+        public bool PdfReplaceHalftoneWithThinLines { get; set; }
+
+        public bool PdfMaskCoincidentLines { get; set; } = true;
+
         // DWG
         public DwgFileVersion DwgFileVersion { get; set; } = DwgFileVersion.Default;
 

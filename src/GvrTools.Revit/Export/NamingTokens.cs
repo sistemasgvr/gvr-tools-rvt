@@ -31,6 +31,9 @@ namespace GvrTools.Revit.Export
     {
         public const string DefaultPattern = "{SheetNumber} - {SheetName}";
 
+        /// <summary>Default pattern offered when the Selección step is switched to Vistas.</summary>
+        public const string DefaultViewPattern = "{ViewName}";
+
         public static readonly IReadOnlyList<NamingToken> All = new[]
         {
             new NamingToken("SheetNumber", "Número de lámina"),
@@ -39,6 +42,8 @@ namespace GvrTools.Revit.Export
             new NamingToken("RevisionDescription", "Descripción de la revisión actual"),
             new NamingToken("RevisionDate", "Fecha de la revisión actual"),
             new NamingToken("SheetIssueDate", "Fecha de emisión de la lámina"),
+            new NamingToken("ViewName", "Nombre de la vista (solo modo Vistas)"),
+            new NamingToken("ViewType", "Tipo de vista, ej. FloorPlan (solo modo Vistas)"),
             new NamingToken("ProjectTitle", "Nombre del archivo de Revit"),
             new NamingToken("ProjectNumber", "Número de proyecto"),
             new NamingToken("ProjectName", "Nombre del proyecto"),

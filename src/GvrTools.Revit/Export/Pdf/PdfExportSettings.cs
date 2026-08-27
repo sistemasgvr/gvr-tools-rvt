@@ -15,6 +15,13 @@ namespace GvrTools.Revit.Export.Pdf
         Presentation
     }
 
+    /// <summary>Cómo se resuelven las líneas ocultas al exportar -- "Hidden Line Views" en la API de Revit.</summary>
+    public enum PdfHiddenLineProcessing
+    {
+        Vector,
+        Raster
+    }
+
     /// <summary>
     /// PDF plot options that apply to every sheet of a run.
     ///
@@ -41,6 +48,18 @@ namespace GvrTools.Revit.Export.Pdf
 
         /// <summary>Hide crop boundaries, scope boxes, reference planes and unreferenced view tags.</summary>
         public bool HideHelperGraphics { get; set; } = true;
+
+        /// <summary>Vector (por defecto) resuelve más rápido y con más nitidez; Raster evita artefactos en geometría muy compleja.</summary>
+        public PdfHiddenLineProcessing HiddenLineProcessing { get; set; } = PdfHiddenLineProcessing.Vector;
+
+        /// <summary>Muestra los vínculos de vista (view links) resaltados en azul.</summary>
+        public bool ViewLinksInBlue { get; set; }
+
+        /// <summary>Reemplaza el medio tono (halftone) por líneas finas -- útil si el PDF se va a imprimir en blanco y negro.</summary>
+        public bool ReplaceHalftoneWithThinLines { get; set; }
+
+        /// <summary>Enmascara líneas coincidentes en los bordes de una región recortada.</summary>
+        public bool MaskCoincidentLines { get; set; } = true;
 
         /// <summary>
         /// Windows printer used only by the Revit 2021 build, which has no PDF export API.
