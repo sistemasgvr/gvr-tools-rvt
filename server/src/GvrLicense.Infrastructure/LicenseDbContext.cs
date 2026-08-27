@@ -91,6 +91,8 @@ public sealed class LicenseDbContext(DbContextOptions<LicenseDbContext> options)
             e.Property(x => x.DisplayName).HasColumnName("display_name");
             e.Property(x => x.ActivatedAtUtc).HasColumnName("activated_at_utc");
             e.Property(x => x.LastSeenUtc).HasColumnName("last_seen_utc");
+            e.Property(x => x.LastIp).HasColumnName("last_ip");
+            e.Property(x => x.SeenCount).HasColumnName("seen_count").HasDefaultValue(0);
             e.HasIndex(x => new { x.LicenseId, x.Fingerprint }).IsUnique();
             e.HasOne(x => x.License).WithMany(l => l.Devices).HasForeignKey(x => x.LicenseId);
             e.HasOne(x => x.CompanyUser).WithMany(u => u.Devices).HasForeignKey(x => x.CompanyUserId);

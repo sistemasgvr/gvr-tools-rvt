@@ -220,13 +220,14 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
             set
             {
-                // Indeterminate (null) desde UI no debe vaciar; solo true/false del clic.
-                if (value == null) return;
-                SetVisibleSelection(value == true);
-                Raise(nameof(AreAllVisibleSelected), nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext));
-                ExportCommand.RaiseCanExecuteChanged();
-                GoNextCommand.RaiseCanExecuteChanged();
-                GoToStepCommand.RaiseCanExecuteChanged();
+                // WPF IsThreeState cycles false → true → null → false. That does not match
+                // "header checks all / unchecks all", especially: true→null is ignored by a
+                // naive setter, and null→false clears a partial selection instead of selecting all.
+                // Interpret any header write as: all visible selected → deselect all; else select all.
+                _ = value;
+                var visible = SheetsView.Cast<SheetItemViewModel>().ToList();
+                bool allSelected = visible.Count > 0 && visible.All(s => s.IsSelected);
+                SetVisibleSelection(!allSelected);
             }
         }
         // ---------------------------------------------------------------- destination and naming
@@ -714,7 +715,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
         }
 
-        public string UpgradeHintText => "Para exportaciones ilimitadas, cambia de plan ★";
+        public string UpgradeHintText => "Para exportaciones ilimitadas, cambia de plan";
 
         private string _statusText = string.Empty;
         public string StatusText
@@ -919,10 +920,19 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             ProgressValue = 0;
         }
 
+        /// <summary>When true, row IsSelected changes skip header/summary Raise (bulk update in progress).</summary>
+        private bool _suppressSelectionNotifications;
+
         private void OnSheetItemChanged(object sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(SheetItemViewModel.IsSelected)) return;
+            if (_suppressSelectionNotifications) return;
 
+            NotifySelectionChanged();
+        }
+
+        private void NotifySelectionChanged()
+        {
             Raise(nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext),
                   nameof(AreAllVisibleSelected));
             ExportCommand.RaiseCanExecuteChanged();
@@ -933,20 +943,50 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         private void SetVisibleSelection(bool selected)
         {
-            foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
-                item.IsSelected = selected;
+            _suppressSelectionNotifications = true;
+            try
+            {
+                foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
+                    item.IsSelected = selected;
+            }
+            finally
+            {
+                _suppressSelectionNotifications = false;
+            }
+
+            NotifySelectionChanged();
         }
 
         private void InvertVisibleSelection()
         {
-            foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
-                item.IsSelected = !item.IsSelected;
+            _suppressSelectionNotifications = true;
+            try
+            {
+                foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
+                    item.IsSelected = !item.IsSelected;
+            }
+            finally
+            {
+                _suppressSelectionNotifications = false;
+            }
+
+            NotifySelectionChanged();
         }
 
         private void SelectVisiblePending()
         {
-            foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
-                item.IsSelected = !item.WasExported;
+            _suppressSelectionNotifications = true;
+            try
+            {
+                foreach (SheetItemViewModel item in SheetsView.Cast<SheetItemViewModel>().ToList())
+                    item.IsSelected = !item.WasExported;
+            }
+            finally
+            {
+                _suppressSelectionNotifications = false;
+            }
+
+            NotifySelectionChanged();
         }
 
         private void BrowseFolder()

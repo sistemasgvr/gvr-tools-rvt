@@ -9,7 +9,7 @@ public sealed class Plan
 {
     public Guid Id { get; set; }
 
-    /// <summary>Estable: "trial", "starter", "pro". El add-in solo ve los feature codes, no este código.</summary>
+    /// <summary>Estable: "free", "starter", "pro". El add-in solo ve feature codes, no este código.</summary>
     public string Code { get; set; } = string.Empty;
 
     public string DisplayName { get; set; } = string.Empty;

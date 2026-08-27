@@ -195,11 +195,15 @@ if (app.Environment.IsDevelopment())
 // se borra, solo se puede desactivar a propósito). A diferencia del auto-migrate de arriba, esto
 // es un dato, no un cambio de esquema -- seguro de correr en cada arranque, también en producción.
 // Si el plan ya existe (el caso normal después del primer arranque) esto no hace nada.
+// El plan "trial" (14 días) se elimina si no tiene licencias: Free cubre el freemium y la BD
+// queda limpia (ver server/scripts/cleanup-licenses-clients.sql).
 using (var seedScope = app.Services.CreateScope())
 {
     try
     {
         var seedDb = seedScope.ServiceProvider.GetRequiredService<LicenseDbContext>();
+        var changed = false;
+
         if (!await seedDb.Plans.AnyAsync(p => p.Code == "free"))
         {
             seedDb.Plans.Add(new Plan
@@ -220,6 +224,38 @@ using (var seedScope = app.Services.CreateScope())
                     ["updates.stable"] = "true"
                 }
             });
+            changed = true;
+        }
+        else
+        {
+            // Renombre de display si quedó un nombre viejo; no toca features ni IsActive.
+            var freePlan = await seedDb.Plans.FirstAsync(p => p.Code == "free");
+            if (!string.Equals(freePlan.DisplayName, "Free", StringComparison.Ordinal))
+            {
+                freePlan.DisplayName = "Free";
+                changed = true;
+            }
+        }
+
+        var trialPlan = await seedDb.Plans.FirstOrDefaultAsync(p => p.Code == "trial");
+        if (trialPlan != null)
+        {
+            var trialInUse = await seedDb.Licenses.AnyAsync(l => l.PlanId == trialPlan.Id);
+            if (!trialInUse)
+            {
+                seedDb.Plans.Remove(trialPlan);
+                changed = true;
+            }
+            else if (trialPlan.IsActive)
+            {
+                // Quedan licencias colgando: no romper FK; sacar del selector.
+                trialPlan.IsActive = false;
+                changed = true;
+            }
+        }
+
+        if (changed)
+        {
             await seedDb.SaveChangesAsync();
         }
     }
@@ -229,7 +265,7 @@ using (var seedScope = app.Services.CreateScope())
         // producción), activate-free simplemente devolverá 503 hasta que se migre -- comportamiento
         // ya cubierto por LicenseEngine.ActivateFreeAsync.
         var seedLogger = app.Services.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
-        seedLogger.LogWarning(ex, "No se pudo asegurar el plan free al arrancar.");
+        seedLogger.LogWarning(ex, "No se pudo asegurar el plan free / eliminar trial al arrancar.");
     }
 }
 

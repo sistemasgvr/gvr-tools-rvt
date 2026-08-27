@@ -21,7 +21,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
         public bool IsLocked { get; }
 
-        public string DisplayLabel => IsLocked ? "🔒 " + Label + " ★" : Label;
+        /// <summary>Plain format name; lock/premium glyphs are drawn in XAML (no ★ / emoji in strings).</summary>
+        public string DisplayLabel => Label;
 
         private bool _isSelected;
         public bool IsSelected

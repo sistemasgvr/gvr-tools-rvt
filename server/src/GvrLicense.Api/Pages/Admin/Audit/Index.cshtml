@@ -60,7 +60,11 @@
                             @foreach (var row in Model.SharedFingerprints)
                             {
                                 <tr>
-                                    <td><code>@row.Fingerprint[..Math.Min(20, row.Fingerprint.Length)]…</code></td>
+                                    <td>
+                                        <a href="/Admin/Audit?q=@Uri.EscapeDataString(row.Fingerprint)">
+                                            <code>@row.Fingerprint[..Math.Min(20, row.Fingerprint.Length)]…</code>
+                                        </a>
+                                    </td>
                                     <td>@string.Join(", ", row.LicenseKeys)</td>
                                 </tr>
                             }
@@ -77,10 +81,30 @@
         <h3 class="card-title">Historial de cambios</h3>
     </div>
     <div class="card-body">
-        <p class="text-body-secondary small">Quién suspendió/reactivó licencias y otros eventos registrados.</p>
+        <form method="get" class="row g-2 align-items-end mb-3">
+            <div class="col-md-8">
+                <label class="form-label" for="audit-q">Buscar (IP, fingerprint, actor, acción)</label>
+                <input id="audit-q" name="q" value="@Model.Q" class="form-control" placeholder="ej. 190.12… o hash del PC" />
+            </div>
+            <div class="col-md-4 d-flex gap-2">
+                <button type="submit" class="btn btn-primary">Filtrar</button>
+                @if (!string.IsNullOrWhiteSpace(Model.Q))
+                {
+                    <a href="/Admin/Audit" class="btn btn-outline-secondary">Limpiar</a>
+                }
+            </div>
+        </form>
+        <p class="text-body-secondary small">
+            Quién suspendió/reactivó licencias, altas free/pago y liberaciones de PC.
+            Los heartbeats no aparecen aquí (van a <em>Contactos</em> del dispositivo).
+        </p>
         @if (Model.Rows.Count == 0)
         {
-            <p class="text-secondary mb-0">Todavía no hay eventos de auditoría.</p>
+            <p class="text-secondary mb-0">
+                @(string.IsNullOrWhiteSpace(Model.Q)
+                    ? "Todavía no hay eventos de auditoría."
+                    : "Ningún evento coincide con el filtro.")
+            </p>
         }
         else
         {
@@ -108,7 +132,8 @@
         { title: 'Cuándo', field: 'occurredAtUtc', width: 150, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
         { title: 'Acción', field: 'actionLabel', minWidth: 160, responsive: 0 },
         { title: 'Quién', field: 'actor', minWidth: 100, responsive: 1 },
-        { title: 'Detalle', field: 'detailsJson', minWidth: 200, responsive: 2 },
+        { title: 'IP', field: 'ip', width: 130, formatter: (c) => c.getValue() ? `<code>${c.getValue()}</code>` : '—', formatterParams: { allowHTML: true }, responsive: 2 },
+        { title: 'Detalle', field: 'detailSummary', minWidth: 200, responsive: 0 },
       ],
     });
   });

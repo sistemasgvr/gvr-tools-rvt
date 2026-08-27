@@ -15,7 +15,7 @@ Sin Stripe ni SMTP en v1. El dinero y el envío de la clave van por transferenci
 
 | Caso | Cliente | Plan | MaxUsers | ValidUntil |
 | --- | --- | --- | --- | --- |
-| Una sola persona | Él/ella | Starter/Pro/Trial | **1** | +1 mes / +1 año |
+| Una sola persona | Él/ella | Starter/Pro | **1** | +1 mes / +1 año |
 | Empresa, N colaboradores | La empresa | El acordado | **N** | Según contrato |
 | De por vida | Persona o empresa | El acordado | 1 o N | Fecha lejana (p. ej. 2099-01-01) |
 
@@ -28,6 +28,12 @@ Extras puntuales (más cuota, DWG en Starter, etc.): edita la licencia → **ove
 - **Moroso**: **Suspender**. El add-in corta en el próximo heartbeat (gracia offline máx. ~7 días).
 - **PC atascado / cambio de máquina**: en la licencia, **Liberar** el device; o el usuario usa **Desactivar este PC**.
 - **Colaborador que se va**: **Miembros** del cliente → desactivar esa persona.
+
+## Plan Free vs Trial
+
+- **Free** (`code = free`): freemium permanente vía `activate-free`. Mantener **activo**.
+- **Trial** (`code = trial`, “Trial 14 días”): **eliminado** de la BD (fila borrada). Freemium = solo Free. Si necesitás prueba de pago, emití Starter/Pro con `valid_until` corto.
+- Limpieza de licencias/clientes (conserva admins, borra trial): [`server/scripts/cleanup-licenses-clients.sql`](../server/scripts/cleanup-licenses-clients.sql) + [`server/scripts/README.md`](../server/scripts/README.md).
 
 ## Plan Free (UI_FREEMIUM_PLAN.md §2.2/§4.1)
 

@@ -17,6 +17,10 @@
                         <span class="input-group-text"><i class="bi bi-search" aria-hidden="true"></i></span>
                         <input id="plans-filter" type="search" class="form-control" placeholder="Buscar…" aria-label="Buscar" style="min-width: 8rem" />
                     </div>
+                    <div class="form-check form-switch mb-0 align-self-center">
+                        <input class="form-check-input" type="checkbox" role="switch" id="plans-show-inactive" checked />
+                        <label class="form-check-label text-nowrap small" for="plans-show-inactive">Mostrar descontinuados</label>
+                    </div>
                     <button type="button" class="btn btn-primary btn-sm text-nowrap" data-bs-toggle="modal" data-bs-target="#createPlanModal">
                         <i class="bi bi-clipboard-plus me-1" aria-hidden="true"></i> Nuevo plan
                     </button>
@@ -105,13 +109,24 @@
       ],
     });
 
-    document.getElementById('plans-filter').addEventListener('input', (e) => {
-      const value = e.target.value;
-      table.setFilter(value ? [[
-        { field: 'code', type: 'like', value },
-        { field: 'displayName', type: 'like', value },
-        { field: 'featuresSummary', type: 'like', value },
-      ]] : []);
-    });
+    const applyFilters = () => {
+      const value = document.getElementById('plans-filter').value;
+      const showInactive = document.getElementById('plans-show-inactive').checked;
+      const filters = [];
+      if (!showInactive) {
+        filters.push({ field: 'isActive', type: '=', value: true });
+      }
+      if (value) {
+        filters.push([
+          { field: 'code', type: 'like', value },
+          { field: 'displayName', type: 'like', value },
+          { field: 'featuresSummary', type: 'like', value },
+        ]);
+      }
+      table.setFilter(filters);
+    };
+
+    document.getElementById('plans-filter').addEventListener('input', applyFilters);
+    document.getElementById('plans-show-inactive').addEventListener('change', applyFilters);
   });
 </script>

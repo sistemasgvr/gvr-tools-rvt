@@ -36,6 +36,17 @@
 
     <BooleanToVisibilityConverter x:Key="Gvr.BoolToVisibility"/>
 
+    <!-- Small vector glyphs (upgrade star / lock). Prefer Path over ★ / emoji in UI strings. -->
+    <Geometry x:Key="Gvr.Icon.Star">M6,0.5 L7.35,4.55 L11.5,4.6 L8.15,7.2 L9.4,11.3 L6,8.85 L2.6,11.3 L3.85,7.2 L0.5,4.6 L4.65,4.55 Z</Geometry>
+    <Geometry x:Key="Gvr.Icon.Lock">M4.2,5.2 V3.5 C4.2,2.1 5.1,1.2 6,1.2 C6.9,1.2 7.8,2.1 7.8,3.5 V5.2 H8.8 V10.8 H3.2 V5.2 H4.2 M5.1,5.2 V3.5 C5.1,2.7 5.5,2.1 6,2.1 C6.5,2.1 6.9,2.7 6.9,3.5 V5.2 Z M5.5,7 A0.55,0.55 0 0 1 6.5,7.5 V8.9 H5.5 Z</Geometry>
+    <Style x:Key="Gvr.IconPath" TargetType="Path">
+        <Setter Property="Width" Value="12"/>
+        <Setter Property="Height" Value="12"/>
+        <Setter Property="Stretch" Value="Uniform"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="SnapsToDevicePixels" Value="True"/>
+    </Style>
+
     <!-- Text -->
     <Style x:Key="Gvr.Text.Title" TargetType="TextBlock">
         <Setter Property="FontSize" Value="17"/>

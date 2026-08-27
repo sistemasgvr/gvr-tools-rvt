@@ -43,9 +43,16 @@
                            Margin="0,2,0,0"/>
             </StackPanel>
 
-            <Button Grid.Column="2" Content="Cambiar plan ★" Style="{StaticResource Gvr.Button.Action}"
+            <Button Grid.Column="2" Style="{StaticResource Gvr.Button.Action}"
                     Command="{Binding ChangePlanCommand}" VerticalAlignment="Center"
-                    ToolTip="Ver tu plan actual, activar una clave de licencia o desactivar este PC."/>
+                    ToolTip="Ver tu plan actual, activar una clave de licencia o desactivar este PC.">
+                <StackPanel Orientation="Horizontal">
+                    <TextBlock Text="Cambiar plan" VerticalAlignment="Center"/>
+                    <Path Style="{StaticResource Gvr.IconPath}" Data="{StaticResource Gvr.Icon.Star}"
+                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                          Margin="6,0,0,0"/>
+                </StackPanel>
+            </Button>
         </Grid>
 
         <!-- Step tabs clicables (estilo ProSheets: pastillas con fondo activo). -->
@@ -219,10 +226,40 @@
                                 </ItemsControl.ItemsPanel>
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
-                                        <Button Content="{Binding DisplayLabel}"
-                                                Command="{Binding DataContext.SelectFormatCommand, RelativeSource={RelativeSource AncestorType=Window}}"
+                                        <Button Command="{Binding DataContext.SelectFormatCommand, RelativeSource={RelativeSource AncestorType=Window}}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip="Formato de salida. Si está bloqueado, abre Cambiar plan.">
+                                            <StackPanel Orientation="Horizontal">
+                                                <Path Data="{StaticResource Gvr.Icon.Lock}"
+                                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      Margin="0,0,5,0" Width="11" Height="11">
+                                                    <Path.Style>
+                                                        <Style TargetType="Path" BasedOn="{StaticResource Gvr.IconPath}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsLocked}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                </Path>
+                                                <TextBlock Text="{Binding Label}" VerticalAlignment="Center"/>
+                                                <Path Data="{StaticResource Gvr.Icon.Star}"
+                                                      Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                                      Margin="5,0,0,0" Width="11" Height="11">
+                                                    <Path.Style>
+                                                        <Style TargetType="Path" BasedOn="{StaticResource Gvr.IconPath}">
+                                                            <Setter Property="Visibility" Value="Collapsed"/>
+                                                            <Style.Triggers>
+                                                                <DataTrigger Binding="{Binding IsLocked}" Value="True">
+                                                                    <Setter Property="Visibility" Value="Visible"/>
+                                                                </DataTrigger>
+                                                            </Style.Triggers>
+                                                        </Style>
+                                                    </Path.Style>
+                                                </Path>
+                                            </StackPanel>
                                             <Button.Style>
                                                 <Style TargetType="Button" BasedOn="{StaticResource Gvr.FormatOption}">
                                                     <Style.Triggers>
@@ -250,9 +287,16 @@
                                       ToolTip="Cuando termine la exportación, abre el explorador de Windows en la carpeta destino."/>
                         </StackPanel>
 
-                        <TextBlock Text="Las opciones con 🔒 no están en tu plan. Clic en ellas para Cambiar plan."
-                                   Style="{StaticResource Gvr.Text.Subtle}" Margin="0,4,0,0"
-                                   Visibility="{Binding HasBlockedFormats, Converter={StaticResource Gvr.BoolToVisibility}}"/>
+                        <TextBlock Style="{StaticResource Gvr.Text.Subtle}" Margin="0,4,0,0"
+                                   Visibility="{Binding HasBlockedFormats, Converter={StaticResource Gvr.BoolToVisibility}}">
+                            <Run Text="Las opciones con"/>
+                            <InlineUIContainer>
+                                <Path Style="{StaticResource Gvr.IconPath}" Data="{StaticResource Gvr.Icon.Lock}"
+                                      Fill="{StaticResource Gvr.Brush.Muted}" Width="11" Height="11"
+                                      Margin="3,0,3,-1"/>
+                            </InlineUIContainer>
+                            <Run Text="no están en tu plan. Clic en ellas para Cambiar plan."/>
+                        </TextBlock>
 
                         <!-- PDF options -->
                         <StackPanel Margin="0,12,0,0"
@@ -370,11 +414,18 @@
                         <StackPanel Orientation="Horizontal" Margin="0,8,0,0">
                             <TextBlock Text="{Binding QuotaFooterText}" Style="{StaticResource Gvr.Text.Subtle}"
                                        VerticalAlignment="Center"/>
-                            <Button Content="{Binding UpgradeHintText}" Style="{StaticResource Gvr.Button}"
+                            <Button Style="{StaticResource Gvr.Button}"
                                     Padding="6,1" MinWidth="0" Margin="12,0,0,0"
                                     Command="{Binding ChangePlanCommand}"
                                     Visibility="{Binding ShowUpgradeHint, Converter={StaticResource Gvr.BoolToVisibility}}"
-                                    ToolTip="Abre Cambiar plan para subir a Starter/Pro."/>
+                                    ToolTip="Abre Cambiar plan para subir a Starter/Pro.">
+                                <StackPanel Orientation="Horizontal">
+                                    <TextBlock Text="{Binding UpgradeHintText}" VerticalAlignment="Center"/>
+                                    <Path Style="{StaticResource Gvr.IconPath}" Data="{StaticResource Gvr.Icon.Star}"
+                                          Fill="{Binding Foreground, RelativeSource={RelativeSource AncestorType=Button}}"
+                                          Margin="5,0,0,0"/>
+                                </StackPanel>
+                            </Button>
                         </StackPanel>
                         <TextBlock Text="{Binding StatusText}" Style="{StaticResource Gvr.Text.Subtle}"
                                    Margin="0,6,0,0" TextWrapping="Wrap"/>

@@ -22,7 +22,7 @@ public static class V1Endpoints
         var v1 = app.MapGroup("/v1").WithTags("v1 (add-in)");
 
         v1.MapPost("/activate", async (ActivateRequest request, HttpContext http, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
-                await RunAsync(log, "activate", () => engine.ActivateAsync(request, http.Connection.RemoteIpAddress?.ToString(), ct)))
+                await RunAsync(log, "activate", () => engine.ActivateAsync(request, ClientIp(http), ct)))
             .AllowAnonymous()
             .RequireRateLimiting(ActivateRateLimitPolicy)
             .WithSummary("Activa una license key en este dispositivo")
@@ -33,11 +33,7 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         v1.MapPost("/activate-free", async (ActivateFreeRequest request, HttpContext http, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
-                await RunAsync(log, "activate-free", () =>
-                {
-                    var clientIp = http.Connection.RemoteIpAddress?.ToString();
-                    return engine.ActivateFreeAsync(request, clientIp, ct);
-                }))
+                await RunAsync(log, "activate-free", () => engine.ActivateFreeAsync(request, ClientIp(http), ct)))
             .AllowAnonymous()
             .RequireRateLimiting(ActivateFreeRateLimitPolicy)
             .WithSummary("Registra este dispositivo en el plan free (sin license key)")
@@ -48,11 +44,11 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status429TooManyRequests)
             .ProducesProblem(StatusCodes.Status503ServiceUnavailable);
 
-        v1.MapPost("/heartbeat", async (HeartbeatRequest request, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
+        v1.MapPost("/heartbeat", async (HeartbeatRequest request, HttpContext http, ClaimsPrincipal user, LicenseEngine engine, ILogger<Program> log, CancellationToken ct) =>
                 await RunAsync(log, "heartbeat", () =>
                 {
                     var (licenseId, deviceId) = RequireClaims(user);
-                    return engine.HeartbeatAsync(licenseId, deviceId, request, ct);
+                    return engine.HeartbeatAsync(licenseId, deviceId, request, ClientIp(http), ct);
                 }))
             .RequireAuthorization(BearerPolicy)
             .WithSummary("Renueva la gracia offline y refresca entitlements/cuotas")
@@ -105,6 +101,25 @@ public static class V1Endpoints
             .ProducesProblem(StatusCodes.Status404NotFound);
 
         return app;
+    }
+
+    /// <summary>
+    /// Preferencia X-Forwarded-For (primer hop) detrás de Coolify/nginx; si no, RemoteIpAddress.
+    /// Misma fuente para activate / heartbeat / rate limit partition cuando se usa desde aquí.
+    /// </summary>
+    private static string? ClientIp(HttpContext http)
+    {
+        var forwarded = http.Request.Headers["X-Forwarded-For"].FirstOrDefault();
+        if (!string.IsNullOrWhiteSpace(forwarded))
+        {
+            var first = forwarded.Split(',', 2)[0].Trim();
+            if (first.Length > 0)
+            {
+                return first;
+            }
+        }
+
+        return http.Connection.RemoteIpAddress?.ToString();
     }
 
     /// <summary>

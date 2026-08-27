@@ -216,6 +216,10 @@ namespace GvrLicense.Infrastructure.Migrations
                         .HasColumnType("text")
                         .HasColumnName("fingerprint");
 
+                    b.Property<string>("LastIp")
+                        .HasColumnType("text")
+                        .HasColumnName("last_ip");
+
                     b.Property<DateTimeOffset>("LastSeenUtc")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("last_seen_utc");
@@ -223,6 +227,12 @@ namespace GvrLicense.Infrastructure.Migrations
                     b.Property<Guid>("LicenseId")
                         .HasColumnType("uuid")
                         .HasColumnName("license_id");
+
+                    b.Property<int>("SeenCount")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(0)
+                        .HasColumnName("seen_count");
 
                     b.HasKey("Id");
 

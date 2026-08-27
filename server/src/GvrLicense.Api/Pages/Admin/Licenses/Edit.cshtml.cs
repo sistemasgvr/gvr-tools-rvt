@@ -111,7 +111,12 @@ public class EditModel(LicenseDbContext db) : PageModel
             LicenseId = Id,
             Actor = User.Identity?.Name ?? "admin",
             Action = "device.kick",
-            DetailsJson = $"{{\"deviceId\":\"{deviceId}\",\"fingerprint\":\"{device.Fingerprint}\"}}",
+            DetailsJson = System.Text.Json.JsonSerializer.Serialize(new
+            {
+                deviceId,
+                fingerprint = device.Fingerprint,
+                ip = device.LastIp
+            }),
             OccurredAtUtc = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync();
@@ -142,18 +147,25 @@ public class EditModel(LicenseDbContext db) : PageModel
             Features = PlanFeatureForm.FromDictionary(effective)
         };
 
-        Devices = await db.Devices
+        var devices = await db.Devices
             .Where(d => d.LicenseId == Id)
             .Include(d => d.CompanyUser)
             .OrderByDescending(d => d.LastSeenUtc)
+            .ToListAsync();
+
+        Devices = devices
             .Select(d => new DeviceRow(
                 d.Id,
                 d.DisplayName ?? d.Fingerprint,
-                d.CompanyUser != null ? d.CompanyUser.FullName : "—",
-                d.CompanyUser != null ? d.CompanyUser.Email : "—",
+                d.Fingerprint,
+                d.Fingerprint.Length > 16 ? d.Fingerprint[..16] : d.Fingerprint,
+                d.CompanyUser?.FullName ?? "—",
+                d.CompanyUser?.Email ?? "—",
+                d.ActivatedAtUtc,
                 d.LastSeenUtc,
-                d.ActivatedAtUtc))
-            .ToListAsync();
+                d.LastIp,
+                d.SeenCount))
+            .ToList();
 
         UsageRows = await LoadUsageRowsAsync();
     }
@@ -198,10 +210,14 @@ public class EditModel(LicenseDbContext db) : PageModel
     public sealed record DeviceRow(
         Guid Id,
         string Label,
+        string Fingerprint,
+        string FingerprintShort,
         string UserName,
         string UserEmail,
+        DateTimeOffset ActivatedAtUtc,
         DateTimeOffset LastSeenUtc,
-        DateTimeOffset ActivatedAtUtc);
+        string? LastIp,
+        int SeenCount);
 
     /// <summary>JSON plano para actualizar el formulario al cambiar de plan.</summary>
     internal static class PlanFeaturesJson

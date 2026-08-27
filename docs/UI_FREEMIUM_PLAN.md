@@ -61,6 +61,8 @@ Principio anti-crack: el free **también habla con el servidor**. Lo que vive so
 
 **Invariante operacional:** no borrar el plan `free`. Se puede endurecer o aflojar; si se desactiva (`IsActive = false`), `activate-free` debe fallar con mensaje claro (“registro free temporalmente no disponible”) — no inventar un plan fantasma en código.
 
+**Free vs Trial:** el plan `free` es el freemium. El plan `trial` se **elimina** de la BD (cleanup + seed). Ver runbook y `server/scripts/cleanup-licenses-clients.sql`.
+
 ### 2.3 UX tipo ProSheets (sin clonar marca)
 
 | Elemento ProSheets | Equivalente GVR |

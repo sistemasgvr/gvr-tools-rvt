@@ -70,7 +70,7 @@
 </div>
 
 <div class="row g-3">
-    <div class="col-lg-6">
+    <div class="col-12">
         <div class="card card-outline">
             <div class="card-header">
                 <h3 class="card-title">Dispositivos (PCs)</h3>
@@ -89,7 +89,10 @@
                                     <th>PC</th>
                                     <th>Usuario</th>
                                     <th>Correo</th>
+                                    <th>Primera activación</th>
                                     <th>Última vez</th>
+                                    <th>Última IP</th>
+                                    <th class="text-end">Contactos</th>
                                     <th></th>
                                 </tr>
                             </thead>
@@ -97,11 +100,34 @@
                             @foreach (var d in Model.Devices)
                             {
                                 <tr>
-                                    <td>@d.Label</td>
+                                    <td>
+                                        <div>@d.Label</div>
+                                        @if (!string.IsNullOrEmpty(d.FingerprintShort))
+                                        {
+                                            <code class="small text-body-secondary" title="@d.Fingerprint">@d.FingerprintShort…</code>
+                                        }
+                                    </td>
                                     <td>@d.UserName</td>
                                     <td><code class="small">@d.UserEmail</code></td>
-                                    <td>@d.LastSeenUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
+                                    <td class="text-nowrap">@d.ActivatedAtUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
+                                    <td class="text-nowrap">@d.LastSeenUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
+                                    <td>
+                                        @if (string.IsNullOrWhiteSpace(d.LastIp))
+                                        {
+                                            <span class="text-body-secondary">—</span>
+                                        }
+                                        else
+                                        {
+                                            <code class="small">@d.LastIp</code>
+                                        }
+                                    </td>
                                     <td class="text-end">
+                                        <span title="Altas + reactivaciones + heartbeats">@d.SeenCount</span>
+                                    </td>
+                                    <td class="text-end text-nowrap">
+                                        <a class="btn btn-sm btn-outline-secondary me-1"
+                                           href="/Admin/Audit?q=@Uri.EscapeDataString(d.Fingerprint)"
+                                           title="Ver eventos de este fingerprint en Auditoría">Auditoría</a>
                                         <form method="post" asp-page-handler="KickDevice" asp-route-id="@Model.Id" class="d-inline"
                                               onsubmit="return confirm('¿Liberar este PC? Dejará de contar como puesto ocupado.');">
                                             @Html.AntiForgeryToken()
@@ -117,10 +143,10 @@
                 }
             </div>
             <div class="card-footer text-body-secondary small">
-                Cada fila es un PC activado. El correo identifica al usuario (seat): la misma persona debe
-                usar el mismo correo en todos sus equipos; otro correo distinto consume otro usuario.
-                “Liberar” quita el puesto. El add-in en ese PC pierde la licencia en el próximo
-                heartbeat (~30 s) o al abrir Exportar láminas.
+                Cada fila es un PC activado. <strong>Primera activación</strong> es la instalación/alta inicial;
+                <strong>Última vez</strong> / <strong>Última IP</strong> se actualizan en activate y heartbeat.
+                <strong>Contactos</strong> cuenta altas + heartbeats (sin llenar la auditoría en cada ping).
+                “Liberar” quita el puesto; el add-in lo detecta en el próximo heartbeat (~30 s).
             </div>
         </div>
     </div>

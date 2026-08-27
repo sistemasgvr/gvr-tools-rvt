@@ -101,7 +101,9 @@ public sealed class LicenseEngine(
                 Fingerprint = request.DeviceFingerprint,
                 DisplayName = request.DeviceName,
                 ActivatedAtUtc = DateTimeOffset.UtcNow,
-                LastSeenUtc = DateTimeOffset.UtcNow
+                LastSeenUtc = DateTimeOffset.UtcNow,
+                LastIp = clientIp,
+                SeenCount = 1
             };
             db.Devices.Add(device);
         }
@@ -140,7 +142,7 @@ public sealed class LicenseEngine(
                 device.CompanyUserId = companyUser.Id;
             }
 
-            device.LastSeenUtc = DateTimeOffset.UtcNow;
+            TouchDevice(device, clientIp);
             if (!string.IsNullOrWhiteSpace(request.DeviceName))
             {
                 device.DisplayName = request.DeviceName;
@@ -196,7 +198,8 @@ public sealed class LicenseEngine(
             var reusedLicense = existingDevice.License!;
             EnsureLicenseUsable(reusedLicense);
 
-            existingDevice.LastSeenUtc = DateTimeOffset.UtcNow;
+            // Reuso (anti-reinstalación): no escribe otro audit_log, pero sí refresca IP / last_seen.
+            TouchDevice(existingDevice, clientIp);
             await EnsureCurrentPeriodCountersAsync(reusedLicense, ct);
             await db.SaveChangesAsync(ct);
 
@@ -286,7 +289,9 @@ public sealed class LicenseEngine(
             Fingerprint = request.DeviceFingerprint,
             DisplayName = request.DeviceName,
             ActivatedAtUtc = DateTimeOffset.UtcNow,
-            LastSeenUtc = DateTimeOffset.UtcNow
+            LastSeenUtc = DateTimeOffset.UtcNow,
+            LastIp = clientIp,
+            SeenCount = 1
         };
         db.Devices.Add(device);
 
@@ -320,6 +325,17 @@ public sealed class LicenseEngine(
     private const string FreePlanCode = "free";
     private const string FreeCustomerName = "GVR Free installs";
 
+    /// <summary>Refresca last_seen / last_ip y suma un contacto (activate reuso o heartbeat).</summary>
+    private static void TouchDevice(Device device, string? clientIp)
+    {
+        device.LastSeenUtc = DateTimeOffset.UtcNow;
+        device.SeenCount = device.SeenCount <= 0 ? 1 : device.SeenCount + 1;
+        if (!string.IsNullOrWhiteSpace(clientIp))
+        {
+            device.LastIp = clientIp;
+        }
+    }
+
     private async Task AuditDeniedAsync(string? clientIp, string fingerprint, string reason, CancellationToken ct)
     {
         db.AuditLogs.Add(new AuditLog
@@ -339,7 +355,7 @@ public sealed class LicenseEngine(
     /// Program.cs de los claims del JWT (Authorization: Bearer), no se validan aquí -- ver
     /// Endpoints/V1Endpoints.cs.
     /// </summary>
-    public async Task<HeartbeatResponse> HeartbeatAsync(Guid licenseId, Guid deviceId, HeartbeatRequest request, CancellationToken ct)
+    public async Task<HeartbeatResponse> HeartbeatAsync(Guid licenseId, Guid deviceId, HeartbeatRequest request, string? clientIp, CancellationToken ct)
     {
         var license = await db.Licenses
             .Include(l => l.Plan)
@@ -362,7 +378,9 @@ public sealed class LicenseEngine(
         // (docs/LICENSING_PLAN.md, "Tokens y gracia offline": "bloqueo en el próximo heartbeat").
         EnsureLicenseUsable(license);
 
-        device.LastSeenUtc = DateTimeOffset.UtcNow;
+        // Solo actualiza device (IP + last_seen + contador). No escribe audit_log por heartbeat:
+        // inundaría la tabla; la frecuencia se ve en Device.SeenCount / LastSeenUtc en admin.
+        TouchDevice(device, clientIp);
         await EnsureCurrentPeriodCountersAsync(license, ct);
         await db.SaveChangesAsync(ct);
 
@@ -456,7 +474,7 @@ public sealed class LicenseEngine(
             LicenseId = licenseId,
             Actor = "device",
             Action = "device.deactivate",
-            DetailsJson = $"{{\"deviceId\":\"{deviceId}\",\"fingerprint\":\"{device.Fingerprint}\"}}",
+            DetailsJson = JsonSerializer.Serialize(new { deviceId, fingerprint = device.Fingerprint, ip = device.LastIp }),
             OccurredAtUtc = DateTimeOffset.UtcNow
         });
         await db.SaveChangesAsync(ct);

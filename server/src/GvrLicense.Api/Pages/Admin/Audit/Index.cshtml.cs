@@ -2,6 +2,7 @@ using System.Text.Json;
 using GvrLicense.Domain.Audit;
 using GvrLicense.Domain.LicenseKeys;
 using GvrLicense.Infrastructure;
+using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
 using Microsoft.EntityFrameworkCore;
 
@@ -11,6 +12,10 @@ public class IndexModel(LicenseDbContext db) : PageModel
 {
     /// <summary>UI_FREEMIUM_PLAN.md §4.2: "sin ML en v1" -- un umbral fijo y explicable basta para que soporte sepa qué mirar.</summary>
     private const int RiskyIpAttemptThreshold = 3;
+
+    /// <summary>Filtro libre: IP, fingerprint, actor, acción o texto en details.</summary>
+    [BindProperty(SupportsGet = true)]
+    public string? Q { get; set; }
 
     public List<AuditRow> Rows { get; private set; } = [];
 
@@ -25,16 +30,35 @@ public class IndexModel(LicenseDbContext db) : PageModel
             .Select(a => new { a.Id, a.Actor, a.Action, a.DetailsJson, a.OccurredAtUtc, a.LicenseId })
             .ToListAsync();
 
-        Rows = rows
+        var mapped = rows
             .Select(a => new AuditRow(
                 a.Id,
                 a.Actor,
                 a.Action,
                 AuditActionDescriber.Describe(a.Action, a.DetailsJson),
+                AuditDetailsFormatter.Summarize(a.DetailsJson),
+                AuditDetailsFormatter.TryGetIp(a.DetailsJson),
+                AuditDetailsFormatter.TryGetFingerprint(a.DetailsJson),
                 a.DetailsJson,
                 a.OccurredAtUtc,
                 a.LicenseId))
             .ToList();
+
+        if (!string.IsNullOrWhiteSpace(Q))
+        {
+            var needle = Q.Trim();
+            mapped = mapped
+                .Where(r => ContainsIgnoreCase(r.Actor, needle)
+                            || ContainsIgnoreCase(r.Action, needle)
+                            || ContainsIgnoreCase(r.ActionLabel, needle)
+                            || ContainsIgnoreCase(r.DetailSummary, needle)
+                            || ContainsIgnoreCase(r.Ip, needle)
+                            || ContainsIgnoreCase(r.Fingerprint, needle)
+                            || ContainsIgnoreCase(r.DetailsJson, needle))
+                .ToList();
+        }
+
+        Rows = mapped;
 
         // Señales de riesgo (§4.2/§4.3): calculadas sobre las mismas 500 filas ya cargadas arriba
         // -- no hace falta una consulta aparte, y "recientes" queda acotado de forma natural por el
@@ -86,6 +110,10 @@ public class IndexModel(LicenseDbContext db) : PageModel
         }
     }
 
+    private static bool ContainsIgnoreCase(string? haystack, string needle) =>
+        !string.IsNullOrEmpty(haystack)
+        && haystack.Contains(needle, StringComparison.OrdinalIgnoreCase);
+
     private static string? TryGetJsonString(string? detailsJson, string propertyName)
     {
         if (string.IsNullOrWhiteSpace(detailsJson))
@@ -111,6 +139,9 @@ public class IndexModel(LicenseDbContext db) : PageModel
         string Actor,
         string Action,
         string ActionLabel,
+        string DetailSummary,
+        string? Ip,
+        string? Fingerprint,
         string? DetailsJson,
         DateTimeOffset OccurredAtUtc,
         Guid? LicenseId);
