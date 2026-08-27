@@ -37,9 +37,14 @@
             <img src="~/img/escudo-gvr.png" alt="" class="public-brand-logo" width="36" height="36" />
             <span>GVR TOOLS-RVT</span>
         </a>
-        <a href="/download/file" class="btn btn-primary btn-sm">
-            <i class="bi bi-download me-1" aria-hidden="true"></i> Descargar
-        </a>
+        <div class="d-flex gap-2">
+            <a href="/quote" class="btn btn-outline-primary btn-sm">
+                <i class="bi bi-chat-square-text me-1" aria-hidden="true"></i> Cotiza
+            </a>
+            <a href="/download/file" class="btn btn-primary btn-sm">
+                <i class="bi bi-download me-1" aria-hidden="true"></i> Descargar
+            </a>
+        </div>
     </div>
 </header>
 
@@ -49,10 +54,9 @@
     <div class="container py-4 d-flex flex-wrap gap-3 justify-content-between align-items-center text-body-secondary small">
         <span>&copy; @DateTime.UtcNow.Year GVR TOOLS-RVT. Todos los derechos reservados.</span>
         <div class="d-flex flex-wrap gap-3">
-            @if (!string.IsNullOrWhiteSpace(ViewData["SupportEmail"] as string))
-            {
-                <a href="mailto:@ViewData["SupportEmail"]" class="text-body-secondary">Soporte</a>
-            }
+            @* Sin mailto de soporte en ninguna página pública -- evita spam de bots; quien
+               necesita contacto pasa por /quote (mismo criterio en toda la landing). *@
+            <a href="/quote" class="text-body-secondary">Cotiza</a>
             @if (!string.IsNullOrWhiteSpace(ViewData["TosUrl"] as string))
             {
                 <a href="@ViewData["TosUrl"]" class="text-body-secondary" target="_blank" rel="noopener">Términos</a>

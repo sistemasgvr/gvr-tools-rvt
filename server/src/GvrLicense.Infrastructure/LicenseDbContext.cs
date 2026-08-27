@@ -19,6 +19,7 @@ public sealed class LicenseDbContext(DbContextOptions<LicenseDbContext> options)
     public DbSet<AppSettings> AppSettings => Set<AppSettings>();
     public DbSet<AdminUser> AdminUsers => Set<AdminUser>();
     public DbSet<CompanyUser> CompanyUsers => Set<CompanyUser>();
+    public DbSet<QuoteRequest> QuoteRequests => Set<QuoteRequest>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -156,6 +157,21 @@ public sealed class LicenseDbContext(DbContextOptions<LicenseDbContext> options)
             e.Property(x => x.SupportEmail).HasColumnName("support_email");
             e.Property(x => x.TermsOfServiceUrl).HasColumnName("terms_of_service_url");
             e.Property(x => x.PrivacyPolicyUrl).HasColumnName("privacy_policy_url");
+        });
+
+        modelBuilder.Entity<QuoteRequest>(e =>
+        {
+            e.ToTable("quote_request");
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.FullName).HasColumnName("full_name");
+            e.Property(x => x.Email).HasColumnName("email");
+            e.Property(x => x.Phone).HasColumnName("phone");
+            e.Property(x => x.CompanyName).HasColumnName("company_name");
+            e.Property(x => x.PlanCode).HasColumnName("plan_code");
+            e.Property(x => x.Message).HasColumnName("message");
+            e.Property(x => x.Status).HasColumnName("status");
+            e.Property(x => x.SourceIp).HasColumnName("source_ip");
+            e.Property(x => x.CreatedAtUtc).HasColumnName("created_at_utc");
         });
 
         modelBuilder.Entity<AdminUser>(e =>

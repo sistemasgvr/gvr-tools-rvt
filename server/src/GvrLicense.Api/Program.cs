@@ -168,6 +168,19 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(10),
                 QueueLimit = 0
             }));
+
+    // Formulario público "Cotiza" (Pages/Quote.cshtml): mismo tipo de riesgo que activate-free --
+    // sin sesión ni key previa, escribe en la base. Se aplica con [EnableRateLimiting] en la
+    // Razor Page, no con .RequireRateLimiting (eso es solo para minimal API endpoints).
+    options.AddPolicy("quote", httpContext =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            partitionKey: httpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            factory: _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(10),
+                QueueLimit = 0
+            }));
 });
 
 var app = builder.Build();

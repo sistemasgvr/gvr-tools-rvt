@@ -25,11 +25,15 @@
                     Descargar @(string.IsNullOrWhiteSpace(Model.LatestVersion) ? "ahora" : ("v" + Model.LatestVersion))
                 </a>
                 <a href="#pasos-instalacion" class="btn btn-outline-secondary btn-lg">Pasos de instalación</a>
+                <a href="/quote" class="btn btn-outline-primary btn-lg">
+                    <i class="bi bi-chat-square-text me-1" aria-hidden="true"></i>
+                    Cotiza un plan
+                </a>
             </div>
             <p class="text-body-secondary small mt-3 mb-0">
                 @if (Model.LatestPublishedAtUtc is not null)
                 {
-                    <span>Publicada el @Model.LatestPublishedAtUtc.Value.ToString("dd/MM/yyyy").</span>
+                    <span>Publicada el @Model.LatestPublishedAtUtc.Value.ToLima().ToString("dd/MM/yyyy").</span>
                 }
                 Un clic inicia el <code>.exe</code> (enlace temporal seguro).
             </p>
@@ -44,14 +48,12 @@
         else
         {
             <div class="alert alert-warning d-inline-block mt-4 mb-0" role="status">
-                Todavía no hay un instalador publicado. Vuelve pronto o contacta a soporte.
+                Todavía no hay un instalador publicado. Vuelve pronto.
             </div>
-            @if (Model.SupportEmail is not null)
-            {
-                <p class="text-body-secondary small mt-3">
-                    <a href="mailto:@Model.SupportEmail">@Model.SupportEmail</a>
-                </p>
-            }
+            @* Sin correo de soporte a la vista (evita spam de bots en la landing pública) -- Cotiza dirige a /quote en vez de un mailto directo. *@
+            <p class="text-body-secondary small mt-3">
+                <a href="/quote">Cotiza aquí</a> y te avisamos apenas esté listo.
+            </p>
         }
     </div>
 </section>

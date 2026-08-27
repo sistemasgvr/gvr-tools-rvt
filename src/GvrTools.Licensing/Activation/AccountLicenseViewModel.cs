@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Globalization;
 using System.Threading;
 using System.Threading.Tasks;
@@ -31,6 +32,7 @@ namespace GvrTools.Licensing.Activation
 
             ActivateCommand = new RelayCommand(async () => await ActivateAsync(), () => !IsBusy && !string.IsNullOrWhiteSpace(LicenseKey));
             DeactivateCommand = new RelayCommand(async () => await DeactivateAsync(), () => IsLicensed && !IsBusy);
+            QuoteCommand = new RelayCommand(OpenQuotePage);
             CloseCommand = new RelayCommand(() => RequestClose?.Invoke(false));
             Refresh();
         }
@@ -160,7 +162,23 @@ namespace GvrTools.Licensing.Activation
 
         public RelayCommand ActivateCommand { get; }
         public RelayCommand DeactivateCommand { get; }
+
+        /// <summary>Abre {BaseUrl}/quote en el navegador -- quien necesita una licencia pasa por Cotización, no por soporte directo (mismo criterio que la landing pública).</summary>
+        public RelayCommand QuoteCommand { get; }
         public RelayCommand CloseCommand { get; }
+
+        private void OpenQuotePage()
+        {
+            var url = (_client.BaseUrl ?? string.Empty).TrimEnd('/') + "/quote";
+            try
+            {
+                Process.Start(new ProcessStartInfo { FileName = url, UseShellExecute = true });
+            }
+            catch (Exception ex)
+            {
+                StatusMessage = "No se pudo abrir la página de cotización: " + ex.Message;
+            }
+        }
 
         private async Task ActivateAsync()
         {

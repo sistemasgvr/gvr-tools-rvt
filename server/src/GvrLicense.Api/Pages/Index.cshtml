@@ -27,7 +27,7 @@
         @if (Model.LatestInstaller is not null)
         {
             <p class="text-body-secondary small mt-3 mb-0">
-                Última versión publicada el @Model.LatestInstaller.PublishedAtUtc.ToString("dd/MM/yyyy").
+                Última versión publicada el @Model.LatestInstaller.PublishedAtUtc.ToLima().ToString("dd/MM/yyyy").
                 @if (!string.IsNullOrWhiteSpace(Model.LatestInstaller.Notes))
                 {
                     <span>@Model.LatestInstaller.Notes</span>
@@ -38,12 +38,12 @@
         {
             <p class="text-body-secondary small mt-3 mb-0">Pronto estará disponible el instalador.</p>
         }
-        @if (Model.SupportEmail is not null)
-        {
-            <p class="text-body-secondary small mt-2">
-                ¿Necesitas una licencia? Escríbenos a <a href="mailto:@Model.SupportEmail">@Model.SupportEmail</a>.
-            </p>
-        }
+        @* Sin correo de soporte a la vista aquí a propósito: expone el correo a spam de bots
+           que rastrean landings públicas. Quien necesita licencia pasa por /quote (mismo
+           criterio que "sin soporte visible en el plan free" -- ver AccountLicenseViewModel). *@
+        <p class="text-body-secondary small mt-2">
+            ¿Necesitas una licencia? <a href="/quote">Cotiza aquí</a>.
+        </p>
     </div>
 </section>
 

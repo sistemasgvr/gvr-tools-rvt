@@ -2,7 +2,7 @@
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         Title="GVR Tools · Cambiar plan"
-        Height="520" Width="460" MinHeight="460" MinWidth="400"
+        Height="520" Width="540" MinHeight="460" MinWidth="480"
         WindowStartupLocation="CenterOwner"
         ResizeMode="NoResize"
         ShowInTaskbar="False"
@@ -71,12 +71,23 @@
             </TextBlock.Style>
         </TextBlock>
 
-        <StackPanel Grid.Row="3" Orientation="Horizontal" HorizontalAlignment="Right">
-            <Button Content="Desactivar este PC" Style="{StaticResource Gvr.Button}"
-                    Command="{Binding DeactivateCommand}"
-                    Visibility="{Binding ShowDeactivate, Converter={StaticResource Gvr.BoolToVisibility}}"/>
-            <Button Content="Cerrar" Style="{StaticResource Gvr.Button}" Command="{Binding CloseCommand}"/>
-            <Button Content="Activar" Style="{StaticResource Gvr.Button.Primary}" Command="{Binding ActivateCommand}"/>
-        </StackPanel>
+        <Grid Grid.Row="3">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="*"/>
+            </Grid.ColumnDefinitions>
+
+            <Button Grid.Column="0" Content="Cotizar un plan" Style="{StaticResource Gvr.Button}"
+                    Command="{Binding QuoteCommand}"
+                    ToolTip="Abre la página de cotización en tu navegador -- para pedir una licencia nueva o subir de plan."/>
+
+            <StackPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="Desactivar este PC" Style="{StaticResource Gvr.Button}"
+                        Command="{Binding DeactivateCommand}"
+                        Visibility="{Binding ShowDeactivate, Converter={StaticResource Gvr.BoolToVisibility}}"/>
+                <Button Content="Cerrar" Style="{StaticResource Gvr.Button}" Command="{Binding CloseCommand}"/>
+                <Button Content="Activar" Style="{StaticResource Gvr.Button.Primary}" Command="{Binding ActivateCommand}"/>
+            </StackPanel>
+        </Grid>
     </Grid>
 </Window>

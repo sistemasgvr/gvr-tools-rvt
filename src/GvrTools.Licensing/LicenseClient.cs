@@ -77,6 +77,9 @@ namespace GvrTools.Licensing
 
         public string DeviceFingerprint => _fingerprint.GetFingerprint();
 
+        /// <summary>Mismo dominio que sirve el License API, ej. "https://tools.proyectosgvr.com" -- reusado para el botón Cotizar (abre BaseUrl + "/quote").</summary>
+        public string BaseUrl => _api.BaseUrl;
+
         /// <summary>
         /// Correo de soporte editable en Admin → Configuración (AppSettings.SupportEmail), viaja
         /// firmado dentro del blob de entitlements como FeatureCodes.SupportEmail. Antes era una

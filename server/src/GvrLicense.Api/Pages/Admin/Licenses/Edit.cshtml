@@ -109,8 +109,8 @@
                                     </td>
                                     <td>@d.UserName</td>
                                     <td><code class="small">@d.UserEmail</code></td>
-                                    <td class="text-nowrap">@d.ActivatedAtUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
-                                    <td class="text-nowrap">@d.LastSeenUtc.ToString("dd/MM/yyyy HH:mm") UTC</td>
+                                    <td class="text-nowrap">@d.ActivatedAtUtc.ToLima().ToString("dd/MM/yyyy HH:mm")</td>
+                                    <td class="text-nowrap">@d.LastSeenUtc.ToLima().ToString("dd/MM/yyyy HH:mm")</td>
                                     <td>
                                         @if (string.IsNullOrWhiteSpace(d.LastIp))
                                         {

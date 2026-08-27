@@ -165,6 +165,12 @@
                         </a>
                     </li>
                     <li class="nav-item">
+                        <a href="/Admin/Quotes/Index" class="nav-link">
+                            <i class="nav-icon bi bi-chat-square-text"></i>
+                            <p>Cotizaciones</p>
+                        </a>
+                    </li>
+                    <li class="nav-item">
                         <a href="/Admin/Releases/Index" class="nav-link">
                             <i class="nav-icon bi bi-cloud-arrow-up"></i>
                             <p>Actualizaciones</p>
@@ -271,9 +277,18 @@
       return `<span class="badge text-bg-${colors[value] || 'secondary'}">${labels[value] || value}</span>`;
     },
     formatDate(iso) {
+      // Auditoría del sistema: esto solo recortaba los primeros 10 caracteres del ISO en UTC, sin
+      // convertir zona horaria -- para algo que pasó de noche en Lima (madrugada en UTC), mostraba
+      // el día siguiente al real. GVR y su clientela son de Lima (UTC-5, sin horario de verano);
+      // Intl.DateTimeFormat con timeZone convierte de verdad, no solo recorta el string.
       if (!iso) return '';
-      const parts = String(iso).slice(0, 10).split('-');
-      return parts.length === 3 ? `${parts[2]}/${parts[1]}/${parts[0]}` : String(iso).slice(0, 10);
+      const date = new Date(iso);
+      if (Number.isNaN(date.getTime())) return String(iso).slice(0, 10);
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'America/Lima', day: '2-digit', month: '2-digit', year: 'numeric',
+      }).formatToParts(date);
+      const get = (type) => parts.find((p) => p.type === type)?.value ?? '';
+      return `${get('day')}/${get('month')}/${get('year')}`;
     },
   };
 </script>

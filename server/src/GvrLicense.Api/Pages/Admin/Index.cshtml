@@ -104,6 +104,18 @@
             </a>
         </div>
     </div>
+    <div class="col-lg-3 col-6">
+        <div class="small-box @(Model.NewQuoteCount > 0 ? "text-bg-warning" : "text-bg-secondary")">
+            <div class="inner">
+                <h3>@Model.NewQuoteCount</h3>
+                <p>Cotizaciones nuevas</p>
+            </div>
+            <i class="bi bi-chat-square-text small-box-icon"></i>
+            <a href="/Admin/Quotes/Index" class="small-box-footer @(Model.NewQuoteCount > 0 ? "link-dark" : "link-light") link-underline-opacity-0">
+                Ver cotizaciones <i class="bi bi-link-45deg"></i>
+            </a>
+        </div>
+    </div>
 </div>
 
 @if (Model.RecentRows.Count == 0 && Model.CustomerCount == 0)
@@ -206,7 +218,7 @@
                         <li class="list-group-item py-2">
                             <div class="d-flex justify-content-between gap-2">
                                 <span>@ev.ActionLabel</span>
-                                <span class="text-body-secondary small text-nowrap">@ev.OccurredAtUtc.ToString("dd/MM HH:mm")</span>
+                                <span class="text-body-secondary small text-nowrap">@ev.OccurredAtUtc.ToLima().ToString("dd/MM HH:mm")</span>
                             </div>
                             <div class="small text-body-secondary">@ev.Actor</div>
                         </li>
@@ -249,7 +261,7 @@
                         <tr>
                             <td><a href="/Admin/Licenses/Edit?id=@row.Id"><code>@row.Key</code></a></td>
                             <td>@row.CustomerName</td>
-                            <td>@row.ValidUntil.ToString("dd/MM/yyyy")</td>
+                            <td>@row.ValidUntil.ToLima().ToString("dd/MM/yyyy")</td>
                             <td class="text-end"><span class="badge @daysBadge">@(row.DaysUntil) d</span></td>
                         </tr>
                     }

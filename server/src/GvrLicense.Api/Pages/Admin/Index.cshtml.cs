@@ -26,6 +26,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
     public int ActiveSeatCount { get; private set; }
     public int SheetsThisMonth { get; private set; }
     public int PlanCount { get; private set; }
+    public int NewQuoteCount { get; private set; }
 
     public IReadOnlyList<string> DailyChartLabels { get; private set; } = [];
     public IReadOnlyList<int> DailyChartValues { get; private set; } = [];
@@ -76,6 +77,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
         DeviceCount = await db.Devices.CountAsync();
         PlanCount = await db.Plans.CountAsync(p => p.IsActive);
         ActiveSeatCount = await db.Devices.Select(d => d.CompanyUserId).Distinct().CountAsync();
+        NewQuoteCount = await db.QuoteRequests.CountAsync(q => q.Status == QuoteRequestStatus.New);
 
         SheetsThisMonth = await db.UsageCounters
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature)

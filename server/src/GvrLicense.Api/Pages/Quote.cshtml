@@ -1,0 +1,142 @@
+@page
+@model GvrLicense.Api.Pages.QuoteModel
+@{
+    ViewData["Title"] = "Cotiza";
+    Layout = "_PublicLayout";
+    ViewData["SupportEmail"] = Model.SupportEmail;
+    ViewData["TosUrl"] = Model.TosUrl;
+    ViewData["PrivacyUrl"] = Model.PrivacyUrl;
+}
+
+<section class="public-hero">
+    <div class="container">
+        <a href="/download" class="d-inline-flex align-items-center gap-1 text-body-secondary text-decoration-none small mb-3">
+            <i class="bi bi-arrow-left" aria-hidden="true"></i> Volver a Descargar
+        </a>
+        <img src="~/img/escudo-gvr.png" alt="GVR TOOLS-RVT" class="public-hero-logo mb-3" width="96" height="96" />
+        <p class="text-body-secondary text-uppercase small fw-semibold mb-2">Cotización</p>
+        <h1>Elige tu plan</h1>
+        <p class="lead text-body-secondary">
+            Cuéntanos qué necesitas y te contactamos con los detalles y la clave de licencia.
+        </p>
+    </div>
+</section>
+
+@if (Model.Plans.Count > 0)
+{
+    <section class="container pb-4">
+        <div class="row g-4 justify-content-center">
+            @foreach (var plan in Model.Plans)
+            {
+                <div class="col-12 col-md-4">
+                    <div class="card h-100 @(string.Equals(plan.Code, Model.Input.PlanCode, StringComparison.OrdinalIgnoreCase) ? "border-primary" : "")">
+                        <div class="card-body d-flex flex-column">
+                            <h3 class="card-title h5">@plan.DisplayName</h3>
+                            @if (plan.FeatureSummary.Count > 0)
+                            {
+                                <ul class="list-unstyled text-body-secondary small mb-4 flex-grow-1">
+                                    @foreach (var line in plan.FeatureSummary)
+                                    {
+                                        <li class="mb-1"><i class="bi bi-check2 text-success me-1" aria-hidden="true"></i>@line</li>
+                                    }
+                                </ul>
+                            }
+                            else
+                            {
+                                <div class="flex-grow-1 mb-4"></div>
+                            }
+                            <a href="#cotizar" class="btn btn-outline-primary mt-auto" data-plan-code="@plan.Code">
+                                Cotizar @plan.DisplayName
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            }
+        </div>
+    </section>
+}
+
+<section id="cotizar" class="container pb-5" style="max-width: 640px">
+    <div class="card">
+        <div class="card-body">
+            @if (Model.Submitted)
+            {
+                <div class="alert alert-success mb-0" role="status">
+                    <i class="bi bi-check-circle me-1" aria-hidden="true"></i>
+                    ¡Listo! Recibimos tu solicitud, te contactamos pronto.
+                </div>
+            }
+            else
+            {
+                <h2 class="h5 mb-3">Solicita tu cotización</h2>
+                <form method="post" novalidate>
+                    @Html.AntiForgeryToken()
+
+                    @if (!ViewData.ModelState.IsValid)
+                    {
+                        <div class="alert alert-danger" role="alert">
+                            <ul class="mb-0 ps-3">
+                                @foreach (var error in ViewData.ModelState.Values.SelectMany(v => v.Errors))
+                                {
+                                    <li>@error.ErrorMessage</li>
+                                }
+                            </ul>
+                        </div>
+                    }
+
+                    <div class="mb-3">
+                        <label class="form-label">Nombre completo</label>
+                        <input name="Input.FullName" class="form-control" value="@Model.Input.FullName" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Correo</label>
+                        <input name="Input.Email" type="email" class="form-control" value="@Model.Input.Email" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Teléfono / WhatsApp <span class="text-body-secondary">(opcional)</span></label>
+                        <input name="Input.Phone" class="form-control" value="@Model.Input.Phone" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Empresa <span class="text-body-secondary">(opcional)</span></label>
+                        <input name="Input.CompanyName" class="form-control" value="@Model.Input.CompanyName" />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Plan de interés</label>
+                        <select name="Input.PlanCode" class="form-select" id="plan-select">
+                            <option value="">No estoy seguro / quiero que me asesoren</option>
+                            @foreach (var plan in Model.Plans)
+                            {
+                                <option value="@plan.Code" selected="@(string.Equals(plan.Code, Model.Input.PlanCode, StringComparison.OrdinalIgnoreCase))">@plan.DisplayName</option>
+                            }
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cuéntanos qué necesitas <span class="text-body-secondary">(opcional)</span></label>
+                        <textarea name="Input.Message" class="form-control" rows="3">@Model.Input.Message</textarea>
+                    </div>
+
+                    @* Honeypot: oculto por CSS, no por "display:none" del atributo (algunos bots lo detectan);
+                       fuera de la vista y sin tabIndex para que un humano nunca lo note ni lo llene por accidente. *@
+                    <div class="visually-hidden" aria-hidden="true">
+                        <label for="website">No llenar este campo</label>
+                        <input type="text" id="website" name="Input.Website" tabindex="-1" autocomplete="off" />
+                    </div>
+
+                    <button type="submit" class="btn btn-primary w-100">Enviar solicitud</button>
+                </form>
+            }
+        </div>
+    </div>
+</section>
+
+@* _PublicLayout no define una sección "Scripts" (a diferencia del _Layout de Admin) -- este script
+   va directo en el cuerpo de la página, dentro de lo que @RenderBody() del layout renderiza. *@
+<script>
+  document.addEventListener('DOMContentLoaded', () => {
+    const select = document.getElementById('plan-select');
+    if (!select) return;
+    document.querySelectorAll('[data-plan-code]').forEach((btn) => {
+      btn.addEventListener('click', () => { select.value = btn.dataset.planCode; });
+    });
+  });
+</script>
