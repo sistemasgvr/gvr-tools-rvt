@@ -61,6 +61,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private readonly BatchExportPreferences _preferences;
         private readonly Dictionary<string, DateTime> _exportHistory;
 
+        /// <summary>
+        /// Carpetas reales del lote en curso (con sufijo "(n)" si hacía falta). null fuera de un export.
+        /// </summary>
+        private Dictionary<ExportFormat, string> _runDestinationFolders;
+
         public BatchExportViewModel(
             UIDocument uiDocument,
             RevitJobScheduler scheduler,
@@ -144,6 +149,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             StatusText = Sheets.Count == 0
                 ? "El proyecto activo no tiene láminas para exportar."
                 : $"{Sheets.Count} lámina(s) en el proyecto.";
+
+            RefreshIdleProgressScale();
         }
 
         // ---------------------------------------------------------------- sheet list
@@ -172,20 +179,56 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public string SearchText
         {
             get => _searchText;
-            set { if (Set(ref _searchText, value)) SheetsView.Refresh(); }
+            set
+            {
+                if (!Set(ref _searchText, value)) return;
+                SheetsView.Refresh();
+                Raise(nameof(AreAllVisibleSelected));
+            }
         }
 
         private string _selectedSheetSet;
         public string SelectedSheetSet
         {
             get => _selectedSheetSet;
-            set { if (Set(ref _selectedSheetSet, value)) SheetsView.Refresh(); }
+            set
+            {
+                if (!Set(ref _selectedSheetSet, value)) return;
+                SheetsView.Refresh();
+                Raise(nameof(AreAllVisibleSelected));
+            }
         }
 
         public int SelectedCount => Sheets.Count(sheet => sheet.IsSelected);
 
         public string SelectionSummary => $"{SelectedCount} de {Sheets.Count} lámina(s) seleccionadas";
 
+        /// <summary>
+        /// Checkbox del encabezado del grid (estilo ProSheets). true = todas las visibles;
+        /// false = ninguna; null = selección parcial (IsThreeState).
+        /// </summary>
+        public bool? AreAllVisibleSelected
+        {
+            get
+            {
+                var visible = SheetsView.Cast<SheetItemViewModel>().ToList();
+                if (visible.Count == 0) return false;
+                int selected = visible.Count(s => s.IsSelected);
+                if (selected == 0) return false;
+                if (selected == visible.Count) return true;
+                return null;
+            }
+            set
+            {
+                // Indeterminate (null) desde UI no debe vaciar; solo true/false del clic.
+                if (value == null) return;
+                SetVisibleSelection(value == true);
+                Raise(nameof(AreAllVisibleSelected), nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext));
+                ExportCommand.RaiseCanExecuteChanged();
+                GoNextCommand.RaiseCanExecuteChanged();
+                GoToStepCommand.RaiseCanExecuteChanged();
+            }
+        }
         // ---------------------------------------------------------------- destination and naming
 
         private string _outputFolder = string.Empty;
@@ -219,12 +262,31 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
         }
 
-        private string GetDestinationFolder(ExportFormat format)
+        /// <summary>Ruta base deseada (sin sufijo de colisión).</summary>
+        private string GetDesiredDestinationFolder(ExportFormat format)
         {
             if (string.IsNullOrWhiteSpace(OutputFolder)) return string.Empty;
 
             string prefix = format == ExportFormat.Pdf ? "PDF_" : "DWG_";
             return Path.Combine(OutputFolder, prefix + PathSanitizer.SanitizeFolderName(_project.Title));
+        }
+
+        /// <summary>
+        /// Carpeta que se usará / se está usando: en un lote activo la reservada al iniciar;
+        /// en preview, la primera libre estilo Explorer (<c>PDF_Proyecto (1)</c> si ya existe).
+        /// </summary>
+        private string GetDestinationFolder(ExportFormat format)
+        {
+            if (_runDestinationFolders != null &&
+                _runDestinationFolders.TryGetValue(format, out string runPath) &&
+                !string.IsNullOrEmpty(runPath))
+            {
+                return runPath;
+            }
+
+            string desired = GetDesiredDestinationFolder(format);
+            if (string.IsNullOrEmpty(desired)) return string.Empty;
+            return ExportPathHelper.AllocateUniqueDirectoryPath(desired);
         }
 
         /// <summary>
@@ -380,8 +442,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 SyncFormatOptionSelection();
                 Raise(nameof(ShowPdfOptions), nameof(ShowDwgOptions), nameof(ExportButtonLabel),
                       nameof(StrategyDescription), nameof(ShowPrinterSelector), nameof(IsPdfPrinterMissing),
-                      nameof(CanExport), nameof(DestinationFolder));
+                      nameof(CanExport), nameof(DestinationFolder), nameof(SelectedFormatLabel));
                 ExportCommand.RaiseCanExecuteChanged();
+                RefreshIdleProgressScale();
             }
         }
 
@@ -588,15 +651,70 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public int ProgressValue
         {
             get => _progressValue;
-            set => Set(ref _progressValue, value);
+            set
+            {
+                if (Set(ref _progressValue, value))
+                    Raise(nameof(ProgressPercentText), nameof(ProgressFractionText));
+            }
         }
 
         private int _progressMaximum = 1;
         public int ProgressMaximum
         {
             get => _progressMaximum;
-            set => Set(ref _progressMaximum, value);
+            set
+            {
+                if (Set(ref _progressMaximum, value))
+                    Raise(nameof(ProgressPercentText), nameof(ProgressFractionText));
+            }
         }
+
+        /// <summary>"Completado 42%" — banner del paso Crear (siempre visible).</summary>
+        public string ProgressPercentText
+        {
+            get
+            {
+                if (ProgressMaximum <= 0) return "Completado 0%";
+                int pct = (int)Math.Round(100.0 * ProgressValue / ProgressMaximum);
+                if (pct < 0) pct = 0;
+                if (pct > 100) pct = 100;
+                return "Completado " + pct + "%";
+            }
+        }
+
+        /// <summary>"3 / 7" pasos del lote actual.</summary>
+        public string ProgressFractionText
+        {
+            get
+            {
+                int max = ProgressMaximum <= 0 ? 0 : ProgressMaximum;
+                return ProgressValue + " / " + max;
+            }
+        }
+
+        public string SelectedFormatLabel
+        {
+            get
+            {
+                if (_selectedFormatMode == FormatMode.PdfAndDwg) return "PDF + DWG";
+                if (_selectedFormatMode == FormatMode.Dwg) return "DWG";
+                return "PDF";
+            }
+        }
+
+        /// <summary>CTA de upgrade en el banner de progreso cuando el plan es free.</summary>
+        public bool ShowUpgradeHint
+        {
+            get
+            {
+                LicenseRuntime.EnsureInitialized();
+                LicenseClient client = LicenseRuntime.Client;
+                return client.IsLicensed
+                    && string.Equals(client.PlanCode, "free", StringComparison.OrdinalIgnoreCase);
+            }
+        }
+
+        public string UpgradeHintText => "Para exportaciones ilimitadas, cambia de plan ★";
 
         private string _statusText = string.Empty;
         public string StatusText
@@ -792,14 +910,25 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             return string.IsNullOrEmpty(term) || item.Matches(term);
         }
 
+        private void RefreshIdleProgressScale()
+        {
+            if (IsExporting) return;
+            int unitsPerSheet = _selectedFormatMode == FormatMode.PdfAndDwg ? 2 : 1;
+            int steps = SelectedCount * unitsPerSheet;
+            ProgressMaximum = steps > 0 ? steps : 1;
+            ProgressValue = 0;
+        }
+
         private void OnSheetItemChanged(object sender, PropertyChangedEventArgs e)
         {
             if (e.PropertyName != nameof(SheetItemViewModel.IsSelected)) return;
 
-            Raise(nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext));
+            Raise(nameof(SelectedCount), nameof(SelectionSummary), nameof(CanExport), nameof(CanGoNext),
+                  nameof(AreAllVisibleSelected));
             ExportCommand.RaiseCanExecuteChanged();
             GoNextCommand.RaiseCanExecuteChanged();
             GoToStepCommand.RaiseCanExecuteChanged();
+            RefreshIdleProgressScale();
         }
 
         private void SetVisibleSelection(bool selected)
@@ -855,7 +984,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 return;
             }
 
-            if (!TryValidateOutputPaths(out string pathError))
+            if (!TryPrepareRunDestinationFolders(out string pathError))
             {
                 _dialogs.ShowError(DialogTitle, pathError);
                 return;
@@ -867,7 +996,13 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             LastRunHadFailures = false;
             ProgressValue = 0;
             StatusText = "Preparando exportación...";
+            Raise(nameof(DestinationFolder));
             IsExporting = true;
+
+            foreach (SheetItemViewModel item in Sheets)
+                item.ResetRunProgress();
+            foreach (SheetItemViewModel item in selectedItems)
+                item.RunProgressLabel = "En cola";
 
             _isMultiFormat = _selectedFormatMode == FormatMode.PdfAndDwg;
             _multiFormatPhase = 0;
@@ -884,28 +1019,36 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             LaunchFormat(firstFormat, selected);
         }
 
-        private bool TryValidateOutputPaths(out string error)
+        /// <summary>
+        /// Reserva carpetas únicas para el lote (no reutiliza una exportación anterior) y las crea.
+        /// </summary>
+        private bool TryPrepareRunDestinationFolders(out string error)
         {
             error = null;
+            _runDestinationFolders = null;
 
             if (!ExportPathHelper.TryEnsureWritable(OutputFolder, out error))
                 return false;
 
-            if (_selectedFormatMode == FormatMode.PdfAndDwg)
-            {
-                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(ExportFormat.Pdf), out error))
-                    return false;
+            var reserved = new Dictionary<ExportFormat, string>();
 
-                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(ExportFormat.Dwg), out error))
-                    return false;
-            }
-            else
+            if (_selectedFormatMode == FormatMode.PdfAndDwg || _selectedFormatMode == FormatMode.Pdf)
             {
-                ExportFormat format = _selectedFormatMode == FormatMode.Dwg ? ExportFormat.Dwg : ExportFormat.Pdf;
-                if (!ExportPathHelper.TryEnsureWritable(GetDestinationFolder(format), out error))
+                string pdfPath = ExportPathHelper.AllocateUniqueDirectoryPath(GetDesiredDestinationFolder(ExportFormat.Pdf));
+                if (!ExportPathHelper.TryEnsureWritable(pdfPath, out error))
                     return false;
+                reserved[ExportFormat.Pdf] = pdfPath;
             }
 
+            if (_selectedFormatMode == FormatMode.PdfAndDwg || _selectedFormatMode == FormatMode.Dwg)
+            {
+                string dwgPath = ExportPathHelper.AllocateUniqueDirectoryPath(GetDesiredDestinationFolder(ExportFormat.Dwg));
+                if (!ExportPathHelper.TryEnsureWritable(dwgPath, out error))
+                    return false;
+                reserved[ExportFormat.Dwg] = dwgPath;
+            }
+
+            _runDestinationFolders = reserved;
             return true;
         }
 
@@ -1056,6 +1199,14 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             else
             {
                 StatusText = $"Exportando {formatPrefix}{progress.Completed + 1} de {progress.Total}: {progress.CurrentLabel}";
+
+                // Marca la lámina actual en el grid del paso Crear.
+                if (_pendingSheets != null && progress.Completed < _pendingSheets.Count)
+                {
+                    SheetSnapshot current = _pendingSheets[progress.Completed];
+                    if (_itemsBySheet != null && _itemsBySheet.TryGetValue(current, out SheetItemViewModel row))
+                        row.RunProgressLabel = "Exportando…";
+                }
             }
         }
 
@@ -1068,6 +1219,31 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 ? _pendingSheets[_itemsCompletedInPhase]
                 : null;
             _itemsCompletedInPhase++;
+
+            if (sheet != null && _itemsBySheet != null && _itemsBySheet.TryGetValue(sheet, out SheetItemViewModel row))
+            {
+                if (result.Succeeded)
+                {
+                    if (_isMultiFormat)
+                    {
+                        string label = ExportFormatInfo.Label(_currentExportFormat);
+                        row.RunProgressLabel = _multiFormatPhase == 0
+                            ? label + " OK"
+                            : "PDF+DWG OK";
+                    }
+                    else
+                    {
+                        row.RunProgressLabel = "OK";
+                    }
+
+                    row.RunSucceeded = true;
+                }
+                else
+                {
+                    row.RunProgressLabel = "Error";
+                    row.RunSucceeded = false;
+                }
+            }
 
             if (result.Succeeded)
             {
@@ -1107,7 +1283,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     return;
                 }
 
-                Raise(nameof(QuotaFooterText), nameof(HasQuotaFooterText), nameof(ShowQuotaNearLimitHint));
+                Raise(nameof(QuotaFooterText), nameof(HasQuotaFooterText), nameof(ShowQuotaNearLimitHint),
+                      nameof(ShowUpgradeHint));
             }
             catch (Exception ex)
             {
@@ -1142,6 +1319,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
                 _multiFormatPhase = 1;
                 _progressOffset = _pendingSheets.Count;
+
+                if (_itemsBySheet != null)
+                {
+                    foreach (SheetSnapshot sheet in _pendingSheets)
+                    {
+                        if (_itemsBySheet.TryGetValue(sheet, out SheetItemViewModel row)
+                            && string.Equals(row.RunProgressLabel, "PDF OK", StringComparison.Ordinal))
+                            row.RunProgressLabel = "PDF OK · DWG en cola";
+                    }
+                }
 
                 if (result.HasSetupError)
                     _log.Warn("La exportación PDF no pudo iniciarse: " + result.SetupError);

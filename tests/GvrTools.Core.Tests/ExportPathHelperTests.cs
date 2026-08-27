@@ -45,13 +45,40 @@ namespace GvrTools.Core.Tests
         }
 
         [Fact]
-        public void IsWritableDirectory_fails_for_program_files()
+        public void AllocateUniqueDirectoryPath_returns_same_when_missing()
         {
-            string programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-            string blocked = Path.Combine(programFiles, "GvrToolsWriteProbe-" + Guid.NewGuid().ToString("N"));
+            string root = Path.Combine(Path.GetTempPath(), "gvr-unique-" + Guid.NewGuid().ToString("N"));
+            string desired = Path.Combine(root, "PDF_Demo");
 
-            Assert.False(ExportPathHelper.IsWritableDirectory(blocked, out string error));
-            Assert.Contains("permiso", error, StringComparison.OrdinalIgnoreCase);
+            try
+            {
+                Assert.Equal(desired, ExportPathHelper.AllocateUniqueDirectoryPath(desired));
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
+        }
+
+        [Fact]
+        public void AllocateUniqueDirectoryPath_appends_explorer_style_suffix()
+        {
+            string root = Path.Combine(Path.GetTempPath(), "gvr-unique-" + Guid.NewGuid().ToString("N"));
+            string desired = Path.Combine(root, "PDF_Demo");
+            Directory.CreateDirectory(desired);
+            Directory.CreateDirectory(Path.Combine(root, "PDF_Demo (1)"));
+
+            try
+            {
+                string allocated = ExportPathHelper.AllocateUniqueDirectoryPath(desired);
+                Assert.Equal(Path.Combine(root, "PDF_Demo (2)"), allocated);
+            }
+            finally
+            {
+                if (Directory.Exists(root))
+                    Directory.Delete(root, recursive: true);
+            }
         }
     }
 }

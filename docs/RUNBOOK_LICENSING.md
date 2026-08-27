@@ -46,6 +46,11 @@ solo al primer arranque si falta) y sus límites viven **solo** en Admin → Pla
   la licencia de pago; la licencia free que tenía queda huérfana (sin dispositivos), no se borra sola.
 - **Reinstalación / borrar archivos locales**: mismo fingerprint de máquina → misma licencia free de
   siempre (o la de pago si ya hizo upgrade). Nunca genera una segunda free para el mismo PC.
+- **"Liberar" (kick) un dispositivo**: al perder la sesión, el add-in intenta el plan free automáticamente
+  antes de pedir reactivación manual -- así nadie se queda sin ninguna herramienta. Si en cambio
+  **suspendiste** la licencia (sin liberar el device), ese intento de free también falla sobre la
+  misma licencia suspendida y sí pide reactivar a mano, como corresponde. "Liberar" es también el
+  camino correcto para resetear un dispositivo de prueba de vuelta a cero.
 - **Auditar altas free**: Auditoría (o el widget del dashboard) muestra `license.activate_free`
   (alta) y `security.activate_free_denied` (rechazado -- plan free ausente/desactivado); `Licencias`
   agrupa las free bajo el cliente contenedor **"GVR Free installs"**.

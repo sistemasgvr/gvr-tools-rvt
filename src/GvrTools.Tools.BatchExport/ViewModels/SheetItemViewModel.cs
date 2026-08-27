@@ -68,6 +68,28 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
         }
 
+        private string _runProgressLabel = string.Empty;
+
+        /// <summary>Estado del lote en curso en el paso Crear (vacío / Exportando… / OK / Error).</summary>
+        public string RunProgressLabel
+        {
+            get => _runProgressLabel;
+            set => Set(ref _runProgressLabel, value ?? string.Empty);
+        }
+
+        private bool _runSucceeded;
+        public bool RunSucceeded
+        {
+            get => _runSucceeded;
+            set => Set(ref _runSucceeded, value);
+        }
+
+        public void ResetRunProgress()
+        {
+            RunProgressLabel = string.Empty;
+            RunSucceeded = false;
+        }
+
         /// <summary>True when the row matches the current search term.</summary>
         public bool Matches(string term) =>
             Number.IndexOf(term, System.StringComparison.CurrentCultureIgnoreCase) >= 0 ||

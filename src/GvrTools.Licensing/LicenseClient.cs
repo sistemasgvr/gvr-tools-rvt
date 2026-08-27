@@ -213,8 +213,20 @@ namespace GvrTools.Licensing
             }
             catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
             {
-                MarkNeedsReactivation(ex.Message);
                 ClearLocal();
+
+                // UI_FREEMIUM_PLAN.md §2.2: que te "liberen" (kick) o tu licencia deje de ser válida
+                // no debe dejarte sin nada -- el plan free es el piso que siempre está disponible, así
+                // que se intenta activarlo antes de pedirle a la persona que reactive a mano. Si el
+                // dispositivo fue kickeado, el servidor ya no tiene ninguna fila device con este
+                // fingerprint y esto crea una licencia free nueva sin problema. Si en cambio la
+                // licencia sigue existiendo pero está suspendida/vencida (el device NO se borró),
+                // TryActivateFreeAsync también fallará -- EnsureLicenseUsable revienta igual sobre esa
+                // misma licencia -- y ahí sí se cae al camino de reactivación manual de siempre.
+                if (await TryActivateFreeAsync(ct).ConfigureAwait(false))
+                    return true;
+
+                MarkNeedsReactivation(ex.Message);
                 throw;
             }
             catch (OperationCanceledException)

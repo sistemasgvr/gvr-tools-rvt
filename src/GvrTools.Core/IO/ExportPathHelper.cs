@@ -123,6 +123,36 @@ namespace GvrTools.Core.IO
             return true;
         }
 
+        /// <summary>
+        /// Si <paramref name="desiredPath"/> ya existe (carpeta o archivo), devuelve un hermano
+        /// libre con sufijo estilo Explorer: <c>Nombre (1)</c>, <c>Nombre (2)</c>, …
+        /// No crea la carpeta; solo elige el nombre. Así un lote nuevo no mezcla archivos con uno anterior.
+        /// </summary>
+        public static string AllocateUniqueDirectoryPath(string desiredPath)
+        {
+            if (string.IsNullOrWhiteSpace(desiredPath))
+                return desiredPath;
+
+            desiredPath = desiredPath.Trim();
+            if (!Directory.Exists(desiredPath) && !File.Exists(desiredPath))
+                return desiredPath;
+
+            string parent = Path.GetDirectoryName(desiredPath);
+            string name = Path.GetFileName(desiredPath);
+            if (string.IsNullOrEmpty(parent) || string.IsNullOrEmpty(name))
+                return desiredPath;
+
+            for (int n = 1; n < 10000; n++)
+            {
+                string candidate = Path.Combine(parent, name + " (" + n.ToString() + ")");
+                if (!Directory.Exists(candidate) && !File.Exists(candidate))
+                    return candidate;
+            }
+
+            // Extremadamente improbable; evita un bucle infinito.
+            return Path.Combine(parent, name + " (" + Guid.NewGuid().ToString("N") + ")");
+        }
+
         private static string ResolveExistingAncestor(string path)
         {
             string current = path;
