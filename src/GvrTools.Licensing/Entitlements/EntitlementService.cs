@@ -118,6 +118,17 @@ namespace GvrTools.Licensing.Entitlements
             }
         }
 
+        public string GetString(string featureCode)
+        {
+            if (string.IsNullOrEmpty(featureCode)) return null;
+
+            lock (_gate)
+            {
+                if (_blob == null || !IsWithinGrace(_blob)) return null;
+                return _features.TryGetValue(featureCode, out var value) ? value : null;
+            }
+        }
+
         public int QuotaLimit(string featureCode)
         {
             if (string.IsNullOrEmpty(featureCode)) return 0;

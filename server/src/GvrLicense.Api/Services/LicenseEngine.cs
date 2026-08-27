@@ -741,6 +741,16 @@ public sealed class LicenseEngine(
             });
         }
 
+        // No es un feature de plan -- se agrega igual en todo blob, tomado de Admin →
+        // Configuración, para que el add-in muestre el correo de soporte que edita el admin en
+        // vez de uno fijo en el código (auditoría del sistema: SupportEmailHint nunca se seteaba).
+        var appSettings = await db.AppSettings.OrderBy(s => s.Id).FirstOrDefaultAsync(ct);
+        features.Add(new FeatureEntry
+        {
+            Code = "meta.support_email",
+            Value = appSettings?.SupportEmail ?? string.Empty
+        });
+
         var blob = new EntitlementBlob
         {
             LicenseId = license.Id.ToString(),

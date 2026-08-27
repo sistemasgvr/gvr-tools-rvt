@@ -25,5 +25,8 @@ namespace GvrTools.Licensing.Entitlements
         /// "Reglas de consumo" en el plan).
         /// </summary>
         bool TryConsume(string featureCode, int quantity);
+
+        /// <summary>Valor crudo (no numérico) de un feature del blob, ej. FeatureCodes.SupportEmail. Null si no hay licencia o no existe.</summary>
+        string GetString(string featureCode);
     }
 }

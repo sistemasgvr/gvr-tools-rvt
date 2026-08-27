@@ -71,7 +71,15 @@ namespace GvrTools.Licensing
 
         public string DeviceFingerprint => _fingerprint.GetFingerprint();
 
-        public string SupportEmailHint { get; set; } = "soporte@gvr.tools";
+        /// <summary>
+        /// Correo de soporte editable en Admin → Configuración (AppSettings.SupportEmail), viaja
+        /// firmado dentro del blob de entitlements como FeatureCodes.SupportEmail. Antes era una
+        /// propiedad settable que nunca se seteaba desde ningún lado -- auditoría del sistema.
+        /// </summary>
+        public string SupportEmailHint =>
+            _entitlements.GetString(FeatureCodes.SupportEmail) is string value && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : "soporte@gvr.tools";
 
         /// <summary>
         /// True tras 401/403 (sesión expirada, device kick, licencia suspendida).
