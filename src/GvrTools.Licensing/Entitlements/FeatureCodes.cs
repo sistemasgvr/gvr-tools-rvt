@@ -16,5 +16,8 @@ namespace GvrTools.Licensing.Entitlements
         /// soporte que ve el add-in sea el que edita el admin y no uno fijo en el código.
         /// </summary>
         public const string SupportEmail = "meta.support_email";
+
+        /// <summary>Nombre visible del plan (ej. "Free", "Pro") -- PlanCode ("free"/"pro") sigue siendo lo que usa la lógica.</summary>
+        public const string PlanDisplayName = "meta.plan_display_name";
     }
 }

@@ -852,7 +852,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 LicenseClient client = LicenseRuntime.Client;
                 if (!client.IsLicensed) return string.Empty;
 
-                string plan = string.IsNullOrWhiteSpace(client.PlanCode) ? "—" : client.PlanCode;
+                string plan = string.IsNullOrWhiteSpace(client.PlanDisplayName) ? "—" : client.PlanDisplayName;
                 string usage = QuotaDisplay.FormatSheetsUsage(client.Entitlements);
                 return string.IsNullOrEmpty(usage) ? $"Plan {plan}" : $"Plan {plan} · {usage}";
             }

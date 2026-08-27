@@ -751,6 +751,15 @@ public sealed class LicenseEngine(
             Value = appSettings?.SupportEmail ?? string.Empty
         });
 
+        // El add-in mostraba el Code del plan ("free"/"pro") en vez del nombre visible ("Free"/"Pro")
+        // -- auditoría del sistema. PlanCode sigue siendo lo que usa la lógica (es free vs no); esto
+        // es solo para lo que ve el usuario.
+        features.Add(new FeatureEntry
+        {
+            Code = "meta.plan_display_name",
+            Value = license.Plan!.DisplayName
+        });
+
         var blob = new EntitlementBlob
         {
             LicenseId = license.Id.ToString(),

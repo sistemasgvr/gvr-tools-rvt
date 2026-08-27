@@ -71,7 +71,7 @@ namespace GvrTools.Licensing.Activation
 
         public string PlanSummary =>
             IsLicensed
-                ? ("Plan: " + (_client.PlanCode ?? "—"))
+                ? ("Plan: " + (_client.PlanDisplayName ?? "—"))
                 : (!string.IsNullOrWhiteSpace(_client.ReactivationReason)
                     ? _client.ReactivationReason
                     : "Activa una clave de licencia para desbloquear más formatos y cuota.");
@@ -96,9 +96,21 @@ namespace GvrTools.Licensing.Activation
             }
         }
 
-        public string SupportHint =>
-            "Soporte: " + (_client.SupportEmailHint ?? "contacta a tu administrador GVR") +
-            ". Pega aquí la clave que te enviemos para subir de plan.";
+        /// <summary>
+        /// El correo de soporte es un beneficio de los planes de pago -- en el plan free solo se
+        /// muestra la invitación a pegar una clave para subir de plan, sin el contacto de soporte.
+        /// </summary>
+        public string SupportHint
+        {
+            get
+            {
+                const string upgradeHint = "Pega aquí la clave que te enviemos para subir de plan.";
+                bool isFree = string.Equals(_client.PlanCode, "free", StringComparison.OrdinalIgnoreCase);
+                if (isFree) return upgradeHint;
+
+                return "Soporte: " + (_client.SupportEmailHint ?? "contacta a tu administrador GVR") + ". " + upgradeHint;
+            }
+        }
 
         private string _licenseKey;
         public string LicenseKey

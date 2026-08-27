@@ -67,6 +67,12 @@ namespace GvrTools.Licensing
 
         public string PlanCode => _entitlements.PlanCode;
 
+        /// <summary>Nombre visible del plan (ej. "Free", "Pro") para mostrar en UI -- usar PlanCode para lógica (es free vs no).</summary>
+        public string PlanDisplayName =>
+            _entitlements.GetString(FeatureCodes.PlanDisplayName) is string value && !string.IsNullOrWhiteSpace(value)
+                ? value
+                : PlanCode;
+
         public DateTimeOffset? OfflineUntilUtc => _entitlements.OfflineUntilUtc;
 
         public string DeviceFingerprint => _fingerprint.GetFingerprint();
