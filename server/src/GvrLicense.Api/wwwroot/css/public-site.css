@@ -76,3 +76,47 @@
   border-top: 1px solid var(--bs-border-color);
   margin-top: 3rem;
 }
+
+/* Tarjetas de plan (/quote) */
+.public-plan-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+  border-width: 2px;
+}
+
+.public-plan-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.08);
+}
+
+.public-plan-icon {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.35rem;
+  background: rgba(var(--bs-primary-rgb), 0.12);
+  color: var(--bs-primary);
+  flex: none;
+}
+
+.public-feature-icon {
+  width: 1.5rem;
+  height: 1.5rem;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8rem;
+  background: rgba(var(--bs-success-rgb), 0.12);
+  color: var(--bs-success);
+  flex: none;
+}
+
+/* Iconos dentro de un input-group: mismo ancho para que todas las etiquetas se alineen. */
+.public-form .input-group-text {
+  width: 2.75rem;
+  justify-content: center;
+  background: var(--bs-tertiary-bg);
+}

@@ -98,31 +98,36 @@ public class QuoteModel(LicenseDbContext db) : PageModel
             .ToList();
     }
 
-    private static List<string> BuildFeatureSummary(Dictionary<string, string> features)
+    private static List<FeatureLine> BuildFeatureSummary(Dictionary<string, string> features)
     {
-        var lines = new List<string>();
+        // Un ícono por TIPO de feature (formato/cuota/lote/asientos), no por plan -- así sigue
+        // siendo 100% dinámico: agregar un plan nuevo o cambiar sus valores en Admin no requiere
+        // tocar esta página, y ningún ícono queda ligado al nombre/código de un plan en particular.
+        var lines = new List<FeatureLine>();
 
         var formats = new List<string>();
         if (IsTruthy(features, "format.pdf")) formats.Add("PDF");
         if (IsTruthy(features, "format.dwg")) formats.Add("DWG");
         if (formats.Count > 0)
         {
-            lines.Add("Formatos: " + string.Join(" + ", formats));
+            lines.Add(new FeatureLine("bi-file-earmark-richtext", "Formatos: " + string.Join(" + ", formats)));
         }
 
         if (TryGetInt(features, "quota.sheets_per_month", out var quota))
         {
-            lines.Add(quota < 0 ? "Láminas por mes: ilimitadas" : $"Láminas por mes: {quota}");
+            lines.Add(new FeatureLine("bi-graph-up-arrow",
+                quota < 0 ? "Láminas por mes: ilimitadas" : $"Láminas por mes: {quota}"));
         }
 
         if (TryGetInt(features, "limit.sheets_per_batch", out var batch) && batch > 0)
         {
-            lines.Add($"Hasta {batch} láminas por lote");
+            lines.Add(new FeatureLine("bi-collection", $"Hasta {batch} láminas por lote"));
         }
 
         if (TryGetInt(features, "seat.max_devices_per_user", out var seats))
         {
-            lines.Add(seats < 0 ? "Dispositivos por usuario: ilimitados" : $"Dispositivos por usuario: {seats}");
+            lines.Add(new FeatureLine("bi-laptop",
+                seats < 0 ? "Dispositivos por usuario: ilimitados" : $"Dispositivos por usuario: {seats}"));
         }
 
         return lines;
@@ -140,7 +145,9 @@ public class QuoteModel(LicenseDbContext db) : PageModel
         return features.TryGetValue(code, out var raw) && int.TryParse(raw, out value);
     }
 
-    public sealed record PlanCard(string Code, string DisplayName, List<string> FeatureSummary);
+    public sealed record PlanCard(string Code, string DisplayName, List<FeatureLine> FeatureSummary);
+
+    public sealed record FeatureLine(string Icon, string Text);
 
     public sealed class QuoteInput
     {
