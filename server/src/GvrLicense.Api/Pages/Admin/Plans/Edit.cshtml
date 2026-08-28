@@ -27,6 +27,17 @@
                 <div class="form-text">Así aparece el plan al crear licencias (ej. Starter, Pro).</div>
             </div>
 
+            <div class="mb-4">
+                <div class="form-check">
+                    <input asp-for="Input.ServiceSuspended" class="form-check-input" />
+                    <label asp-for="Input.ServiceSuspended" class="form-check-label">Suspender servicio (emergencia)</label>
+                </div>
+                <div class="form-text">
+                    Bloqueo temporal de la API pública (activate, activate-free, heartbeat, usage) para licencias de este plan.
+                    No desactiva el plan del catálogo — pensado para DDoS / abuso, sobre todo Free.
+                </div>
+            </div>
+
             <hr class="my-4" />
 
             <h5 class="mb-3">Qué incluye este plan</h5>

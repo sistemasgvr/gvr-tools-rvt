@@ -48,7 +48,8 @@
     </div>
 </div>
 
-<div class="modal fade" id="createLicenseModal" tabindex="-1" aria-labelledby="createLicenseModalLabel" aria-hidden="true">
+<div class="modal fade" id="createLicenseModal" tabindex="-1" data-bs-focus="false"
+     aria-labelledby="createLicenseModalLabel" aria-hidden="true">
     <div class="modal-dialog">
         <div class="modal-content">
             <form method="post" action="/Admin/Licenses/Create">
@@ -68,11 +69,11 @@
                     }
                     <div class="mb-3">
                         <label class="form-label">Cliente</label>
-                        <select name="Input.CustomerId" asp-items="Model.CustomerOptions" class="form-select" required></select>
+                        <select name="Input.CustomerId" asp-items="Model.CustomerOptions" class="form-select js-searchable" required></select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Plan</label>
-                        <select name="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
+                        <select name="Input.PlanId" asp-items="Model.PlanOptions" class="form-select js-searchable" required></select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Fecha de vencimiento</label>

@@ -459,8 +459,25 @@ namespace GvrTools.Licensing
             }
         }
 
-        private static bool IsServerSessionRejected(LicenseApiClientException ex) =>
-            ex.StatusCode == 401 || ex.StatusCode == 403 || ex.StatusCode == 404;
+        /// <summary>
+        /// Hard server rejections that must clear local cache (kick, license/plan suspend, expired).
+        /// 503 is included when the detail says the service is suspended — older APIs used 503 for
+        /// that kill switch; transient 503s without that wording still fall through to grace/cache.
+        /// </summary>
+        private static bool IsServerSessionRejected(LicenseApiClientException ex)
+        {
+            if (ex.StatusCode == 401 || ex.StatusCode == 403 || ex.StatusCode == 404)
+                return true;
+
+            if (ex.StatusCode == 503)
+            {
+                var msg = ex.Message ?? string.Empty;
+                return msg.IndexOf("suspendido", StringComparison.OrdinalIgnoreCase) >= 0
+                    || msg.IndexOf("suspended", StringComparison.OrdinalIgnoreCase) >= 0;
+            }
+
+            return false;
+        }
 
         private void MarkNeedsReactivation(string serverMessage)
         {

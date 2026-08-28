@@ -46,6 +46,7 @@ public sealed class LicenseDbContext(DbContextOptions<LicenseDbContext> options)
             e.Property(x => x.Code).HasColumnName("code");
             e.Property(x => x.DisplayName).HasColumnName("display_name");
             e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.ServiceSuspended).HasColumnName("service_suspended").HasDefaultValue(false);
 
             ConfigureDictionaryJsonb(e.Property(x => x.Features).HasColumnName("features"));
 

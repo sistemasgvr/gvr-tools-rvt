@@ -19,7 +19,16 @@ public class CreateModel(LicenseDbContext db) : PageModel
     /// <summary>Se muestra una sola vez tras crear -- coherente con "Entrega de la key: manual" del plan.</summary>
     public string? CreatedKey { get; private set; }
 
-    public async Task OnGetAsync() => await LoadOptionsAsync();
+    public async Task OnGetAsync(Guid? customerId = null)
+    {
+        await LoadOptionsAsync();
+
+        if (customerId is Guid id &&
+            CustomerOptions.Any(o => o.Value == id.ToString()))
+        {
+            Input.CustomerId = id;
+        }
+    }
 
     public async Task<IActionResult> OnPostAsync()
     {

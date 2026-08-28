@@ -222,6 +222,14 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(503, "Registro gratuito temporalmente no disponible. Contacta a soporte.");
         }
 
+        // Kill switch de emergencia (DDoS): IsActive sigue true para el catálogo; solo corta altas Free.
+        // 403 (no 503): el add-in limpia caché en el próximo heartbeat; 503 se traga como gracia offline.
+        if (freePlan.ServiceSuspended)
+        {
+            await AuditDeniedAsync(clientIp, request.DeviceFingerprint, "Plan free con servicio suspendido.", ct);
+            throw new LicenseApiException(403, ServiceSuspendedMessage(freePlan));
+        }
+
         var freeCustomer = await db.Customers.FirstOrDefaultAsync(c => c.CompanyName == FreeCustomerName, ct);
         if (freeCustomer is null)
         {
@@ -404,6 +412,8 @@ public sealed class LicenseEngine(
         {
             throw new LicenseApiException(404, "Licencia no encontrada.");
         }
+
+        EnsurePlanServiceAvailable(license.Plan);
 
         var deviceExists = await db.Devices.AnyAsync(
             d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
@@ -620,6 +630,8 @@ public sealed class LicenseEngine(
 
     private static void EnsureLicenseUsable(License license)
     {
+        EnsurePlanServiceAvailable(license.Plan);
+
         if (license.Status != LicenseStatus.Active)
         {
             throw new LicenseApiException(403, $"Licencia {license.Status.ToString().ToLowerInvariant()}. Contacta a soporte.");
@@ -629,6 +641,25 @@ public sealed class LicenseEngine(
         {
             throw new LicenseApiException(403, "Licencia vencida. Contacta a soporte para renovarla.");
         }
+    }
+
+    /// <summary>
+    /// Per-plan emergency kill switch (<see cref="Plan.ServiceSuspended"/>). Independent of
+    /// IsActive / License.Status — used for DDoS or temporary Free blocking.
+    /// </summary>
+    private static void EnsurePlanServiceAvailable(Plan? plan)
+    {
+        if (plan is { ServiceSuspended: true })
+        {
+            // 403 so existing add-ins clear cache on heartbeat (~5s) — same path as license Suspended.
+            throw new LicenseApiException(403, ServiceSuspendedMessage(plan));
+        }
+    }
+
+    private static string ServiceSuspendedMessage(Plan plan)
+    {
+        var name = string.IsNullOrWhiteSpace(plan.DisplayName) ? plan.Code : plan.DisplayName;
+        return $"El servicio {name} está temporalmente suspendido. Intenta más tarde.";
     }
 
     private static DateOnly CurrentPeriod()

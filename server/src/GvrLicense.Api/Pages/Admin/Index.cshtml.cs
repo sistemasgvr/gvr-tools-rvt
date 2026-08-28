@@ -10,7 +10,9 @@ namespace GvrLicense.Api.Pages.Admin;
 
 public class IndexModel(LicenseDbContext db) : PageModel
 {
-    private const int RecentCount = 5;
+    private const int RecentCount = 15;
+    private const int TopUsageCount = 15;
+    private const int RecentAuditCount = 20;
     private const string SheetsFeature = "quota.sheets_per_month";
 
     public List<LicenseRow> RecentRows { get; private set; } = [];
@@ -88,7 +90,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
             .AsNoTracking()
             .Where(u => u.Period == currentPeriod && u.FeatureCode == SheetsFeature && u.Consumed > 0)
             .OrderByDescending(u => u.Consumed)
-            .Take(5)
+            .Take(TopUsageCount)
             .ToListAsync();
 
         if (topCounters.Count == 0)
@@ -162,7 +164,7 @@ public class IndexModel(LicenseDbContext db) : PageModel
         var recentAudit = await db.AuditLogs
             .AsNoTracking()
             .OrderByDescending(a => a.OccurredAtUtc)
-            .Take(8)
+            .Take(RecentAuditCount)
             .Select(a => new { a.Id, a.Actor, a.Action, a.DetailsJson, a.OccurredAtUtc, a.LicenseId })
             .ToListAsync();
 

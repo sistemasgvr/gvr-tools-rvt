@@ -10,6 +10,8 @@ public class AuditActionDescriberTests
     [InlineData("device.kick", null, "PC liberado")]
     [InlineData("license.activate", null, "Licencia activada con clave")]
     [InlineData("license.activate_free", null, "Alta plan Free")]
+    [InlineData("plan.service_suspend", null, "Servicio del plan suspendido")]
+    [InlineData("plan.service_resume", null, "Servicio del plan reactivado")]
     public void Describe_KnownActions(string action, string? details, string expected) =>
         Assert.Equal(expected, AuditActionDescriber.Describe(action, details));
 

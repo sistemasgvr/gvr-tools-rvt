@@ -22,4 +22,12 @@ public sealed class Plan
     /// nuevas sin tocar las que ya lo usan.
     /// </summary>
     public bool IsActive { get; set; } = true;
+
+    /// <summary>
+    /// Kill switch de emergencia (DDoS / abuso): cuando es true, la API pública rechaza
+    /// activate / activate-free / heartbeat / usage para licencias de este plan. No cambia
+    /// <see cref="IsActive"/> — el plan sigue en el catálogo admin y se puede asignar a
+    /// licencias nuevas; solo se corta el servicio en vivo hasta reactivar.
+    /// </summary>
+    public bool ServiceSuspended { get; set; }
 }

@@ -16,7 +16,7 @@ public class CreateModel(LicenseDbContext db) : PageModel
 
     public async Task<IActionResult> OnPostAsync()
     {
-        db.Customers.Add(new Customer
+        var created = new Customer
         {
             Id = Guid.NewGuid(),
             CompanyName = Input.CompanyName,
@@ -24,10 +24,11 @@ public class CreateModel(LicenseDbContext db) : PageModel
             ContactEmail = Input.ContactEmail,
             PaymentNotes = Input.PaymentNotes,
             CreatedAtUtc = DateTimeOffset.UtcNow
-        });
+        };
+        db.Customers.Add(created);
         await db.SaveChangesAsync();
 
-        return RedirectToPage("/Admin/Licenses/Create");
+        return RedirectToPage("/Admin/Licenses/Create", new { customerId = created.Id });
     }
 
     public sealed class CustomerInput

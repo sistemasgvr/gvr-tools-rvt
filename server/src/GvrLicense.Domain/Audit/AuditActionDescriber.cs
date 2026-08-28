@@ -34,6 +34,8 @@ public static class AuditActionDescriber
             "device.deactivate" => "Desactivación en cliente",
             "license.activate_free" => "Alta plan Free",
             "security.activate_free_denied" => "Registro Free rechazado",
+            "plan.service_suspend" => "Servicio del plan suspendido",
+            "plan.service_resume" => "Servicio del plan reactivado",
             _ => action.Replace(".", " ", StringComparison.Ordinal)
         };
     }

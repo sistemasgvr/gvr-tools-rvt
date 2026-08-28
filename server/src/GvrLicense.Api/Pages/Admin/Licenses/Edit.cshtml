@@ -34,7 +34,7 @@
             <div class="row g-3 mb-4">
                 <div class="col-md-6">
                     <label asp-for="Input.PlanId" class="form-label">Plan</label>
-                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" id="license-plan-select" required></select>
+                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select js-searchable" id="license-plan-select" required></select>
                     <div class="form-text">Base de capacidades. Al cambiar el plan se recargan las opciones de abajo.</div>
                 </div>
                 <div class="col-md-3">
@@ -221,6 +221,15 @@
     setField('Input.Features.ExtraFeaturesText', features.extraFeaturesText);
   };
 
+  const setPlanSelectValue = (value) => {
+    if (!planSelect) return;
+    if (planSelect.tomselect) {
+      planSelect.tomselect.setValue(value, true);
+    } else {
+      planSelect.value = value;
+    }
+  };
+
   planSelect?.addEventListener('change', async () => {
     const nextPlanId = planSelect.value;
     if (!nextPlanId || nextPlanId === confirmedPlanId) return;
@@ -229,7 +238,7 @@
       '¿Cargar las capacidades del plan seleccionado?\n\nSe actualizarán las opciones de "Qué puede usar esta licencia" con los valores base del plan.'
     );
     if (!ok) {
-      planSelect.value = confirmedPlanId;
+      setPlanSelectValue(confirmedPlanId);
       return;
     }
 
@@ -245,7 +254,7 @@
       confirmedPlanId = nextPlanId;
     } catch {
       alert('No se pudo cargar el plan. Intenta de nuevo.');
-      planSelect.value = confirmedPlanId;
+      setPlanSelectValue(confirmedPlanId);
     }
   });
 })();

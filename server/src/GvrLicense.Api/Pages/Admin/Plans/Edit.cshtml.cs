@@ -1,3 +1,4 @@
+using GvrLicense.Domain.Entities;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.RazorPages;
@@ -26,6 +27,7 @@ public class EditModel(LicenseDbContext db) : PageModel
         Input = new PlanInput
         {
             DisplayName = plan.DisplayName,
+            ServiceSuspended = plan.ServiceSuspended,
             Features = PlanFeatureForm.FromDictionary(plan.Features)
         };
         return Page();
@@ -39,8 +41,30 @@ public class EditModel(LicenseDbContext db) : PageModel
             return NotFound();
         }
 
+        var wasSuspended = plan.ServiceSuspended;
         plan.DisplayName = Input.DisplayName.Trim();
+        plan.ServiceSuspended = Input.ServiceSuspended;
         plan.Features = Input.Features.ToDictionary();
+
+        if (wasSuspended != plan.ServiceSuspended)
+        {
+            db.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                LicenseId = null,
+                Actor = User.Identity?.Name ?? "admin",
+                Action = plan.ServiceSuspended ? "plan.service_suspend" : "plan.service_resume",
+                DetailsJson = System.Text.Json.JsonSerializer.Serialize(new
+                {
+                    planId = plan.Id,
+                    code = plan.Code,
+                    displayName = plan.DisplayName,
+                    serviceSuspended = plan.ServiceSuspended
+                }),
+                OccurredAtUtc = DateTimeOffset.UtcNow
+            });
+        }
+
         await db.SaveChangesAsync();
 
         Code = plan.Code;
@@ -51,6 +75,7 @@ public class EditModel(LicenseDbContext db) : PageModel
     public sealed class PlanInput
     {
         public string DisplayName { get; set; } = string.Empty;
+        public bool ServiceSuspended { get; set; }
         public PlanFeatureForm Features { get; set; } = new();
     }
 }

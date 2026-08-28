@@ -48,11 +48,11 @@ else
             <div class="card-body" style="max-width: 36rem">
                 <div class="mb-3">
                     <label asp-for="Input.CustomerId" class="form-label">Cliente</label>
-                    <select asp-for="Input.CustomerId" asp-items="Model.CustomerOptions" class="form-select" required></select>
+                    <select asp-for="Input.CustomerId" asp-items="Model.CustomerOptions" class="form-select js-searchable" required></select>
                 </div>
                 <div class="mb-3">
                     <label asp-for="Input.PlanId" class="form-label">Plan</label>
-                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select" required></select>
+                    <select asp-for="Input.PlanId" asp-items="Model.PlanOptions" class="form-select js-searchable" required></select>
                 </div>
                 <div class="mb-3">
                     <label asp-for="Input.ValidUntil" class="form-label">Fecha de vencimiento</label>

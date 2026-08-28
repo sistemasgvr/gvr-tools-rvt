@@ -323,6 +323,12 @@ namespace GvrLicense.Infrastructure.Migrations
                         .HasColumnType("boolean")
                         .HasColumnName("is_active");
 
+                    b.Property<bool>("ServiceSuspended")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(false)
+                        .HasColumnName("service_suspended");
+
                     b.HasKey("Id");
 
                     b.HasIndex("Code")

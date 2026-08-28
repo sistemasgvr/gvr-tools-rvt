@@ -1,3 +1,4 @@
+using System.Text.Json;
 using GvrLicense.Domain.Entities;
 using GvrLicense.Infrastructure;
 using Microsoft.AspNetCore.Antiforgery;
@@ -31,7 +32,7 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
             .Select(p => new PlanRow(
                 p.Id, p.Code, p.DisplayName,
                 PlanFeatureForm.Summarize(p.Features),
-                p.IsActive, licenseCounts.GetValueOrDefault(p.Id)))
+                p.IsActive, p.ServiceSuspended, licenseCounts.GetValueOrDefault(p.Id)))
             .ToList();
     }
 
@@ -45,6 +46,37 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
         if (plan != null)
         {
             plan.IsActive = !plan.IsActive;
+            await db.SaveChangesAsync();
+        }
+
+        return RedirectToPage();
+    }
+
+    /// <summary>
+    /// Kill switch de emergencia (DDoS): bloquea la API pública del plan sin descontinuarlo
+    /// (<see cref="Plan.IsActive"/> no cambia).
+    /// </summary>
+    public async Task<IActionResult> OnPostToggleServiceAsync(Guid planId)
+    {
+        var plan = await db.Plans.FindAsync(planId);
+        if (plan != null)
+        {
+            plan.ServiceSuspended = !plan.ServiceSuspended;
+            db.AuditLogs.Add(new AuditLog
+            {
+                Id = Guid.NewGuid(),
+                LicenseId = null,
+                Actor = User.Identity?.Name ?? "admin",
+                Action = plan.ServiceSuspended ? "plan.service_suspend" : "plan.service_resume",
+                DetailsJson = JsonSerializer.Serialize(new
+                {
+                    planId = plan.Id,
+                    code = plan.Code,
+                    displayName = plan.DisplayName,
+                    serviceSuspended = plan.ServiceSuspended
+                }),
+                OccurredAtUtc = DateTimeOffset.UtcNow
+            });
             await db.SaveChangesAsync();
         }
 
@@ -96,7 +128,9 @@ public class IndexModel(LicenseDbContext db, IAntiforgery antiforgery) : PageMod
         return features;
     }
 
-    public sealed record PlanRow(Guid Id, string Code, string DisplayName, string FeaturesSummary, bool IsActive, int LicenseCount);
+    public sealed record PlanRow(
+        Guid Id, string Code, string DisplayName, string FeaturesSummary,
+        bool IsActive, bool ServiceSuspended, int LicenseCount);
 
     public sealed class PlanInput
     {

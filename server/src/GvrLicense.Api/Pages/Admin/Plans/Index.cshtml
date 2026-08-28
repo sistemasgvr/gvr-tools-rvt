@@ -75,15 +75,31 @@
       return `<span class="badge text-bg-${isActive ? 'success' : 'secondary'}">${isActive ? 'Activo' : 'Descontinuado'}</span>`;
     };
 
+    const serviceBadge = (cell) => {
+      const suspended = cell.getValue();
+      return suspended
+        ? `<span class="badge text-bg-danger" title="API bloqueada (emergencia / DDoS). El plan sigue en catálogo.">Suspendido</span>`
+        : `<span class="badge text-bg-success" title="API del plan operativa.">Activo (servicio)</span>`;
+    };
+
     const actionButtons = (cell) => {
       const row = cell.getData();
-      const label = row.isActive ? 'Descontinuar' : 'Reactivar';
-      const btnClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
-      return `<div class="d-flex gap-1 justify-content-center">
+      const catalogLabel = row.isActive ? 'Descontinuar' : 'Reactivar';
+      const catalogClass = row.isActive ? 'btn-outline-warning' : 'btn-outline-success';
+      const serviceLabel = row.serviceSuspended ? 'Reactivar servicio' : 'Suspender servicio';
+      const serviceClass = row.serviceSuspended ? 'btn-outline-success' : 'btn-outline-danger';
+      const serviceTitle = row.serviceSuspended
+        ? 'Vuelve a permitir activate / heartbeat / usage para este plan.'
+        : 'Bloqueo de emergencia (DDoS): rechaza la API pública sin descontinuar el plan. Útil sobre todo en Free.';
+      return `<div class="d-flex flex-wrap gap-1 justify-content-center">
                 <a href="/Admin/Plans/Edit?id=${row.id}" class="btn btn-sm btn-outline-secondary">Editar</a>
                 <form method="post" action="/Admin/Plans/Index?handler=Toggle&planId=${row.id}">
                   <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
-                  <button type="submit" class="btn btn-sm ${btnClass}">${label}</button>
+                  <button type="submit" class="btn btn-sm ${catalogClass}" title="Saca o vuelve el plan al selector de licencias nuevas.">${catalogLabel}</button>
+                </form>
+                <form method="post" action="/Admin/Plans/Index?handler=ToggleService&planId=${row.id}">
+                  <input type="hidden" name="__RequestVerificationToken" value="${csrfToken}" />
+                  <button type="submit" class="btn btn-sm ${serviceClass}" title="${serviceTitle}">${serviceLabel}</button>
                 </form>
               </div>`;
     };
@@ -101,9 +117,10 @@
       columns: [
         { title: 'Más', formatter: 'responsiveCollapse', width: 40, minWidth: 40, hozAlign: 'center', headerSort: false, resizable: false },
         { title: 'Código', field: 'code', minWidth: 110, responsive: 0 },
-        { title: 'Acciones', field: 'id', width: 220, hozAlign: 'center', headerSort: false, responsive: 0, formatter: actionButtons },
+        { title: 'Acciones', field: 'id', width: 340, hozAlign: 'center', headerSort: false, responsive: 0, formatter: actionButtons },
         { title: 'Nombre', field: 'displayName', minWidth: 130, responsive: 1 },
-        { title: 'Estado', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 2 },
+        { title: 'Catálogo', field: 'isActive', formatter: statusBadge, width: 130, hozAlign: 'center', responsive: 2 },
+        { title: 'Servicio', field: 'serviceSuspended', formatter: serviceBadge, width: 140, hozAlign: 'center', responsive: 2 },
         { title: 'Licencias', field: 'licenseCount', width: 100, hozAlign: 'center', responsive: 3 },
         { title: 'Qué incluye', field: 'featuresSummary', minWidth: 280, responsive: 4 },
       ],
