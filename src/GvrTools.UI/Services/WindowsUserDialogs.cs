@@ -49,6 +49,39 @@ namespace GvrTools.UI.Services
             return result == MessageBoxResult.OK;
         }
 
+        public string PromptText(string title, string message, string defaultValue = "")
+        {
+            var window = new TextPromptWindow();
+            window.Configure(title, message, defaultValue);
+
+            bool ownerAssigned = false;
+            if (_owner != null)
+            {
+                try
+                {
+                    // WPF throws if Owner is set to a Window that has never been shown -- not
+                    // reachable from this class's current call site (always constructed with no
+                    // owner), but defensive in case a future caller passes one before Show()/
+                    // ShowDialog() has run on it once.
+                    window.Owner = _owner;
+                    ownerAssigned = true;
+                }
+                catch (InvalidOperationException)
+                {
+                    // Falls through to CenterScreen below.
+                }
+            }
+
+            if (!ownerAssigned)
+            {
+                // No owner means no CenterOwner target -- fall back to the usual default so the
+                // dialog does not appear pinned to a screen corner.
+                window.WindowStartupLocation = WindowStartupLocation.CenterScreen;
+            }
+
+            return window.ShowDialog() == true ? window.Value : null;
+        }
+
         public void Reveal(string path)
         {
             try

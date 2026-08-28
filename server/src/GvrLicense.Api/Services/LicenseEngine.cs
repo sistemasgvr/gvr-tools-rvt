@@ -642,8 +642,14 @@ public sealed class LicenseEngine(
             ? parsed
             : defaultValue;
 
+    // Clamped a 0, nunca negativo: con quota_limit ahora dinámico (se re-sincroniza en cada
+    // activate/heartbeat, ver EnsureCurrentPeriodCountersAsync), si un admin baja el tope de un
+    // plan a mitad de mes por debajo de lo ya consumido, esta resta puede dar negativo. El resto
+    // del sistema (cliente y servidor) asume que "remaining" es o -1 (ilimitado) o un entero >= 0
+    // -- un negativo distinto de -1 se interpreta como "ilimitado" en QuotaDisplay.FormatSheetsUsage
+    // (chequea remaining < 0), lo que mostraría "ilimitado" justo cuando la cuota está agotada.
     private static int RemainingOf(UsageCounter counter) =>
-        counter.QuotaLimit == -1 ? -1 : counter.QuotaLimit - counter.Consumed;
+        counter.QuotaLimit == -1 ? -1 : Math.Max(0, counter.QuotaLimit - counter.Consumed);
 
     /// <summary>Plan.Features con License.FeatureOverrides encima -- ver comentario en BuildSignedBlobAsync.</summary>
     private static Dictionary<string, string> GetEffectiveFeatures(License license)
@@ -677,11 +683,15 @@ public sealed class LicenseEngine(
             var limit = int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out var parsed) ? parsed : 0;
             var id = Guid.NewGuid();
 
-            // INSERT ... ON CONFLICT DO NOTHING: dos heartbeats al cambiar de mes no deben 500.
+            // INSERT ... ON CONFLICT DO UPDATE quota_limit (no "do nothing"): el tope debe seguir
+            // dinámicamente lo que el admin tenga configurado AHORA MISMO en plan + ajustes de la
+            // licencia, no el valor que tenía la primera vez que alguien activó/hizo heartbeat este
+            // mes. "consumed" no se toca -- lo ya gastado este mes no se pierde ni se resetea solo
+            // porque el admin subió o bajó el tope a mitad de mes.
             await db.Database.ExecuteSqlInterpolatedAsync($"""
                 insert into usage_counter (id, license_id, feature_code, period, quota_limit, consumed)
                 values ({id}, {license.Id}, {featureCode}, {period}, {limit}, {0})
-                on conflict (license_id, feature_code, period) do nothing
+                on conflict (license_id, feature_code, period) do update set quota_limit = excluded.quota_limit
                 """, ct);
         }
     }

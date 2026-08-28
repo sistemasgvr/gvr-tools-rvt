@@ -314,26 +314,39 @@ namespace GvrTools.Revit.Export.Pdf
                 }
 
                 parameters.ZoomType = _settings.FitToPage ? ZoomType.FitToPage : ZoomType.Zoom;
-                if (!_settings.FitToPage) parameters.Zoom = 100;
+                if (!_settings.FitToPage) parameters.Zoom = _settings.ZoomPercentage;
 
                 // MarginType may only be assigned while PaperPlacement is Margins; Revit throws if it
-                // is touched under Center, so the no-margin mode must leave it alone.
-                if (_settings.NoMargin)
+                // is touched under Center, so each branch below only sets what applies to it.
+                //
+                // Revit 2021's PrintParameters has no LowerLeft placement or OriginOffsetX/Y at all
+                // (those only exist on PDFExportOptions, added in 2022) -- the closest equivalent
+                // here is Margins + MarginType.UserDefined + UserDefinedMarginX/Y, a margin size
+                // from every edge rather than a single-corner offset, but the only knob 2021 exposes
+                // for "move the drawing off centre by a controlled amount".
+                switch (_settings.PaperPlacement)
                 {
-                    parameters.PaperPlacement = PaperPlacementType.Center;
-                }
-                else
-                {
-                    parameters.PaperPlacement = PaperPlacementType.Margins;
-                    parameters.MarginType = MarginType.PrinterLimit;
+                    case PdfPaperPlacement.OffsetFromCorner:
+                        parameters.PaperPlacement = PaperPlacementType.Margins;
+                        parameters.MarginType = MarginType.UserDefined;
+                        parameters.UserDefinedMarginX = _settings.OffsetXInches;
+                        parameters.UserDefinedMarginY = _settings.OffsetYInches;
+                        break;
+                    case PdfPaperPlacement.PrinterMargin:
+                        parameters.PaperPlacement = PaperPlacementType.Margins;
+                        parameters.MarginType = MarginType.PrinterLimit;
+                        break;
+                    default:
+                        parameters.PaperPlacement = PaperPlacementType.Center;
+                        break;
                 }
 
                 parameters.ColorDepth = ToColorDepth(_settings.ColorMode);
                 parameters.RasterQuality = ToRasterQuality(_settings.RasterQuality);
-                parameters.HideCropBoundaries = _settings.HideHelperGraphics;
-                parameters.HideScopeBoxes = _settings.HideHelperGraphics;
-                parameters.HideUnreferencedViewTags = _settings.HideHelperGraphics;
-                parameters.HideReforWorkPlanes = _settings.HideHelperGraphics;
+                parameters.HideCropBoundaries = _settings.HideCropBoundaries;
+                parameters.HideScopeBoxes = _settings.HideScopeBoxes;
+                parameters.HideUnreferencedViewTags = _settings.HideUnreferencedViewTags;
+                parameters.HideReforWorkPlanes = _settings.HideReferencePlanes;
                 parameters.MaskCoincidentLines = _settings.MaskCoincidentLines;
                 parameters.ViewLinksinBlue = _settings.ViewLinksInBlue;
                 parameters.ReplaceHalftoneWithThinLines = _settings.ReplaceHalftoneWithThinLines;

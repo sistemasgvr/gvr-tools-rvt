@@ -11,6 +11,7 @@ using GvrTools.Core.Diagnostics;
 using GvrTools.Core.History;
 using GvrTools.Core.IO;
 using GvrTools.Core.Naming;
+using GvrTools.Core.Selections;
 using GvrTools.Core.Settings;
 using GvrTools.Revit.Export;
 using GvrTools.Revit.Export.Dwg;
@@ -54,6 +55,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private readonly IUserDialogs _dialogs;
         private readonly ISettingsStore _settingsStore;
         private readonly ISheetExportHistoryStore _historyStore;
+        private readonly ISavedSelectionStore _savedSelectionStore;
         private readonly ILog _log;
         private readonly ExportEngineCatalog _engines;
         private readonly ProjectSnapshot _project;
@@ -67,6 +69,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private Dictionary<ExportFormat, string> _runDestinationFolders;
 
         private ExportItemKind _itemKind = ExportItemKind.Sheet;
+        private List<SavedSelection> _savedSelections;
 
         public BatchExportViewModel(
             UIDocument uiDocument,
@@ -74,13 +77,15 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             IUserDialogs dialogs,
             ISettingsStore settingsStore,
             ISheetExportHistoryStore historyStore,
-            ILog log)
+            ILog log,
+            ISavedSelectionStore savedSelectionStore = null)
         {
             _uiDocument = uiDocument;
             _scheduler = scheduler;
             _dialogs = dialogs;
             _settingsStore = settingsStore;
             _historyStore = historyStore ?? new SheetExportHistoryStore();
+            _savedSelectionStore = savedSelectionStore ?? new SavedSelectionStore();
             _log = log ?? NullLog.Instance;
             _engines = ExportEngineCatalog.CreateDefault();
 
@@ -93,7 +98,10 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             foreach (KeyValuePair<string, DateTime> entry in _historyStore.Load(_project.ProjectKey))
                 _exportHistory[entry.Key] = entry.Value;
 
+            _savedSelections = _savedSelectionStore.Load(_project.ProjectKey).ToList();
+
             LoadItems(ExportItemKind.Sheet);
+            RefreshSavedSelectionNames();
 
             SheetSetNames = new[] { AllSheetsLabel }
                 .Concat(_sheetSets.Select(set => set.Name))
@@ -130,6 +138,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             SelectNoneCommand = new RelayCommand(() => SetVisibleSelection(false));
             InvertSelectionCommand = new RelayCommand(InvertVisibleSelection);
             SelectPendingCommand = new RelayCommand(SelectVisiblePending);
+            SaveSelectionCommand = new RelayCommand(SaveCurrentSelectionAsFilter);
+            DeleteSavedSelectionCommand = new RelayCommand(DeleteSelectedSavedSelection, () => !string.IsNullOrEmpty(SelectedSavedSelectionName));
             BrowseFolderCommand = new RelayCommand(BrowseFolder);
             OpenFolderCommand = new RelayCommand(() => _dialogs.Reveal(RevealTarget));
             ExportCommand = new RelayCommand(StartExport, () => CanExport);
@@ -203,6 +213,14 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             SelectedSheetSet = AllSheetsLabel;
             SheetsView.Refresh();
 
+            // Un filtro guardado es un concepto por modo (Láminas o Vistas): nunca debe seguir
+            // marcado como "elegido" al cruzar al otro modo, ni siquiera cuando existe un filtro con
+            // el mismo nombre del otro lado -- RefreshSavedSelectionNames solo limpia cuando el
+            // nombre YA NO aparece en la lista nueva, así que un nombre compartido entre ambos modos
+            // se colaría sin esta limpieza explícita, dejando el combo mostrando un filtro "elegido"
+            // que no se corresponde con las casillas recién cargadas (todas marcadas por defecto).
+            Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
+
             StatusText = Sheets.Count == 0
                 ? $"El proyecto activo no tiene {ItemNounPlural} para exportar."
                 : $"{Sheets.Count} {ItemNounPlural} en el proyecto.";
@@ -211,6 +229,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             NotifySelectionChanged();
             Raise(nameof(NamingPreview));
             RefreshIdleProgressScale();
+            RefreshSavedSelectionNames();
         }
 
         /// <summary>
@@ -236,6 +255,141 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 item.PropertyChanged += OnSheetItemChanged;
                 Sheets.Add(item);
             }
+        }
+
+        // ---------------------------------------------------------------- filtros guardados (checklist)
+
+        /// <summary>"Sheet"/"View", usado como etiqueta al guardar/leer para que un filtro guardado
+        /// en modo Vistas no aparezca (ni se pueda aplicar por error) en modo Láminas.</summary>
+        private string CurrentKindTag => _itemKind == ExportItemKind.View ? "View" : "Sheet";
+
+        /// <summary>Nombres de los filtros guardados para el modo actual (Láminas o Vistas), ordenados.</summary>
+        public ObservableCollection<string> SavedSelectionNames { get; } = new ObservableCollection<string>();
+
+        public bool HasSavedSelections => SavedSelectionNames.Count > 0;
+
+        private string _selectedSavedSelectionName;
+
+        /// <summary>
+        /// Elegir un filtro en el combo lo aplica de inmediato (marca exactamente esas láminas/vistas
+        /// y desmarca el resto) -- así lo describió el cliente: "abro el filtro, lo marco y
+        /// automáticamente se marcan los que ya preseleccioné".
+        /// </summary>
+        public string SelectedSavedSelectionName
+        {
+            get => _selectedSavedSelectionName;
+            set
+            {
+                if (!Set(ref _selectedSavedSelectionName, value)) return;
+                if (!string.IsNullOrEmpty(value)) ApplySavedSelection(value);
+                DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
+            }
+        }
+
+        private void SaveCurrentSelectionAsFilter()
+        {
+            string name = _dialogs.PromptText(
+                "Guardar filtro",
+                $"Nombre para este filtro de {ItemNounPlural} marcadas:",
+                _selectedSavedSelectionName ?? string.Empty);
+
+            if (name == null) return; // el usuario canceló el diálogo -- no es lo mismo que un nombre vacío.
+
+            // Se valida/dedupea contra el mismo nombre saneado que terminará en disco (ver
+            // SavedSelectionStore.SanitizeName) -- así un nombre que se reduce a nada (ej. "###")
+            // se rechaza aquí en vez de guardarse en memoria y desaparecer en silencio al persistir,
+            // y dos nombres que solo difieren en caracteres saneados no chocan en el archivo.
+            name = SavedSelectionStore.SanitizeName(name);
+            if (name.Length == 0)
+            {
+                _dialogs.ShowWarning("Guardar filtro", "Escribe un nombre para el filtro (no puede quedar vacío).");
+                return;
+            }
+
+            List<string> uniqueIds = Sheets
+                .Where(item => item.IsSelected && !string.IsNullOrEmpty(item.Sheet.UniqueId))
+                .Select(item => item.Sheet.UniqueId)
+                .ToList();
+
+            if (uniqueIds.Count == 0)
+            {
+                _dialogs.ShowWarning("Guardar filtro", $"No hay ninguna {ItemNounSingular} marcada para guardar.");
+                return;
+            }
+
+            string kind = CurrentKindTag;
+            _savedSelections.RemoveAll(s => s.Kind == kind && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            _savedSelections.Add(new SavedSelection(name, kind, uniqueIds));
+            _savedSelectionStore.Save(_project.ProjectKey, _savedSelections);
+
+            RefreshSavedSelectionNames();
+            Set(ref _selectedSavedSelectionName, name, nameof(SelectedSavedSelectionName));
+            DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
+
+            StatusText = $"Filtro \"{name}\" guardado ({uniqueIds.Count} {ItemNounPlural}).";
+        }
+
+        private void DeleteSelectedSavedSelection()
+        {
+            string name = SelectedSavedSelectionName;
+            if (string.IsNullOrEmpty(name)) return;
+            if (!_dialogs.Confirm("Eliminar filtro", $"¿Eliminar el filtro \"{name}\"?")) return;
+
+            string kind = CurrentKindTag;
+            _savedSelections.RemoveAll(s => s.Kind == kind && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            _savedSelectionStore.Save(_project.ProjectKey, _savedSelections);
+
+            Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
+            DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
+            RefreshSavedSelectionNames();
+
+            StatusText = $"Filtro \"{name}\" eliminado.";
+        }
+
+        private void ApplySavedSelection(string name)
+        {
+            string kind = CurrentKindTag;
+            SavedSelection match = _savedSelections.FirstOrDefault(
+                s => s.Kind == kind && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
+            if (match == null) return;
+
+            var ids = new HashSet<string>(match.UniqueIds, StringComparer.Ordinal);
+
+            _suppressSelectionNotifications = true;
+            try
+            {
+                foreach (SheetItemViewModel item in Sheets)
+                    item.IsSelected = !string.IsNullOrEmpty(item.Sheet.UniqueId) && ids.Contains(item.Sheet.UniqueId);
+            }
+            finally
+            {
+                _suppressSelectionNotifications = false;
+            }
+
+            NotifySelectionChanged();
+            StatusText = $"Filtro \"{name}\" aplicado ({SelectedCount} de {Sheets.Count} {ItemNounPlural}).";
+        }
+
+        /// <summary>Refresca el combo de filtros para el modo actual (Láminas/Vistas); llamado al abrir la ventana y al cambiar de modo.</summary>
+        private void RefreshSavedSelectionNames()
+        {
+            string kind = CurrentKindTag;
+            List<string> names = _savedSelections
+                .Where(s => s.Kind == kind)
+                .Select(s => s.Name)
+                .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase)
+                .ToList();
+
+            SavedSelectionNames.Clear();
+            foreach (string name in names) SavedSelectionNames.Add(name);
+
+            // La selección elegida ya no existe en la lista (se borró, o cambiamos de modo y no hay
+            // un filtro con ese nombre del otro lado): limpiarla sin volver a aplicar nada.
+            if (!string.IsNullOrEmpty(_selectedSavedSelectionName) && !SavedSelectionNames.Contains(_selectedSavedSelectionName))
+                Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
+
+            Raise(nameof(HasSavedSelections));
+            DeleteSavedSelectionCommand?.RaiseCanExecuteChanged();
         }
 
         public ObservableCollection<ExportResultViewModel> Results { get; } = new ObservableCollection<ExportResultViewModel>();
@@ -612,14 +766,132 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public bool PdfFitToPage
         {
             get => _pdfFitToPage;
-            set => Set(ref _pdfFitToPage, value);
+            set
+            {
+                if (Set(ref _pdfFitToPage, value))
+                    Raise(nameof(ShowPdfZoomPercentage));
+            }
         }
 
-        private bool _pdfNoMargin = true;
-        public bool PdfNoMargin
+        private int _pdfZoomPercentage = 100;
+
+        /// <summary>Escala de ploteo cuando "Ajustar a la página" está desmarcado. 100 = escala real.</summary>
+        public int PdfZoomPercentage
         {
-            get => _pdfNoMargin;
-            set => Set(ref _pdfNoMargin, value);
+            get => _pdfZoomPercentage;
+            // Mismo rango que el cuadro de zoom del diálogo de impresión nativo de Revit (1-999):
+            // sin este tope, un valor absurdo tipeado a mano (ej. 100000) llega tal cual a
+            // PDFExportOptions.ZoomPercentage / PrintParameters.Zoom, que lo rechaza -- Revit lanza
+            // una excepción al construir las opciones y CADA lámina del lote termina fallando con
+            // un mensaje crudo de la API en vez de uno claro.
+            set => Set(ref _pdfZoomPercentage, Math.Max(1, Math.Min(999, value)));
+        }
+
+        /// <summary>El cuadro de zoom % solo tiene sentido cuando no se está ajustando a la página.</summary>
+        public bool ShowPdfZoomPercentage => !PdfFitToPage;
+
+        // Nombrada distinto del enum PdfPaperPlacement a propósito: una propiedad con el mismo
+        // nombre que su tipo vuelve ambiguo referenciar los valores del enum (PdfPaperPlacement.X)
+        // en el resto de la clase.
+        private PdfPaperPlacement _pdfPlacementMode = PdfPaperPlacement.Center;
+        public PdfPaperPlacement PdfPlacementMode
+        {
+            get => _pdfPlacementMode;
+            set
+            {
+                if (Set(ref _pdfPlacementMode, value))
+                    Raise(nameof(IsPdfPaperPlacementCenter), nameof(IsPdfPaperPlacementOffsetFromCorner),
+                          nameof(IsPdfPaperPlacementPrinterMargin), nameof(ShowPdfOffsetFields));
+            }
+        }
+
+        public bool IsPdfPaperPlacementCenter
+        {
+            get => _pdfPlacementMode == PdfPaperPlacement.Center;
+            set { if (value) PdfPlacementMode = PdfPaperPlacement.Center; }
+        }
+
+        public bool IsPdfPaperPlacementOffsetFromCorner
+        {
+            get => _pdfPlacementMode == PdfPaperPlacement.OffsetFromCorner;
+            set { if (value) PdfPlacementMode = PdfPaperPlacement.OffsetFromCorner; }
+        }
+
+        public bool IsPdfPaperPlacementPrinterMargin
+        {
+            get => _pdfPlacementMode == PdfPaperPlacement.PrinterMargin;
+            set { if (value) PdfPlacementMode = PdfPaperPlacement.PrinterMargin; }
+        }
+
+        /// <summary>Los cuadros X/Y solo tienen sentido en modo "Desde una esquina".</summary>
+        public bool ShowPdfOffsetFields => IsPdfPaperPlacementOffsetFromCorner;
+
+        private double _pdfOffsetXInches;
+        public double PdfOffsetXInches
+        {
+            get => _pdfOffsetXInches;
+            set => Set(ref _pdfOffsetXInches, value);
+        }
+
+        private double _pdfOffsetYInches;
+        public double PdfOffsetYInches
+        {
+            get => _pdfOffsetYInches;
+            set => Set(ref _pdfOffsetYInches, value);
+        }
+
+        private bool _pdfHideCropBoundaries = true;
+        public bool PdfHideCropBoundaries
+        {
+            get => _pdfHideCropBoundaries;
+            set => Set(ref _pdfHideCropBoundaries, value);
+        }
+
+        private bool _pdfHideScopeBoxes = true;
+        public bool PdfHideScopeBoxes
+        {
+            get => _pdfHideScopeBoxes;
+            set => Set(ref _pdfHideScopeBoxes, value);
+        }
+
+        private bool _pdfHideUnreferencedViewTags = true;
+        public bool PdfHideUnreferencedViewTags
+        {
+            get => _pdfHideUnreferencedViewTags;
+            set => Set(ref _pdfHideUnreferencedViewTags, value);
+        }
+
+        private bool _pdfHideReferencePlanes = true;
+        public bool PdfHideReferencePlanes
+        {
+            get => _pdfHideReferencePlanes;
+            set => Set(ref _pdfHideReferencePlanes, value);
+        }
+
+        /// <summary>
+        /// "Combinar en un solo archivo" solo existe con la API nativa de PDF (2022+): Revit 2021 no
+        /// tiene forma confiable de combinar varias láminas en un PDF (ver CombinedPdfExportJob).
+        /// </summary>
+        public bool CanCombinePdf => RevitVersionInfo.HasNativePdfExport;
+
+        private bool _pdfCombineIntoSingleFile;
+        public bool PdfCombineIntoSingleFile
+        {
+            get => _pdfCombineIntoSingleFile && CanCombinePdf;
+            set
+            {
+                if (Set(ref _pdfCombineIntoSingleFile, value && CanCombinePdf))
+                    Raise(nameof(ShowPdfCombinedFileName));
+            }
+        }
+
+        public bool ShowPdfCombinedFileName => PdfCombineIntoSingleFile;
+
+        private string _pdfCombinedFileName = "{ProjectTitle}_combinado";
+        public string PdfCombinedFileName
+        {
+            get => _pdfCombinedFileName;
+            set => Set(ref _pdfCombinedFileName, value ?? string.Empty);
         }
 
         private PdfColorMode _pdfColorMode = PdfColorMode.Color;
@@ -861,6 +1133,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// <summary>Marks only the visible sheets that have never exported successfully -- the "what's left" shortcut.</summary>
         public RelayCommand SelectPendingCommand { get; }
 
+        /// <summary>Saves the currently checked rows as a named, reusable filter ("checklist por especialidad").</summary>
+        public RelayCommand SaveSelectionCommand { get; }
+
+        public RelayCommand DeleteSavedSelectionCommand { get; }
+
         public RelayCommand BrowseFolderCommand { get; }
 
         public RelayCommand OpenFolderCommand { get; }
@@ -1022,11 +1299,20 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void RefreshIdleProgressScale()
         {
             if (IsExporting) return;
-            int unitsPerSheet = _selectedFormatMode == FormatMode.PdfAndDwg ? 2 : 1;
-            int steps = SelectedCount * unitsPerSheet;
+            int steps = _selectedFormatMode == FormatMode.PdfAndDwg
+                ? StepCountFor(ExportFormat.Pdf, SelectedCount) + StepCountFor(ExportFormat.Dwg, SelectedCount)
+                : StepCountFor(_selectedFormatMode == FormatMode.Dwg ? ExportFormat.Dwg : ExportFormat.Pdf, SelectedCount);
             ProgressMaximum = steps > 0 ? steps : 1;
             ProgressValue = 0;
         }
+
+        /// <summary>
+        /// How many progress steps one format phase contributes to the run's total. A PDF combinado
+        /// en un solo archivo es UN paso (una sola llamada a Revit), no uno por lámina/vista -- ver
+        /// CombinedPdfExportJob.StepCount. Todo lo demás sigue siendo un paso por ítem.
+        /// </summary>
+        private int StepCountFor(ExportFormat format, int selectedCount) =>
+            format == ExportFormat.Pdf && PdfCombineIntoSingleFile ? 1 : selectedCount;
 
         /// <summary>When true, row IsSelected changes skip header/summary Raise (bulk update in progress).</summary>
         private bool _suppressSelectionNotifications;
@@ -1157,7 +1443,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _progressOffset = 0;
             _firstPhaseResult = null;
             _pendingSheets = selected;
-            _totalSteps = _isMultiFormat ? selected.Count * 2 : selected.Count;
+            _totalSteps = _isMultiFormat
+                ? StepCountFor(ExportFormat.Pdf, selected.Count) + StepCountFor(ExportFormat.Dwg, selected.Count)
+                : StepCountFor(_selectedFormatMode == FormatMode.Dwg ? ExportFormat.Dwg : ExportFormat.Pdf, selected.Count);
             ProgressMaximum = _totalSteps;
 
             ExportFormat firstFormat = _selectedFormatMode == FormatMode.Dwg
@@ -1273,6 +1561,17 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             try
             {
+#if REVIT2022_OR_GREATER
+                // "Combinar en un solo archivo" es una forma de ejecución distinta (una sola llamada
+                // a Revit para todo el lote, no una por lámina/vista) -- ver el comentario de
+                // CombinedPdfExportJob. RevitJobScheduler no distingue: cualquier IRevitStepJob le sirve.
+                if (format == ExportFormat.Pdf && PdfCombineIntoSingleFile)
+                {
+                    var combinedJob = new CombinedPdfExportJob(request, sheets, OnProgress, OnItemCompleted, OnFinished);
+                    _scheduler.Start(combinedJob);
+                    return;
+                }
+#endif
                 IExportEngine engine = _engines.Resolve(format);
                 var job = new BatchExportJob(engine, request, sheets, OnProgress, OnItemCompleted, OnFinished);
                 _scheduler.Start(job);
@@ -1283,7 +1582,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 {
                     _log.Error($"No se pudo iniciar la exportación {ExportFormatInfo.Label(format)}.", ex);
                     _multiFormatPhase = 1;
-                    _progressOffset = sheets.Count;
+                    _progressOffset = StepCountFor(format, sheets.Count);
                     StatusText = $"{ExportFormatInfo.Label(format)}: {ex.Message} — Continuando con DWG...";
                     LaunchFormat(ExportFormat.Dwg, sheets);
                     return;
@@ -1322,14 +1621,22 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 PrinterName = SelectedPrinter ?? string.Empty,
                 MatchSheetSize = PdfMatchSheetSize,
                 FitToPage = PdfFitToPage,
-                NoMargin = PdfNoMargin,
+                ZoomPercentage = PdfZoomPercentage,
+                PaperPlacement = PdfPlacementMode,
+                OffsetXInches = PdfOffsetXInches,
+                OffsetYInches = PdfOffsetYInches,
                 ColorMode = PdfColorMode,
                 RasterQuality = PdfRasterQuality,
-                HideHelperGraphics = true,
+                HideCropBoundaries = PdfHideCropBoundaries,
+                HideScopeBoxes = PdfHideScopeBoxes,
+                HideUnreferencedViewTags = PdfHideUnreferencedViewTags,
+                HideReferencePlanes = PdfHideReferencePlanes,
                 HiddenLineProcessing = PdfHiddenLineProcessing,
                 ViewLinksInBlue = PdfViewLinksInBlue,
                 ReplaceHalftoneWithThinLines = PdfReplaceHalftoneWithThinLines,
-                MaskCoincidentLines = PdfMaskCoincidentLines
+                MaskCoincidentLines = PdfMaskCoincidentLines,
+                CombineIntoSingleFile = PdfCombineIntoSingleFile,
+                CombinedFileName = PdfCombinedFileName
             };
         }
 
@@ -1470,7 +1777,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 }
 
                 _multiFormatPhase = 1;
-                _progressOffset = _pendingSheets.Count;
+                // La fase 0 de un run PdfAndDwg siempre es PDF (ver LaunchFormat/firstFormat).
+                _progressOffset = StepCountFor(ExportFormat.Pdf, _pendingSheets.Count);
 
                 if (_itemsBySheet != null)
                 {
@@ -1589,13 +1897,32 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             _pdfMatchSheetSize = preferences.PdfMatchSheetSize;
             _pdfFitToPage = preferences.PdfFitToPage;
-            _pdfNoMargin = preferences.PdfNoMargin;
+            _pdfZoomPercentage = preferences.PdfZoomPercentage;
+
+            // Migración desde el viejo PdfNoMargin (bool) la primera vez que se lee un archivo de
+            // preferencias guardado antes de que existiera PdfPaperPlacementRaw -- ver el
+            // comentario en BatchExportPreferences.PdfPaperPlacementRaw.
+            _pdfPlacementMode = Enum.TryParse(preferences.PdfPaperPlacementRaw, true, out PdfPaperPlacement savedPlacement)
+                ? savedPlacement
+                : (preferences.PdfNoMargin ? PdfPaperPlacement.Center : PdfPaperPlacement.PrinterMargin);
+            _pdfOffsetXInches = preferences.PdfOffsetXInches;
+            _pdfOffsetYInches = preferences.PdfOffsetYInches;
+            _pdfHideCropBoundaries = preferences.PdfHideCropBoundaries;
+            _pdfHideScopeBoxes = preferences.PdfHideScopeBoxes;
+            _pdfHideUnreferencedViewTags = preferences.PdfHideUnreferencedViewTags;
+            _pdfHideReferencePlanes = preferences.PdfHideReferencePlanes;
             _pdfColorMode = preferences.PdfColorMode;
             _pdfRasterQuality = preferences.PdfRasterQuality;
             _pdfHiddenLineProcessing = preferences.PdfHiddenLineProcessing;
             _pdfViewLinksInBlue = preferences.PdfViewLinksInBlue;
             _pdfReplaceHalftoneWithThinLines = preferences.PdfReplaceHalftoneWithThinLines;
             _pdfMaskCoincidentLines = preferences.PdfMaskCoincidentLines;
+            // && CanCombinePdf: nunca arranca marcado en un build 2021 aunque el archivo de
+            // preferencias lo traiga en true de un proyecto que antes se abrió en 2022+.
+            _pdfCombineIntoSingleFile = preferences.PdfCombineIntoSingleFile && CanCombinePdf;
+            _pdfCombinedFileName = string.IsNullOrWhiteSpace(preferences.PdfCombinedFileName)
+                ? "{ProjectTitle}_combinado"
+                : preferences.PdfCombinedFileName;
 
             _dwgFileVersion = preferences.DwgFileVersion;
             _dwgMergeViews = preferences.DwgMergeViews;
@@ -1615,13 +1942,26 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _preferences.OpenFolderWhenDone = OpenFolderWhenDone;
             _preferences.PdfMatchSheetSize = PdfMatchSheetSize;
             _preferences.PdfFitToPage = PdfFitToPage;
-            _preferences.PdfNoMargin = PdfNoMargin;
+            _preferences.PdfZoomPercentage = PdfZoomPercentage;
+            _preferences.PdfPaperPlacementRaw = PdfPlacementMode.ToString();
+            // PdfNoMargin ya no lo lee nadie más que la migración de arriba, pero se sigue
+            // escribiendo en sincronía por si alguna vez se necesita rodar el archivo de
+            // preferencias hacia atrás a una versión anterior del complemento.
+            _preferences.PdfNoMargin = PdfPlacementMode == PdfPaperPlacement.Center;
+            _preferences.PdfOffsetXInches = PdfOffsetXInches;
+            _preferences.PdfOffsetYInches = PdfOffsetYInches;
+            _preferences.PdfHideCropBoundaries = PdfHideCropBoundaries;
+            _preferences.PdfHideScopeBoxes = PdfHideScopeBoxes;
+            _preferences.PdfHideUnreferencedViewTags = PdfHideUnreferencedViewTags;
+            _preferences.PdfHideReferencePlanes = PdfHideReferencePlanes;
             _preferences.PdfColorMode = PdfColorMode;
             _preferences.PdfRasterQuality = PdfRasterQuality;
             _preferences.PdfHiddenLineProcessing = PdfHiddenLineProcessing;
             _preferences.PdfViewLinksInBlue = PdfViewLinksInBlue;
             _preferences.PdfReplaceHalftoneWithThinLines = PdfReplaceHalftoneWithThinLines;
             _preferences.PdfMaskCoincidentLines = PdfMaskCoincidentLines;
+            _preferences.PdfCombineIntoSingleFile = PdfCombineIntoSingleFile;
+            _preferences.PdfCombinedFileName = PdfCombinedFileName;
             _preferences.DwgFileVersion = DwgFileVersion;
             _preferences.DwgMergeViews = DwgMergeViews;
             _preferences.DwgSharedCoordinates = DwgSharedCoordinates;

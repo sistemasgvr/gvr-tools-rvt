@@ -33,7 +33,36 @@ namespace GvrTools.Tools.BatchExport
 
         public bool PdfFitToPage { get; set; } = true;
 
+        public int PdfZoomPercentage { get; set; } = 100;
+
+        // Deprecated: reemplazado por PdfPaperPlacementRaw. Se mantiene solo para poder migrar el
+        // valor guardado de quien ya lo tenía en false (impresora) la primera vez que se carga un
+        // archivo .settings viejo -- ver BatchExportViewModel.ApplyPreferences.
         public bool PdfNoMargin { get; set; } = true;
+
+        /// <summary>
+        /// Nombre de un valor de <see cref="PdfPaperPlacement"/>, o vacío si nunca se guardó con
+        /// este campo (se migra desde PdfNoMargin esa primera vez -- ver ApplyPreferences).
+        ///
+        /// String y no el enum directamente: FlatFileSettingsStore persiste por reflexión sobre un
+        /// conjunto fijo de tipos soportados (string/bool/int/double/enum) y NO incluye enum
+        /// nullable -- un <c>PdfPaperPlacement?</c> aquí se guardaría/leería como si no existiera,
+        /// perdiendo el valor elegido en cada reinicio. String vacío como "no configurado" logra el
+        /// mismo efecto sin pelear con esa lista de tipos.
+        /// </summary>
+        public string PdfPaperPlacementRaw { get; set; } = string.Empty;
+
+        public double PdfOffsetXInches { get; set; }
+
+        public double PdfOffsetYInches { get; set; }
+
+        public bool PdfHideCropBoundaries { get; set; } = true;
+
+        public bool PdfHideScopeBoxes { get; set; } = true;
+
+        public bool PdfHideUnreferencedViewTags { get; set; } = true;
+
+        public bool PdfHideReferencePlanes { get; set; } = true;
 
         public PdfColorMode PdfColorMode { get; set; } = PdfColorMode.Color;
 
@@ -46,6 +75,10 @@ namespace GvrTools.Tools.BatchExport
         public bool PdfReplaceHalftoneWithThinLines { get; set; }
 
         public bool PdfMaskCoincidentLines { get; set; } = true;
+
+        public bool PdfCombineIntoSingleFile { get; set; }
+
+        public string PdfCombinedFileName { get; set; } = "{ProjectTitle}_combinado";
 
         // DWG
         public DwgFileVersion DwgFileVersion { get; set; } = DwgFileVersion.Default;

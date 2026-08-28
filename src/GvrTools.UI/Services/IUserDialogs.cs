@@ -19,5 +19,8 @@ namespace GvrTools.UI.Services
 
         /// <summary>Opens a folder (or selects a file) in File Explorer. Never throws.</summary>
         void Reveal(string path);
+
+        /// <summary>Asks for one line of text. Returns null when the user cancels or closes the window.</summary>
+        string PromptText(string title, string message, string defaultValue = "");
     }
 }

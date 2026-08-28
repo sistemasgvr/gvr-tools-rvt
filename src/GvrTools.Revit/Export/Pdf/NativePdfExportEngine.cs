@@ -73,7 +73,7 @@ namespace GvrTools.Revit.Export.Pdf
                 string baseName = _namer.ReserveBaseName(sheet);
                 string expectedPath = Path.Combine(_folder, baseName + ".pdf");
 
-                using (PDFExportOptions options = BuildOptions(view, baseName))
+                using (PDFExportOptions options = PdfExportOptionsFactory.Build(_settings, baseName, ResolveOrientation(view)))
                 {
                     bool exported = _document.Export(_folder, new List<ElementId> { sheet.Id }, options);
 
@@ -100,45 +100,6 @@ namespace GvrTools.Revit.Export.Pdf
                 // Nothing to undo: this engine changes no document or application state.
             }
 
-            private PDFExportOptions BuildOptions(View view, string baseName)
-            {
-                var options = new PDFExportOptions
-                {
-                    // Combine with a single view is what makes Revit honour FileName verbatim.
-                    // With Combine off it applies its own naming rule and ignores FileName.
-                    Combine = true,
-                    FileName = baseName,
-                    StopOnError = false,
-                    AlwaysUseRaster = _settings.HiddenLineProcessing == PdfHiddenLineProcessing.Raster,
-                    ReplaceHalftoneWithThinLines = _settings.ReplaceHalftoneWithThinLines,
-                    ViewLinksInBlue = _settings.ViewLinksInBlue,
-                    MaskCoincidentLines = _settings.MaskCoincidentLines,
-                    ColorDepth = ToColorDepth(_settings.ColorMode),
-                    RasterQuality = ToRasterQuality(_settings.RasterQuality),
-                    ExportQuality = PDFExportQualityType.DPI600,
-                    HideCropBoundaries = _settings.HideHelperGraphics,
-                    HideScopeBoxes = _settings.HideHelperGraphics,
-                    HideUnreferencedViewTags = _settings.HideHelperGraphics,
-                    HideReferencePlane = _settings.HideHelperGraphics,
-                    ZoomType = _settings.FitToPage ? ZoomType.FitToPage : ZoomType.Zoom,
-                    ZoomPercentage = 100,
-                    PaperPlacement = _settings.NoMargin ? PaperPlacementType.Center : PaperPlacementType.Margins,
-
-                    // Default asks Revit to use the sheet's own size, which is both more accurate
-                    // and cheaper than measuring the title block and matching a named format.
-                    PaperFormat = ExportPaperFormat.Default,
-                    PaperOrientation = ResolveOrientation(view)
-                };
-
-#if REVIT2025_OR_GREATER
-                // Background export would return before the file exists, which would break the
-                // per-sheet verification below and the progress reporting.
-                options.SetExportInBackground(false);
-#endif
-
-                return options;
-            }
-
             /// <summary>
             /// Auto is right for sheets whose size Revit can work out on its own; measuring the
             /// title block only pays off when the user asked us to respect each sheet's own size. A
@@ -152,27 +113,6 @@ namespace GvrTools.Revit.Export.Pdf
                 if (!size.IsKnown) return PageOrientationType.Auto;
 
                 return size.IsLandscape ? PageOrientationType.Landscape : PageOrientationType.Portrait;
-            }
-
-            private static ColorDepthType ToColorDepth(PdfColorMode mode)
-            {
-                switch (mode)
-                {
-                    case PdfColorMode.GrayScale: return ColorDepthType.GrayScale;
-                    case PdfColorMode.BlackAndWhite: return ColorDepthType.BlackLine;
-                    default: return ColorDepthType.Color;
-                }
-            }
-
-            private static RasterQualityType ToRasterQuality(PdfRasterQuality quality)
-            {
-                switch (quality)
-                {
-                    case PdfRasterQuality.Low: return RasterQualityType.Low;
-                    case PdfRasterQuality.Medium: return RasterQualityType.Medium;
-                    case PdfRasterQuality.Presentation: return RasterQualityType.Presentation;
-                    default: return RasterQualityType.High;
-                }
             }
         }
     }

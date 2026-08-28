@@ -5,6 +5,7 @@ using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Diagnostics;
 using GvrTools.Core.History;
+using GvrTools.Core.Selections;
 using GvrTools.Core.Settings;
 using GvrTools.Licensing;
 using GvrTools.Licensing.Activation;
@@ -97,7 +98,8 @@ namespace GvrTools.Tools.BatchExport
                     new WindowsUserDialogs(),
                     new FlatFileSettingsStore(),
                     new SheetExportHistoryStore(),
-                    log);
+                    log,
+                    new SavedSelectionStore());
 
                 _openWindow = new BatchExportWindow(viewModel, ReleaseWindow);
                 new WindowInteropHelper(_openWindow).Owner = commandData.Application.MainWindowHandle;
