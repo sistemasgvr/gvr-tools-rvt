@@ -27,13 +27,9 @@ namespace GvrTools.Revit.Export.Pdf
     /// <see cref="RevitJobScheduler"/> does not care which one runs -- <see cref="BatchExportViewModel"/>
     /// just picks the right one when "Combinar en un solo archivo" is checked.
     ///
-    /// 2022+ only: Revit 2021 has no native PDF export API at all, and the printer-driver path this
-    /// add-in uses there (<c>PrintManager</c>) has no reliable way to combine multiple sheets into
-    /// one file -- <see cref="Pdf.PrintDriverPdfExportEngine"/>'s own header comment already
-    /// documents that <c>PrintRange.Select</c> with an in-session sheet set "proved to lose its
-    /// selection intermittently" for the ordinary per-sheet path, so building a new feature on that
-    /// same mechanism was judged too fragile to ship. The window hides/disables "Combinar" on 2021
-    /// instead of offering something that might silently fail.
+    /// 2022+ only (this file is under <c>REVIT2022_OR_GREATER</c>). Revit 2021 has no native PDF
+    /// API; combine there is <see cref="CombinedPrintDriverPdfExportJob"/> (per-sheet PDF24 plot +
+    /// <c>pdf24-DocTool -join</c>), not PrintRange.Select / ViewSheetSetting.
     /// </summary>
     public sealed class CombinedPdfExportJob : IRevitStepJob
     {

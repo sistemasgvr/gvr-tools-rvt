@@ -54,7 +54,9 @@ namespace GvrTools.Revit.Export.Pdf
                     var file = new FileInfo(path);
                     if (file.Exists && file.Length > 0)
                     {
-                        if (file.Length == lastLength) return true;
+                        if (file.Length == lastLength)
+                            return true;
+
                         lastLength = file.Length;
                     }
                 }
@@ -66,7 +68,9 @@ namespace GvrTools.Revit.Export.Pdf
                 Thread.Sleep(150);
             }
 
-            return File.Exists(path);
+            // Never treat "file exists but size never stopped changing" as success -- that used to
+            // return true on timeout and hand a half-written PDF to the next step.
+            return false;
         }
 
         /// <summary>
@@ -103,7 +107,7 @@ namespace GvrTools.Revit.Export.Pdf
                 Thread.Sleep(150);
             }
 
-            return candidate;
+            return null;
         }
     }
 

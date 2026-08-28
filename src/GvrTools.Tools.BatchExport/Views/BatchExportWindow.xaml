@@ -458,7 +458,7 @@
                                                          ToolTip="Un PDF por cada lámina/vista seleccionada (comportamiento habitual)."/>
                                             <RadioButton GroupName="GvrPdfFile" Content="Combinar en un solo archivo" Foreground="{StaticResource Gvr.Brush.Ink}"
                                                          IsChecked="{Binding PdfCombineIntoSingleFile}" Margin="0,0,0,6"
-                                                         ToolTip="Escribe todas las láminas/vistas seleccionadas en un único PDF (una sola llamada a Revit)."/>
+                                                         ToolTip="Escribe todas las láminas/vistas seleccionadas en un único PDF. En Revit 2022+ usa la API nativa; en 2021 imprime cada lámina con PDF24 y las une con DocTool."/>
                                             <StackPanel Visibility="{Binding ShowPdfCombinedFileName, Converter={StaticResource Gvr.BoolToVisibility}}">
                                                 <TextBlock Text="Nombre del archivo" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
                                                 <TextBox Style="{StaticResource Gvr.TextBox}" HorizontalAlignment="Stretch"
@@ -578,7 +578,7 @@
                 </Grid>
 
                 <!-- Naming pattern -->
-                <Border Grid.Row="2" Style="{StaticResource Gvr.Card}" Margin="0,10,0,0" IsEnabled="{Binding CanEditOptions}">
+                <Border Grid.Row="2" Style="{StaticResource Gvr.Card}" Margin="0,10,0,0" IsEnabled="{Binding CanEditNamingPattern}">
                     <StackPanel>
                         <TextBlock Text="Nomenclatura de archivos" Style="{StaticResource Gvr.Text.Subtle}"
                                    FontWeight="SemiBold" Margin="0,0,0,6"/>
@@ -595,7 +595,15 @@
                                      ToolTip="{Binding NamingHelpText, StringFormat='Códigos disponibles: {0}'}"/>
                         </StackPanel>
                         <TextBlock Margin="0,6,0,0" Style="{StaticResource Gvr.Text.Subtle}"
-                                   Text="{Binding NamingPreview, StringFormat='Ejemplo: {0}'}"/>
+                                   Text="{Binding NamingPreview, StringFormat='Ejemplo: {0}'}"
+                                   Visibility="{Binding NamingPatternIsUsed, Converter={StaticResource Gvr.BoolToVisibility}}"/>
+                        <!-- Solo visible cuando el patrón de arriba queda sin efecto (PDF combinado en un
+                             solo archivo): evita que el usuario piense que este patrón sigue nombrando
+                             el resultado, cuando en realidad el nombre real sale de la pestaña Formato. -->
+                        <TextBlock Margin="0,6,0,0" Style="{StaticResource Gvr.Text.Subtle}"
+                                   FontStyle="Italic" TextWrapping="Wrap"
+                                   Text="{Binding NamingPatternInertHint}"
+                                   Visibility="{Binding NamingPatternIsInert, Converter={StaticResource Gvr.BoolToVisibility}}"/>
                     </StackPanel>
                 </Border>
 
@@ -640,7 +648,8 @@
                             <DataGridTemplateColumn Header="Progreso" Width="140" IsReadOnly="True">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate>
-                                        <TextBlock Text="{Binding RunProgressLabel}" VerticalAlignment="Center">
+                                        <TextBlock Text="{Binding RunProgressLabel}" VerticalAlignment="Center"
+                                                   ToolTip="{Binding RunErrorDetail}">
                                             <TextBlock.Style>
                                                 <Style TargetType="TextBlock">
                                                     <Setter Property="Foreground" Value="{StaticResource Gvr.Brush.Muted}"/>

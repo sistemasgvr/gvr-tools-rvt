@@ -80,6 +80,19 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set => Set(ref _runProgressLabel, value ?? string.Empty);
         }
 
+        private string _runErrorDetail = string.Empty;
+
+        /// <summary>
+        /// Mensaje de fallo del lote en curso (tooltip de la celda "Error"). Vacío en OK / en cola.
+        /// Antes solo se guardaba en Results (sin binding en XAML), así que el usuario veía "Error"
+        /// sin saber por qué -- crítico en PDF combinado 2021 donde el mismo mensaje aplica a todas las filas.
+        /// </summary>
+        public string RunErrorDetail
+        {
+            get => _runErrorDetail;
+            set => Set(ref _runErrorDetail, value ?? string.Empty);
+        }
+
         private bool _runSucceeded;
         public bool RunSucceeded
         {
@@ -90,6 +103,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public void ResetRunProgress()
         {
             RunProgressLabel = string.Empty;
+            RunErrorDetail = string.Empty;
             RunSucceeded = false;
         }
 

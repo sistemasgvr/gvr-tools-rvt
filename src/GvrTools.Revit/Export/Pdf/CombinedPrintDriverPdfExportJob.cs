@@ -3,7 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
-using Autodesk.Revit.DB;
+using System.Text;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Batch;
 using GvrTools.Core.Diagnostics;
@@ -11,7 +11,6 @@ using GvrTools.Core.IO;
 using GvrTools.Core.Naming;
 using GvrTools.Revit.Infrastructure;
 using GvrTools.Revit.Model;
-using GvrTools.Revit.Sheets;
 
 namespace GvrTools.Revit.Export.Pdf
 {
@@ -19,35 +18,27 @@ namespace GvrTools.Revit.Export.Pdf
     /// Combines every selected sheet/view into ONE PDF on Revit 2021 -- the printer-driver
     /// counterpart of <see cref="CombinedPdfExportJob"/> (2022+, native <c>Document.Export</c>).
     ///
-    /// Unlike <see cref="PrintDriverPdfExportEngine"/>'s per-sheet path (<c>PrintRange.Current</c>,
-    /// one active view + one submitted job per sheet), this configures an in-session
-    /// <c>ViewSheetSet</c> with every selected item and submits ONE combined print job via
-    /// <c>PrintRange.Select</c> + <c>PrintManager.CombinedFile</c>.
-    ///
-    /// <see cref="PrintDriverPdfExportEngine"/>'s own header comment documents that
-    /// <c>PrintRange.Select</c> "proved to lose its selection intermittently between configuring and
-    /// submitting" -- that finding was for the ORIGINAL use case: reconfiguring the same in-session
-    /// set once per sheet, in a loop, N times per batch. That specific risk does not carry over the
-    /// same way here -- the set is configured exactly ONCE and submitted ONCE, no repeated
-    /// reconfiguration cycle to go stale between. As extra insurance the output is still verified
-    /// with the same file-exists/stable-size wait every other engine in this add-in uses
-    /// (<see cref="IPdfOutputController.FinalizeJob"/>), so a submission that does go wrong is
-    /// reported as a per-item failure instead of silently producing nothing.
+    /// Strategy (proven after PrintRange.Select + ViewSheetSetting.SaveAs failed repeatedly in
+    /// real Revit 2021 logs -- empty Views, ModificationOutsideTransactionException, then
+    /// "Save of the setting was unsuccessful"):
+    /// <list type="number">
+    ///   <item>Plot each sheet with the working per-sheet path
+    ///     (<see cref="PrintDriverPdfExportEngine"/> / <c>PrintRange.Current</c> + PDF24 autoSave).</item>
+    ///   <item>Join the temp PDFs with PDF24's <c>pdf24-DocTool.exe -join</c> into the final file.</item>
+    ///   <item>Delete the temp parts.</item>
+    /// </list>
+    /// One Idling step per sheet (+ one merge step) so Cancel can take effect between sheets and
+    /// the UI can repaint -- a single giant step would freeze Revit for the whole batch.
     /// </summary>
     public sealed class CombinedPrintDriverPdfExportJob : IRevitStepJob
     {
-        /// <summary>
-        /// Floor for the wait, in seconds -- a combined job with many sheets genuinely takes longer
-        /// to spool and convert than a single page, so the actual timeout scales with item count
-        /// (see <see cref="RunCombinedPrint"/>) instead of using one fixed value for a run that could
-        /// be 1 sheet or 150.
-        /// </summary>
-        private const int FileWriteTimeoutFloorSeconds = 45;
+        private const int MergeTimeoutFloorSeconds = 30;
+        private const int MergeTimeoutPerFileSeconds = 5;
 
-        /// <summary>Extra seconds of budget per sheet/view on top of the floor above.</summary>
-        private const int FileWriteTimeoutPerItemSeconds = 3;
+        // CreateProcess argument limit is ~32K characters; stay well under and chunk-join.
+        private const int MaxJoinArgsLength = 28000;
 
-        private readonly Document _document;
+        private readonly ExportRequest _request;
         private readonly IReadOnlyList<SheetSnapshot> _items;
         private readonly PdfExportSettings _settings;
         private readonly ProjectSnapshot _project;
@@ -59,9 +50,11 @@ namespace GvrTools.Revit.Export.Pdf
         private readonly List<BatchItemResult> _results = new List<BatchItemResult>();
         private readonly Stopwatch _stopwatch = new Stopwatch();
 
-        private PdfPrinter _printer;
-        private PrintManager _printManager;
-        private IPdfOutputController _output;
+        private string _combinedPath;
+        private string _tempRoot;
+        private IExportSession _session;
+        private readonly List<string> _partPaths = new List<string>();
+        private string _failureMessage;
 
         public CombinedPrintDriverPdfExportJob(
             ExportRequest request,
@@ -70,9 +63,7 @@ namespace GvrTools.Revit.Export.Pdf
             Action<BatchItemResult> onItemCompleted = null,
             Action<BatchResult> onFinished = null)
         {
-            if (request == null) throw new ArgumentNullException(nameof(request));
-
-            _document = request.UIDocument.Document;
+            _request = request ?? throw new ArgumentNullException(nameof(request));
             _items = items ?? throw new ArgumentNullException(nameof(items));
             _settings = request.SettingsAs<PdfExportSettings>();
             _project = request.Project;
@@ -85,220 +76,351 @@ namespace GvrTools.Revit.Export.Pdf
 
         public string Name => "Exportación PDF combinado";
 
-        /// <summary>One step: the submission is a single Revit print job, not one per sheet.</summary>
-        public int StepCount => 1;
+        /// <summary>One step per sheet plus a final merge step (Cancel works between steps).</summary>
+        public int StepCount => _items.Count + 1;
 
         public void Begin(UIApplication application)
         {
             _stopwatch.Restart();
+            _partPaths.Clear();
+            _failureMessage = null;
+            _session = null;
+            _tempRoot = null;
+            _combinedPath = null;
 
             if (!ExportPathHelper.TryEnsureWritable(_folder, out string error))
                 throw new ExportSetupException(error);
 
-            // Reuses the exact same printer resolution and output-mechanism selection as the
-            // per-sheet engine (PrintDriverPdfExportEngine.ResolvePrinter/CreateOutputController are
-            // internal, not private, specifically so both paths always agree on how to drive a given
-            // printer).
-            _printer = PrintDriverPdfExportEngine.ResolvePrinter(_settings.PrinterName);
-            _printManager = _document.PrintManager;
-            _output = PrintDriverPdfExportEngine.CreateOutputController(_printer, _log, _printManager);
-
-            try
+            if (FindPdf24DocTool() == null)
             {
-                _printManager.SelectNewPrintDriver(_printer.Name);
-            }
-            catch (Exception ex)
-            {
-                throw new ExportSetupException($"No se pudo seleccionar la impresora \"{_printer.Name}\": {ex.Message}", ex);
+                throw new ExportSetupException(
+                    "No se encontró pdf24-DocTool.exe (necesario para combinar PDFs en Revit 2021)." +
+                    Environment.NewLine + Environment.NewLine +
+                    @"Instala PDF24 Creator en la ruta por defecto (C:\Program Files\PDF24\) o exporta sin combinar.");
             }
 
-            // PrintToFile stays true throughout: Revit rejects false for virtual printers (Adobe PDF,
-            // PDF24, most PDF drivers), which is exactly what this engine always uses.
-            _printManager.PrintToFile = true;
-            _printManager.CombinedFile = true;
+            PrintDriverPdfExportEngine.ResolvePrinter(_settings.PrinterName);
 
-            _log.Info($"{Name}: {_items.Count} elemento(s) hacia '{_folder}' en un solo archivo " +
-                      $"(impresora '{_printer.Name}').");
+            _combinedPath = Path.Combine(_folder, BuildCombinedFileName() + ".pdf");
+            _tempRoot = Path.Combine(Path.GetTempPath(), "GvrTools_Combine_" + Guid.NewGuid().ToString("N"));
+            Directory.CreateDirectory(_tempRoot);
+
+            var tempRequest = new ExportRequest(
+                _request.UIDocument,
+                _tempRoot,
+                "{SheetNumber}_{SheetName}",
+                _settings,
+                _project,
+                _log);
+
+            _session = new PrintDriverPdfExportEngine().BeginSession(tempRequest);
+
+            _log.Info($"{Name}: {_items.Count} elemento(s) → temp por lámina + unión PDF24 → '{_folder}'.");
         }
 
         public void ExecuteStep(UIApplication application, int stepIndex)
         {
-            _onProgress?.Invoke(new BatchProgress(0, 1, "Combinando en un solo PDF..."));
+            int totalSteps = StepCount;
 
-            var resolvedViews = new List<View>();
-            var resolvedIds = new HashSet<ElementId>();
-
-            foreach (SheetSnapshot item in _items)
+            // After a failure, remaining export steps no-op; the merge step still runs to clean up
+            // reporting (join is skipped when _failureMessage is set).
+            if (stepIndex < _items.Count)
             {
-                View view = SheetRepository.ResolveView(_document, item);
-                if (view == null) continue;
+                if (_failureMessage != null) return;
 
-                resolvedViews.Add(view);
-                resolvedIds.Add(item.Id);
-            }
+                SheetSnapshot item = _items[stepIndex];
+                _onProgress?.Invoke(new BatchProgress(
+                    stepIndex, totalSteps, $"Exportando lámina {stepIndex + 1} de {_items.Count}..."));
 
-            string failureMessage = null;
-            string combinedPath = null;
-            if (resolvedViews.Count > 0)
-                failureMessage = RunCombinedPrint(resolvedViews, out combinedPath);
-
-            // Un solo recorrido, en el MISMO ORDEN que _items -- ver el comentario equivalente en
-            // CombinedPdfExportJob.ExecuteStep: BatchExportViewModel.OnItemCompleted empareja cada
-            // resultado con su fila por posición, no por id.
-            foreach (SheetSnapshot item in _items)
-            {
-                if (!resolvedIds.Contains(item.Id))
+                BatchItemResult part = _session.Export(item);
+                if (!part.Succeeded)
                 {
-                    string missing = item.Kind == ExportItemKind.View
-                        ? "La vista ya no existe en el proyecto."
-                        : "La lámina ya no existe en el proyecto.";
-                    Report(BatchItemResult.Failure(item.Label, missing));
+                    _failureMessage = part.Message ?? ("Falló la exportación de " + item.Label + ".");
+                    _log.Error($"PDF combinado: falló la parte '{item.Label}': {_failureMessage}");
+                    return;
                 }
-                else if (failureMessage != null)
-                {
-                    Report(BatchItemResult.Failure(item.Label, failureMessage));
-                }
-                else
-                {
-                    Report(BatchItemResult.Success(item.Label, combinedPath));
-                }
-            }
 
-            _onProgress?.Invoke(new BatchProgress(1, 1, "Combinando en un solo PDF..."));
-        }
-
-        /// <summary>Runs the one combined print job. Returns null on success, or a user-facing failure message.</summary>
-        private string RunCombinedPrint(List<View> views, out string expectedPath)
-        {
-            string fileName = BuildCombinedFileName();
-            expectedPath = Path.Combine(_folder, fileName + ".pdf");
-
-            using (var viewSet = new ViewSet())
-            {
-                foreach (View view in views) viewSet.Insert(view);
-
-                // InSessionViewSheetSet implements IDisposable like every other Revit API wrapper
-                // this file touches (ViewSet above, the various print-manager sub-objects elsewhere
-                // in this add-in) -- it is a fresh .NET wrapper handed out on each read of
-                // ViewSheetSetting.InSession, not the persistent "in session set" concept itself, so
-                // disposing it here only releases this wrapper's native handle and does not disturb
-                // Revit's own document-level state.
-                InSessionViewSheetSet inSession = null;
+                string orderedPath = Path.Combine(
+                    _tempRoot,
+                    (stepIndex + 1).ToString("D4") + "_" + Path.GetFileName(part.OutputPath));
                 try
                 {
-                    try
+                    if (!string.Equals(part.OutputPath, orderedPath, StringComparison.OrdinalIgnoreCase))
                     {
-                        // Orden obligatorio, confirmado en la documentación XML oficial de Autodesk
-                        // (RevitAPI.xml, empaquetada con el SDK): el GETTER de PrintManager.ViewSheetSetting
-                        // lanza InvalidOperationException ("Thrown when the print range is not selected
-                        // views/sheets") si PrintRange todavía no es Select en el momento de leerlo. Por
-                        // eso PrintRange se fija PRIMERO, antes de tocar ViewSheetSetting.
-                        _printManager.PrintRange = PrintRange.Select;
-                        inSession = _printManager.ViewSheetSetting.InSession;
-                        _printManager.ViewSheetSetting.CurrentViewSheetSet = inSession;
-                        inSession.Views = viewSet;
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Error("Fallo al preparar el set de láminas/vistas para el PDF combinado.", ex);
-                        return "No se pudo preparar la selección de láminas/vistas para el PDF combinado.";
+                        if (File.Exists(orderedPath)) File.Delete(orderedPath);
+                        File.Move(part.OutputPath, orderedPath);
                     }
 
-                    try
-                    {
-                        ApplyPrintSettings();
-                    }
-                    catch (Exception ex)
-                    {
-                        // Page setup is a nicety; producing the PDF matters more than a perfect size.
-                        _log.Warn("No se pudo configurar el papel para el PDF combinado: " + ex.Message);
-                    }
-
-                    // Must happen before Apply/SubmitPrint: this is what stops the driver from asking.
-                    _output.DirectNextJob(expectedPath);
-                    _printManager.Apply();
-
-                    bool submitted;
-                    try
-                    {
-                        submitted = _printManager.SubmitPrint();
-                    }
-                    catch (Exception ex)
-                    {
-                        _log.Error("Fallo al enviar el trabajo de impresión combinado.", ex);
-                        return "Revit rechazó la exportación combinada de PDF.";
-                    }
-
-                    if (!submitted)
-                        return "Revit rechazó la exportación combinada de PDF.";
-
-                    // Escalado por cantidad de láminas/vistas: un combinado de 100 sheets vía
-                    // Distiller/PDF24 puede tardar bastante más que uno de 1-2, y un timeout fijo
-                    // reportaría "falló" para un trabajo que en realidad solo iba lento.
-                    var timeout = TimeSpan.FromSeconds(FileWriteTimeoutFloorSeconds + views.Count * FileWriteTimeoutPerItemSeconds);
-                    if (!_output.FinalizeJob(expectedPath, timeout))
-                        return _output.DescribeFailure();
+                    _partPaths.Add(orderedPath);
                 }
-                finally
+                catch (Exception ex)
                 {
-                    inSession?.Dispose();
+                    _failureMessage = "No se pudo preparar el PDF temporal de " + item.Label + ": " + ex.Message;
+                    _log.Error(_failureMessage, ex);
                 }
+
+                return;
+            }
+
+            // Final step: dispose session, merge, report every row with the same outcome.
+            _onProgress?.Invoke(new BatchProgress(
+                _items.Count, totalSteps, "Combinando PDFs con PDF24..."));
+
+            try
+            {
+                DisposeSession();
+
+                if (_failureMessage == null)
+                    _failureMessage = JoinWithPdf24(_partPaths, _combinedPath);
+            }
+            catch (Exception ex)
+            {
+                _failureMessage = "Error al combinar PDFs: " + ex.Message;
+                _log.Error(_failureMessage, ex);
+            }
+            finally
+            {
+                TryDeleteDirectory(_tempRoot);
+                _tempRoot = null;
+            }
+
+            foreach (SheetSnapshot item in _items)
+            {
+                if (_failureMessage != null)
+                    Report(BatchItemResult.Failure(item.Label, _failureMessage));
+                else
+                    Report(BatchItemResult.Success(item.Label, _combinedPath));
+            }
+
+            _onProgress?.Invoke(new BatchProgress(totalSteps, totalSteps, "Combinando en un solo PDF..."));
+        }
+
+        /// <summary>
+        /// Joins <paramref name="parts"/> into <paramref name="outputPath"/> via PDF24 DocTool.
+        /// Returns null on success, or a user-facing error message.
+        /// Chunks when the command line would exceed Windows' ~32K argument limit.
+        /// </summary>
+        private string JoinWithPdf24(IReadOnlyList<string> parts, string outputPath)
+        {
+            if (parts == null || parts.Count == 0)
+                return "No se generó ningún PDF parcial para combinar.";
+
+            if (parts.Count == 1)
+            {
+                try
+                {
+                    if (File.Exists(outputPath)) File.Delete(outputPath);
+                    File.Move(parts[0], outputPath);
+                    return null;
+                }
+                catch (Exception ex)
+                {
+                    return "No se pudo mover el PDF al destino final: " + ex.Message;
+                }
+            }
+
+            string docTool = FindPdf24DocTool();
+            if (docTool == null)
+                return "No se encontró pdf24-DocTool.exe para unir los PDFs.";
+
+            try
+            {
+                if (File.Exists(outputPath)) File.Delete(outputPath);
+            }
+            catch (Exception ex)
+            {
+                return "No se pudo sobrescribir el PDF de destino: " + ex.Message;
+            }
+
+            // Chunked join: A+B+C → temp1, temp1+D+E → temp2, … → outputPath.
+            var pending = new List<string>(parts);
+            int wave = 0;
+            string mergeTempDir = Path.Combine(
+                Path.GetDirectoryName(outputPath) ?? _folder,
+                ".gvr_merge_" + Guid.NewGuid().ToString("N"));
+
+            try
+            {
+                while (pending.Count > 1)
+                {
+                    var chunk = new List<string>();
+                    int argsLen = EstimateJoinArgsLength(outputPath); // fixed prefix budget
+
+                    for (int i = 0; i < pending.Count; i++)
+                    {
+                        int nextLen = pending[i].Length + 3; // space + quotes
+                        if (chunk.Count > 0 && argsLen + nextLen > MaxJoinArgsLength)
+                            break;
+
+                        chunk.Add(pending[i]);
+                        argsLen += nextLen;
+                    }
+
+                    // Always take at least 2 files when possible so we make progress.
+                    if (chunk.Count < 2 && pending.Count >= 2)
+                    {
+                        chunk.Clear();
+                        chunk.Add(pending[0]);
+                        chunk.Add(pending[1]);
+                    }
+
+                    bool isLastWave = chunk.Count == pending.Count;
+                    string waveOutput = isLastWave
+                        ? outputPath
+                        : Path.Combine(EnsureDir(mergeTempDir), "wave_" + wave.ToString("D3") + ".pdf");
+
+                    string error = RunDocToolJoin(docTool, chunk, waveOutput);
+                    if (error != null) return error;
+
+                    pending.RemoveRange(0, chunk.Count);
+                    pending.Insert(0, waveOutput);
+                    wave++;
+                }
+            }
+            finally
+            {
+                TryDeleteDirectory(mergeTempDir);
             }
 
             return null;
         }
 
-        /// <summary>
-        /// One paper size/orientation for the whole combined file -- same limitation as
-        /// <see cref="CombinedPdfExportJob"/> (2022+): "usar el tamaño de cada lámina" cannot apply
-        /// when several sheets of different sizes go into the same file.
-        /// </summary>
-        private void ApplyPrintSettings()
+        private static int EstimateJoinArgsLength(string outputPath) =>
+            "-join -noProgress -profile \"default/good\" -outputFile ".Length + outputPath.Length + 2;
+
+        private string RunDocToolJoin(string docTool, IReadOnlyList<string> inputs, string outputPath)
         {
-            PrintSetup setup = _printManager.PrintSetup;
-            setup.CurrentPrintSetting = setup.InSession;
-            PrintParameters parameters = setup.CurrentPrintSetting.PrintParameters;
-
-            parameters.ZoomType = _settings.FitToPage ? ZoomType.FitToPage : ZoomType.Zoom;
-            if (!_settings.FitToPage) parameters.Zoom = _settings.ZoomPercentage;
-
-            // Same MarginType mapping as PrintDriverPdfExportEngine.ApplyPrintSettings -- see that
-            // method's comment for why 2021 needs no approximation for "Desde una esquina".
-            if (_settings.PaperPlacement == PdfPaperPlacement.OffsetFromCorner)
+            try
             {
-                parameters.PaperPlacement = PaperPlacementType.Margins;
-                switch (_settings.CornerMarginMode)
+                if (File.Exists(outputPath)) File.Delete(outputPath);
+            }
+            catch (Exception ex)
+            {
+                return "No se pudo preparar el PDF de destino: " + ex.Message;
+            }
+
+            var args = new StringBuilder();
+            args.Append("-join -noProgress -profile \"default/good\" -outputFile ");
+            args.Append('"').Append(outputPath).Append('"');
+            foreach (string part in inputs)
+                args.Append(' ').Append('"').Append(part).Append('"');
+
+            _log.Info($"PDF24 join ({inputs.Count} archivo(s)): \"{docTool}\" {args}");
+
+            try
+            {
+                // Do NOT redirect stdout/stderr: WaitForExit + ReadToEnd after exit deadlocks when
+                // the child fills the OS pipe buffer. We only care about exit code + output file.
+                var start = new ProcessStartInfo
                 {
-                    case PdfCornerMarginMode.NoMargin:
-                        parameters.MarginType = MarginType.NoMargin;
-                        break;
-                    case PdfCornerMarginMode.PrinterLimit:
-                        parameters.MarginType = MarginType.PrinterLimit;
-                        break;
-                    default:
-                        parameters.MarginType = MarginType.UserDefined;
-                        parameters.UserDefinedMarginX = _settings.OffsetXInches;
-                        parameters.UserDefinedMarginY = _settings.OffsetYInches;
-                        break;
+                    FileName = docTool,
+                    Arguments = args.ToString(),
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                    RedirectStandardOutput = false,
+                    RedirectStandardError = false,
+                    WorkingDirectory = Path.GetDirectoryName(docTool) ?? _folder
+                };
+
+                using (Process process = Process.Start(start))
+                {
+                    if (process == null)
+                        return "No se pudo iniciar pdf24-DocTool.exe.";
+
+                    int timeoutMs = (MergeTimeoutFloorSeconds + inputs.Count * MergeTimeoutPerFileSeconds) * 1000;
+                    if (!process.WaitForExit(timeoutMs))
+                    {
+                        try { process.Kill(); } catch { /* best effort */ }
+                        return "PDF24 tardó demasiado en combinar los PDFs.";
+                    }
+
+                    if (process.ExitCode != 0)
+                        _log.Warn($"pdf24-DocTool exit={process.ExitCode} (se comprueba si el PDF existe).");
                 }
             }
-            else
+            catch (Exception ex)
             {
-                parameters.PaperPlacement = PaperPlacementType.Center;
+                _log.Error("Fallo al ejecutar pdf24-DocTool.", ex);
+                return "No se pudo ejecutar PDF24 para combinar: " + ex.Message;
             }
 
-            parameters.ColorDepth = PdfExportSettings.ToColorDepth(_settings.ColorMode);
-            parameters.RasterQuality = PdfExportSettings.ToRasterQuality(_settings.RasterQuality);
-            parameters.HideCropBoundaries = _settings.HideCropBoundaries;
-            parameters.HideScopeBoxes = _settings.HideScopeBoxes;
-            parameters.HideUnreferencedViewTags = _settings.HideUnreferencedViewTags;
-            parameters.HideReforWorkPlanes = _settings.HideReferencePlanes;
-            parameters.MaskCoincidentLines = _settings.MaskCoincidentLines;
-            parameters.ViewLinksinBlue = _settings.ViewLinksInBlue;
-            parameters.ReplaceHalftoneWithThinLines = _settings.ReplaceHalftoneWithThinLines;
-            parameters.HiddenLineViews = _settings.HiddenLineProcessing == PdfHiddenLineProcessing.Raster
-                ? HiddenLineViewsType.RasterProcessing
-                : HiddenLineViewsType.VectorProcessing;
+            var wait = TimeSpan.FromSeconds(MergeTimeoutFloorSeconds + inputs.Count * MergeTimeoutPerFileSeconds);
+            if (!FileWait.UntilStable(outputPath, wait))
+            {
+                return "PDF24 no generó el archivo combinado esperado. " +
+                       "Abre PDF24 una vez de forma manual por si pide aceptar un cambio, " +
+                       "o exporta sin combinar.";
+            }
+
+            return null;
+        }
+
+        private static string EnsureDir(string path)
+        {
+            Directory.CreateDirectory(path);
+            return path;
+        }
+
+        private static string FindPdf24DocTool()
+        {
+            var candidates = new List<string>
+            {
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), "PDF24", "pdf24-DocTool.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86), "PDF24", "pdf24-DocTool.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PDF24", "pdf24-DocTool.exe"),
+                Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "PDF24", "pdf24-DocTool.exe")
+            };
+
+            // Also try beside pdf24.exe if the user installed to a custom location via PATH / App Paths.
+            try
+            {
+                string appPaths = @"SOFTWARE\Microsoft\Windows\CurrentVersion\App Paths\pdf24.exe";
+                using (Microsoft.Win32.RegistryKey key =
+                    Microsoft.Win32.Registry.LocalMachine.OpenSubKey(appPaths)
+                    ?? Microsoft.Win32.Registry.CurrentUser.OpenSubKey(appPaths))
+                {
+                    string pdf24 = key?.GetValue(null) as string;
+                    if (!string.IsNullOrEmpty(pdf24))
+                    {
+                        string dir = Path.GetDirectoryName(pdf24);
+                        if (!string.IsNullOrEmpty(dir))
+                            candidates.Add(Path.Combine(dir, "pdf24-DocTool.exe"));
+                    }
+                }
+            }
+            catch
+            {
+                // Registry lookup is best-effort.
+            }
+
+            foreach (string path in candidates)
+            {
+                if (!string.IsNullOrEmpty(path) && File.Exists(path))
+                    return path;
+            }
+
+            return null;
+        }
+
+        private void DisposeSession()
+        {
+            if (_session == null) return;
+            try { _session.Dispose(); }
+            catch { /* best effort */ }
+            _session = null;
+        }
+
+        private static void TryDeleteDirectory(string path)
+        {
+            try
+            {
+                if (!string.IsNullOrEmpty(path) && Directory.Exists(path))
+                    Directory.Delete(path, true);
+            }
+            catch
+            {
+                // Best-effort temp cleanup; never fatal.
+            }
         }
 
         private void Report(BatchItemResult result)
@@ -314,31 +436,31 @@ namespace GvrTools.Revit.Export.Pdf
                 : _settings.CombinedFileName;
 
             string built = FileNameBuilder.Build(pattern, _project.ToTokens(), _project.Title);
-
-            // Same collision-avoidance every other export path uses, so a second combined run into
-            // the same folder gets "_2" instead of silently overwriting the first.
             var resolver = new UniqueNameResolver(_folder);
             return resolver.ReserveBaseName(built, ".pdf");
         }
 
         public void End(UIApplication application, bool cancelled, Exception failure)
         {
-            try
-            {
-                _output?.Dispose();
-            }
-            catch (Exception ex)
-            {
-                _log.Warn("No se pudo restablecer la salida de la impresora: " + ex.Message);
-            }
-
+            DisposeSession();
+            TryDeleteDirectory(_tempRoot);
+            _tempRoot = null;
             _stopwatch.Stop();
 
-            string setupError = failure is ExportSetupException setup
-                ? setup.Message
-                : failure != null
-                    ? "Error inesperado durante la exportación: " + failure.Message
-                    : null;
+            // Reports only fire on the merge step; cancel/exception before that leaves _results empty.
+            if (_results.Count == 0 && _items.Count > 0 && (cancelled || failure != null))
+            {
+                string msg = failure is ExportSetupException
+                    ? failure.Message
+                    : failure != null
+                        ? "Error inesperado durante la exportación: " + failure.Message
+                        : (_failureMessage ?? "Exportación cancelada antes de combinar el PDF.");
+
+                foreach (SheetSnapshot item in _items)
+                    Report(BatchItemResult.Failure(item.Label, msg));
+            }
+
+            string setupError = failure is ExportSetupException setup ? setup.Message : null;
 
             var result = new BatchResult(_results, cancelled, _folder, _stopwatch.Elapsed, setupError);
 

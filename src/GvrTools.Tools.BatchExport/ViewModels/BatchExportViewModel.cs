@@ -714,7 +714,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 SyncFormatOptionSelection();
                 Raise(nameof(ShowPdfOptions), nameof(ShowDwgOptions), nameof(ExportButtonLabel),
                       nameof(StrategyDescription), nameof(ShowPrinterSelector), nameof(IsPdfPrinterMissing),
-                      nameof(CanExport), nameof(DestinationFolder), nameof(SelectedFormatLabel));
+                      nameof(CanExport), nameof(DestinationFolder), nameof(SelectedFormatLabel),
+                      nameof(NamingPatternIsUsed), nameof(NamingPatternIsInert), nameof(NamingPatternInertHint),
+                      nameof(CanEditNamingPattern));
                 ExportCommand.RaiseCanExecuteChanged();
                 RefreshIdleProgressScale();
             }
@@ -943,11 +945,11 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         }
 
         /// <summary>
-        /// "Combinar en un solo archivo" ya está disponible en toda versión soportada: 2022+ usa
-        /// CombinedPdfExportJob (API nativa), 2021 usa CombinedPrintDriverPdfExportJob (PrintRange.Select
-        /// + PrintManager.CombinedFile, un solo trabajo de impresión). La impresora en sí sigue
-        /// validándose igual que en el flujo por lámina (PrintDriverPdfExportEngine.ResolvePrinter
-        /// rechaza cualquiera que abra un diálogo), así que no hace falta un gate aparte aquí.
+        /// "Combinar en un solo archivo" en toda versión soportada: 2022+ usa
+        /// <c>CombinedPdfExportJob</c> (API nativa <c>Document.Export</c>); 2021 usa
+        /// <c>CombinedPrintDriverPdfExportJob</c> (una impresión por lámina vía PDF24 +
+        /// <c>pdf24-DocTool -join</c>). No usar PrintRange.Select / ViewSheetSetting en 2021:
+        /// falla de forma intermitente (Views vacías / SaveAs sin Transaction).
         /// </summary>
         public bool CanCombinePdf => true;
 
@@ -958,11 +960,31 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set
             {
                 if (Set(ref _pdfCombineIntoSingleFile, value && CanCombinePdf))
-                    Raise(nameof(ShowPdfCombinedFileName));
+                    Raise(nameof(ShowPdfCombinedFileName), nameof(NamingPatternIsUsed), nameof(NamingPatternIsInert),
+                          nameof(NamingPatternInertHint), nameof(CanEditNamingPattern));
             }
         }
 
         public bool ShowPdfCombinedFileName => PdfCombineIntoSingleFile;
+
+        /// <summary>
+        /// El patrón de "Nomenclatura de archivos" solo nombra archivos por-lámina. En modo "Solo PDF" +
+        /// "Combinar en un solo archivo" no se genera ningún archivo por-lámina -- el único PDF resultante
+        /// toma su nombre de <see cref="PdfCombinedFileName"/> (pestaña Formato), así que ese patrón queda
+        /// sin efecto y la tarjeta se atenúa para no sugerir que sigue controlando el resultado. Con DWG
+        /// incluido (Solo DWG o PDF+DWG) el patrón sigue aplicando al lado DWG aunque el PDF se combine.
+        /// </summary>
+        public bool NamingPatternIsUsed => !(SelectedFormatMode == FormatMode.Pdf && PdfCombineIntoSingleFile);
+
+        /// <summary>Inverso de <see cref="NamingPatternIsUsed"/> -- para el binding de Visibility del hint (no hay conversor "invertir" en este proyecto).</summary>
+        public bool NamingPatternIsInert => !NamingPatternIsUsed;
+
+        public string NamingPatternInertHint => NamingPatternIsUsed
+            ? null
+            : "No aplica: al combinar en un solo PDF, el nombre se define arriba en Formato → Archivo → \"Nombre del archivo\".";
+
+        /// <summary>IsEnabled real de la tarjeta "Nomenclatura de archivos": ni exportando ni inerte por combinado.</summary>
+        public bool CanEditNamingPattern => CanEditOptions && NamingPatternIsUsed;
 
         private string _pdfCombinedFileName = "{ProjectTitle}_combinado";
         public string PdfCombinedFileName
@@ -1091,7 +1113,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             {
                 if (!Set(ref _isExporting, value)) return;
 
-                Raise(nameof(CanEditOptions), nameof(CanGoBack), nameof(CanGoNext));
+                Raise(nameof(CanEditOptions), nameof(CanGoBack), nameof(CanGoNext), nameof(CanEditNamingPattern));
                 RefreshCommands();
                 GoBackCommand.RaiseCanExecuteChanged();
                 GoNextCommand.RaiseCanExecuteChanged();
@@ -1392,12 +1414,21 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         }
 
         /// <summary>
-        /// How many progress steps one format phase contributes to the run's total. A PDF combinado
-        /// en un solo archivo es UN paso (una sola llamada a Revit), no uno por lámina/vista -- ver
-        /// CombinedPdfExportJob.StepCount. Todo lo demás sigue siendo un paso por ítem.
+        /// How many progress steps one format phase contributes to the run's total.
+        /// PDF combinado 2022+: 1 paso (una llamada nativa). PDF combinado 2021: N+1
+        /// (una impresión por lámina + merge DocTool). Todo lo demás: un paso por ítem.
         /// </summary>
-        private int StepCountFor(ExportFormat format, int selectedCount) =>
-            format == ExportFormat.Pdf && PdfCombineIntoSingleFile ? 1 : selectedCount;
+        private int StepCountFor(ExportFormat format, int selectedCount)
+        {
+            if (format != ExportFormat.Pdf || !PdfCombineIntoSingleFile)
+                return selectedCount;
+
+#if REVIT2022_OR_GREATER
+            return 1;
+#else
+            return selectedCount + 1;
+#endif
+        }
 
         /// <summary>When true, row IsSelected changes skip header/summary Raise (bulk update in progress).</summary>
         private bool _suppressSelectionNotifications;
@@ -1785,11 +1816,13 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                         row.RunProgressLabel = "OK";
                     }
 
+                    row.RunErrorDetail = string.Empty;
                     row.RunSucceeded = true;
                 }
                 else
                 {
                     row.RunProgressLabel = "Error";
+                    row.RunErrorDetail = result.Message ?? string.Empty;
                     row.RunSucceeded = false;
                 }
             }
@@ -1946,6 +1979,33 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     status += $" (PDF no se pudo iniciar: {_firstPhaseResult.SetupError})";
                 else if (lastResult.HasSetupError)
                     status += $" (DWG no se pudo iniciar: {lastResult.SetupError})";
+            }
+
+            // Surface the first failure reason in StatusText (and a dialog when the whole batch
+            // failed with the same message, typical of combined PDF). Previously only the grid
+            // showed the word "Error" with no detail.
+            if (totalFailed > 0)
+            {
+                string firstFailure = null;
+                foreach (ExportResultViewModel row in Results)
+                {
+                    if (!row.Succeeded && !string.IsNullOrWhiteSpace(row.Detail))
+                    {
+                        firstFailure = row.Detail;
+                        break;
+                    }
+                }
+
+                if (!string.IsNullOrWhiteSpace(firstFailure))
+                {
+                    string shortMsg = firstFailure.Length <= 180
+                        ? firstFailure
+                        : firstFailure.Substring(0, 177) + "…";
+                    status += " — " + shortMsg;
+
+                    if (totalSucceeded == 0 && !wasCancelled)
+                        _dialogs.ShowError(DialogTitle, firstFailure);
+                }
             }
 
             StatusText = status;

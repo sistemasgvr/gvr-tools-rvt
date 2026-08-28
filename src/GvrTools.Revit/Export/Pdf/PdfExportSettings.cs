@@ -128,8 +128,8 @@ namespace GvrTools.Revit.Export.Pdf
 
         /// <summary>
         /// When true, every selected sheet/view is written into ONE PDF file instead of one file
-        /// each. 2022+ only -- see <c>CombinedPdfExportJob</c> for why Revit 2021 does not offer
-        /// this. The window is expected to keep this false and hide the control on 2021.
+        /// each. 2022+ uses <c>CombinedPdfExportJob</c> (native API); 2021 uses
+        /// <c>CombinedPrintDriverPdfExportJob</c> (PDF24 per sheet + DocTool join).
         /// </summary>
         public bool CombineIntoSingleFile { get; set; }
 
