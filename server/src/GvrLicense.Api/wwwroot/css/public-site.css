@@ -88,6 +88,12 @@
   box-shadow: 0 0.75rem 1.5rem rgba(0, 0, 0, 0.08);
 }
 
+/* En modo oscuro una sombra negra se pierde contra el fondo ya oscuro -- se usa un resplandor
+   claro y sutil en su lugar, el convenio habitual para elevación en interfaces oscuras. */
+[data-bs-theme="dark"] .public-plan-card:hover {
+  box-shadow: 0 0.75rem 1.5rem rgba(255, 255, 255, 0.08);
+}
+
 .public-plan-icon {
   width: 3rem;
   height: 3rem;

@@ -34,7 +34,7 @@ namespace GvrTools.Revit.Export.Pdf
                 HideReferencePlane = settings.HideReferencePlanes,
                 ZoomType = settings.FitToPage ? ZoomType.FitToPage : ZoomType.Zoom,
                 ZoomPercentage = settings.FitToPage ? 100 : settings.ZoomPercentage,
-                PaperPlacement = ToPaperPlacement(settings.PaperPlacement),
+                PaperPlacement = ToPaperPlacement(settings),
 
                 // Default asks Revit to use the sheet's own size, which is both more accurate and
                 // cheaper than measuring the title block and matching a named format.
@@ -42,10 +42,15 @@ namespace GvrTools.Revit.Export.Pdf
                 PaperOrientation = orientation
             };
 
-            if (settings.PaperPlacement == PdfPaperPlacement.OffsetFromCorner)
+            // LowerLeft es el único PaperPlacement de esta API que acepta un offset numérico -- se
+            // usa tanto para "Sin margen" (0,0, al ras de la esquina) como para "Definido por el
+            // usuario" (los valores reales). "Límite de impresora" no tiene equivalente por esquina
+            // en la API nativa, así que cae a Margins (igual que en Centrado con margen).
+            if (options.PaperPlacement == PaperPlacementType.LowerLeft)
             {
-                options.OriginOffsetX = settings.OffsetXInches;
-                options.OriginOffsetY = settings.OffsetYInches;
+                bool userDefined = settings.CornerMarginMode == PdfCornerMarginMode.UserDefined;
+                options.OriginOffsetX = userDefined ? settings.OffsetXInches : 0;
+                options.OriginOffsetY = userDefined ? settings.OffsetYInches : 0;
             }
 
 #if REVIT2025_OR_GREATER
@@ -57,35 +62,14 @@ namespace GvrTools.Revit.Export.Pdf
             return options;
         }
 
-        public static PaperPlacementType ToPaperPlacement(PdfPaperPlacement placement)
+        public static PaperPlacementType ToPaperPlacement(PdfExportSettings settings)
         {
-            switch (placement)
-            {
-                case PdfPaperPlacement.OffsetFromCorner: return PaperPlacementType.LowerLeft;
-                case PdfPaperPlacement.PrinterMargin: return PaperPlacementType.Margins;
-                default: return PaperPlacementType.Center;
-            }
-        }
+            if (settings.PaperPlacement != PdfPaperPlacement.OffsetFromCorner)
+                return PaperPlacementType.Center;
 
-        private static ColorDepthType ToColorDepth(PdfColorMode mode)
-        {
-            switch (mode)
-            {
-                case PdfColorMode.GrayScale: return ColorDepthType.GrayScale;
-                case PdfColorMode.BlackAndWhite: return ColorDepthType.BlackLine;
-                default: return ColorDepthType.Color;
-            }
-        }
-
-        private static RasterQualityType ToRasterQuality(PdfRasterQuality quality)
-        {
-            switch (quality)
-            {
-                case PdfRasterQuality.Low: return RasterQualityType.Low;
-                case PdfRasterQuality.Medium: return RasterQualityType.Medium;
-                case PdfRasterQuality.Presentation: return RasterQualityType.Presentation;
-                default: return RasterQualityType.High;
-            }
+            return settings.CornerMarginMode == PdfCornerMarginMode.PrinterLimit
+                ? PaperPlacementType.Margins
+                : PaperPlacementType.LowerLeft;
         }
     }
 }

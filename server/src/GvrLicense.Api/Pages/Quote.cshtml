@@ -32,7 +32,7 @@
             @foreach (var plan in Model.Plans)
             {
                 <div class="col-12 col-md-4">
-                    <div class="card public-plan-card h-100 @(string.Equals(plan.Code, Model.Input.PlanCode, StringComparison.OrdinalIgnoreCase) ? "border-primary" : "border-body-secondary border-opacity-25")">
+                    <div class="card public-plan-card h-100 @(string.Equals(plan.Code, Model.Input.PlanCode, StringComparison.OrdinalIgnoreCase) ? "border-primary" : "border-secondary border-opacity-25")">
                         <div class="card-body d-flex flex-column">
                             <div class="d-flex align-items-center gap-3 mb-3">
                                 <span class="public-plan-icon">

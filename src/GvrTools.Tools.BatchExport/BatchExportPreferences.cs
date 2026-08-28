@@ -52,6 +52,13 @@ namespace GvrTools.Tools.BatchExport
         /// </summary>
         public string PdfPaperPlacementRaw { get; set; } = string.Empty;
 
+        /// <summary>
+        /// Nombre de un valor de <see cref="PdfCornerMarginMode"/>, o vacío si nunca se guardó
+        /// (cae a UserDefined -- ver ApplyPreferences). Mismo motivo que PdfPaperPlacementRaw para
+        /// usar string en vez del enum directo.
+        /// </summary>
+        public string PdfCornerMarginModeRaw { get; set; } = string.Empty;
+
         public double PdfOffsetXInches { get; set; }
 
         public double PdfOffsetYInches { get; set; }

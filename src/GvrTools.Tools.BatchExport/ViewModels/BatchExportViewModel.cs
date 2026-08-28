@@ -139,7 +139,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             InvertSelectionCommand = new RelayCommand(InvertVisibleSelection);
             SelectPendingCommand = new RelayCommand(SelectVisiblePending);
             SaveSelectionCommand = new RelayCommand(SaveCurrentSelectionAsFilter);
-            DeleteSavedSelectionCommand = new RelayCommand(DeleteSelectedSavedSelection, () => !string.IsNullOrEmpty(SelectedSavedSelectionName));
+            DeleteSavedSelectionCommand = new RelayCommand(DeleteSelectedSavedSelection, () => IsRealSavedSelectionActive);
             BrowseFolderCommand = new RelayCommand(BrowseFolder);
             OpenFolderCommand = new RelayCommand(() => _dialogs.Reveal(RevealTarget));
             ExportCommand = new RelayCommand(StartExport, () => CanExport);
@@ -209,17 +209,18 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             if (string.Equals(NamingPattern, previousDefault, StringComparison.Ordinal))
                 NamingPattern = kind == ExportItemKind.View ? NamingTokens.DefaultViewPattern : NamingTokens.DefaultPattern;
 
+            // Un filtro guardado es un concepto por modo (Láminas o Vistas): nunca debe seguir
+            // activo al cruzar al otro modo, ni siquiera cuando existe un filtro con el mismo
+            // nombre del otro lado -- limpiarlo ANTES del Refresh de abajo, porque ese Refresh ya
+            // consulta _activeSavedFilterIds y ese conjunto es de UniqueIds del modo anterior (no
+            // coincidiría con ninguna fila nueva, dejando la grilla vacía por error).
+            _activeSavedFilterIds = null;
+            Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
+            Raise(nameof(IsRealSavedSelectionActive));
+
             LoadItems(kind);
             SelectedSheetSet = AllSheetsLabel;
             SheetsView.Refresh();
-
-            // Un filtro guardado es un concepto por modo (Láminas o Vistas): nunca debe seguir
-            // marcado como "elegido" al cruzar al otro modo, ni siquiera cuando existe un filtro con
-            // el mismo nombre del otro lado -- RefreshSavedSelectionNames solo limpia cuando el
-            // nombre YA NO aparece en la lista nueva, así que un nombre compartido entre ambos modos
-            // se colaría sin esta limpieza explícita, dejando el combo mostrando un filtro "elegido"
-            // que no se corresponde con las casillas recién cargadas (todas marcadas por defecto).
-            Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
 
             StatusText = Sheets.Count == 0
                 ? $"El proyecto activo no tiene {ItemNounPlural} para exportar."
@@ -263,17 +264,34 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// en modo Vistas no aparezca (ni se pueda aplicar por error) en modo Láminas.</summary>
         private string CurrentKindTag => _itemKind == ExportItemKind.View ? "View" : "Sheet";
 
-        /// <summary>Nombres de los filtros guardados para el modo actual (Láminas o Vistas), ordenados.</summary>
+        /// <summary>Primera entrada del combo: quita el filtro activo y vuelve a mostrar todas las filas.</summary>
+        public const string AllSavedSelectionsLabel = "(Todos)";
+
+        /// <summary>Nombres de los filtros guardados para el modo actual (Láminas o Vistas), ordenados, con <see cref="AllSavedSelectionsLabel"/> primero.</summary>
         public ObservableCollection<string> SavedSelectionNames { get; } = new ObservableCollection<string>();
 
-        public bool HasSavedSelections => SavedSelectionNames.Count > 0;
+        /// <summary>true si hay al menos un filtro guardado de verdad (sin contar el "(Todos)" siempre presente).</summary>
+        public bool HasSavedSelections => SavedSelectionNames.Count > 1;
+
+        /// <summary>true cuando el filtro elegido es uno real (no "(Todos)") -- gatilla el botón Eliminar y el filtrado de filas.</summary>
+        public bool IsRealSavedSelectionActive =>
+            !string.IsNullOrEmpty(_selectedSavedSelectionName) && !string.Equals(_selectedSavedSelectionName, AllSavedSelectionsLabel, StringComparison.Ordinal);
 
         private string _selectedSavedSelectionName;
 
         /// <summary>
-        /// Elegir un filtro en el combo lo aplica de inmediato (marca exactamente esas láminas/vistas
-        /// y desmarca el resto) -- así lo describió el cliente: "abro el filtro, lo marco y
-        /// automáticamente se marcan los que ya preseleccioné".
+        /// UniqueIds del filtro actualmente aplicado, o null cuando no hay ninguno activo ("(Todos)").
+        /// PassesFilter lo consulta para ocultar (no solo desmarcar) las filas que no pertenecen al
+        /// filtro -- así "tener un filtro" realmente muestra solo eso, como pidió el cliente,
+        /// comparándolo con cómo ProSheets filtra su grilla por View/Sheet Set.
+        /// </summary>
+        private HashSet<string> _activeSavedFilterIds;
+
+        /// <summary>
+        /// Elegir un filtro real en el combo lo aplica de inmediato: oculta el resto de filas y marca
+        /// exactamente esas láminas/vistas -- así lo describió el cliente: "abro el filtro, lo marco y
+        /// automáticamente se marcan los que ya preseleccioné". Elegir "(Todos)" quita el filtro y
+        /// vuelve a mostrar todas las filas, sin tocar lo que ya estaba marcado.
         /// </summary>
         public string SelectedSavedSelectionName
         {
@@ -281,7 +299,14 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set
             {
                 if (!Set(ref _selectedSavedSelectionName, value)) return;
-                if (!string.IsNullOrEmpty(value)) ApplySavedSelection(value);
+
+                if (string.IsNullOrEmpty(value) || string.Equals(value, AllSavedSelectionsLabel, StringComparison.Ordinal))
+                    _activeSavedFilterIds = null;
+                else
+                    ApplySavedSelection(value);
+
+                SheetsView.Refresh();
+                Raise(nameof(IsRealSavedSelectionActive), nameof(AreAllVisibleSelected));
                 DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
             }
         }
@@ -324,6 +349,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             RefreshSavedSelectionNames();
             Set(ref _selectedSavedSelectionName, name, nameof(SelectedSavedSelectionName));
+            _activeSavedFilterIds = new HashSet<string>(uniqueIds, StringComparer.Ordinal);
+            SheetsView.Refresh();
+            Raise(nameof(IsRealSavedSelectionActive), nameof(AreAllVisibleSelected));
             DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
 
             StatusText = $"Filtro \"{name}\" guardado ({uniqueIds.Count} {ItemNounPlural}).";
@@ -332,28 +360,41 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         private void DeleteSelectedSavedSelection()
         {
             string name = SelectedSavedSelectionName;
-            if (string.IsNullOrEmpty(name)) return;
+            if (string.IsNullOrEmpty(name) || string.Equals(name, AllSavedSelectionsLabel, StringComparison.Ordinal)) return;
             if (!_dialogs.Confirm("Eliminar filtro", $"¿Eliminar el filtro \"{name}\"?")) return;
 
             string kind = CurrentKindTag;
             _savedSelections.RemoveAll(s => s.Kind == kind && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
             _savedSelectionStore.Save(_project.ProjectKey, _savedSelections);
 
-            Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
-            DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
+            _activeSavedFilterIds = null;
+            Set(ref _selectedSavedSelectionName, AllSavedSelectionsLabel, nameof(SelectedSavedSelectionName));
             RefreshSavedSelectionNames();
+            SheetsView.Refresh();
+            Raise(nameof(IsRealSavedSelectionActive), nameof(AreAllVisibleSelected));
+            DeleteSavedSelectionCommand.RaiseCanExecuteChanged();
 
             StatusText = $"Filtro \"{name}\" eliminado.";
         }
 
+        /// <summary>
+        /// Marca exactamente las láminas/vistas del filtro y las deja como el único conjunto visible
+        /// -- el filtrado de filas (ocultar el resto) lo aplica PassesFilter vía _activeSavedFilterIds,
+        /// que el caller (el setter de SelectedSavedSelectionName) refresca después de llamar esto.
+        /// </summary>
         private void ApplySavedSelection(string name)
         {
             string kind = CurrentKindTag;
             SavedSelection match = _savedSelections.FirstOrDefault(
                 s => s.Kind == kind && string.Equals(s.Name, name, StringComparison.OrdinalIgnoreCase));
-            if (match == null) return;
+            if (match == null)
+            {
+                _activeSavedFilterIds = null;
+                return;
+            }
 
             var ids = new HashSet<string>(match.UniqueIds, StringComparer.Ordinal);
+            _activeSavedFilterIds = ids;
 
             _suppressSelectionNotifications = true;
             try
@@ -381,14 +422,20 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 .ToList();
 
             SavedSelectionNames.Clear();
+            SavedSelectionNames.Add(AllSavedSelectionsLabel);
             foreach (string name in names) SavedSelectionNames.Add(name);
 
             // La selección elegida ya no existe en la lista (se borró, o cambiamos de modo y no hay
-            // un filtro con ese nombre del otro lado): limpiarla sin volver a aplicar nada.
-            if (!string.IsNullOrEmpty(_selectedSavedSelectionName) && !SavedSelectionNames.Contains(_selectedSavedSelectionName))
-                Set(ref _selectedSavedSelectionName, null, nameof(SelectedSavedSelectionName));
+            // un filtro con ese nombre del otro lado): volver a "(Todos)" -- nunca a null, el combo
+            // siempre debe tener algo elegido -- y quitar el filtrado de filas sin tocar lo marcado.
+            bool stillValid = !string.IsNullOrEmpty(_selectedSavedSelectionName) && SavedSelectionNames.Contains(_selectedSavedSelectionName);
+            if (!stillValid)
+            {
+                _activeSavedFilterIds = null;
+                Set(ref _selectedSavedSelectionName, AllSavedSelectionsLabel, nameof(SelectedSavedSelectionName));
+            }
 
-            Raise(nameof(HasSavedSelections));
+            Raise(nameof(HasSavedSelections), nameof(IsRealSavedSelectionActive));
             DeleteSavedSelectionCommand?.RaiseCanExecuteChanged();
         }
 
@@ -790,8 +837,8 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         /// <summary>El cuadro de zoom % solo tiene sentido cuando no se está ajustando a la página.</summary>
         public bool ShowPdfZoomPercentage => !PdfFitToPage;
 
-        // Nombrada distinto del enum PdfPaperPlacement a propósito: una propiedad con el mismo
-        // nombre que su tipo vuelve ambiguo referenciar los valores del enum (PdfPaperPlacement.X)
+        // Nombradas distinto de sus enums a propósito: una propiedad con el mismo nombre que su tipo
+        // vuelve ambiguo referenciar los valores del enum (PdfPaperPlacement.X, PdfCornerMarginMode.X)
         // en el resto de la clase.
         private PdfPaperPlacement _pdfPlacementMode = PdfPaperPlacement.Center;
         public PdfPaperPlacement PdfPlacementMode
@@ -801,7 +848,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             {
                 if (Set(ref _pdfPlacementMode, value))
                     Raise(nameof(IsPdfPaperPlacementCenter), nameof(IsPdfPaperPlacementOffsetFromCorner),
-                          nameof(IsPdfPaperPlacementPrinterMargin), nameof(ShowPdfOffsetFields));
+                          nameof(ShowPdfCornerMarginMode), nameof(ShowPdfOffsetFields));
             }
         }
 
@@ -817,14 +864,41 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set { if (value) PdfPlacementMode = PdfPaperPlacement.OffsetFromCorner; }
         }
 
-        public bool IsPdfPaperPlacementPrinterMargin
+        /// <summary>El sub-selector (Sin margen/Límite de impresora/Definido por el usuario) solo aplica bajo "Desde una esquina".</summary>
+        public bool ShowPdfCornerMarginMode => IsPdfPaperPlacementOffsetFromCorner;
+
+        private PdfCornerMarginMode _pdfCornerMarginMode = PdfCornerMarginMode.UserDefined;
+        public PdfCornerMarginMode PdfCornerMarginMode
         {
-            get => _pdfPlacementMode == PdfPaperPlacement.PrinterMargin;
-            set { if (value) PdfPlacementMode = PdfPaperPlacement.PrinterMargin; }
+            get => _pdfCornerMarginMode;
+            set
+            {
+                if (Set(ref _pdfCornerMarginMode, value))
+                    Raise(nameof(IsPdfCornerMarginNoMargin), nameof(IsPdfCornerMarginPrinterLimit),
+                          nameof(IsPdfCornerMarginUserDefined), nameof(ShowPdfOffsetFields));
+            }
         }
 
-        /// <summary>Los cuadros X/Y solo tienen sentido en modo "Desde una esquina".</summary>
-        public bool ShowPdfOffsetFields => IsPdfPaperPlacementOffsetFromCorner;
+        public bool IsPdfCornerMarginNoMargin
+        {
+            get => _pdfCornerMarginMode == PdfCornerMarginMode.NoMargin;
+            set { if (value) PdfCornerMarginMode = PdfCornerMarginMode.NoMargin; }
+        }
+
+        public bool IsPdfCornerMarginPrinterLimit
+        {
+            get => _pdfCornerMarginMode == PdfCornerMarginMode.PrinterLimit;
+            set { if (value) PdfCornerMarginMode = PdfCornerMarginMode.PrinterLimit; }
+        }
+
+        public bool IsPdfCornerMarginUserDefined
+        {
+            get => _pdfCornerMarginMode == PdfCornerMarginMode.UserDefined;
+            set { if (value) PdfCornerMarginMode = PdfCornerMarginMode.UserDefined; }
+        }
+
+        /// <summary>Los cuadros X/Y solo tienen sentido en "Desde una esquina" + "Definido por el usuario".</summary>
+        public bool ShowPdfOffsetFields => IsPdfPaperPlacementOffsetFromCorner && IsPdfCornerMarginUserDefined;
 
         private double _pdfOffsetXInches;
         public double PdfOffsetXInches
@@ -869,10 +943,13 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         }
 
         /// <summary>
-        /// "Combinar en un solo archivo" solo existe con la API nativa de PDF (2022+): Revit 2021 no
-        /// tiene forma confiable de combinar varias láminas en un PDF (ver CombinedPdfExportJob).
+        /// "Combinar en un solo archivo" ya está disponible en toda versión soportada: 2022+ usa
+        /// CombinedPdfExportJob (API nativa), 2021 usa CombinedPrintDriverPdfExportJob (PrintRange.Select
+        /// + PrintManager.CombinedFile, un solo trabajo de impresión). La impresora en sí sigue
+        /// validándose igual que en el flujo por lámina (PrintDriverPdfExportEngine.ResolvePrinter
+        /// rechaza cualquiera que abra un diálogo), así que no hace falta un gate aparte aquí.
         /// </summary>
-        public bool CanCombinePdf => RevitVersionInfo.HasNativePdfExport;
+        public bool CanCombinePdf => true;
 
         private bool _pdfCombineIntoSingleFile;
         public bool PdfCombineIntoSingleFile
@@ -1292,6 +1369,14 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 if (set == null || !set.SheetIds.Contains(item.Sheet.Id)) return false;
             }
 
+            // Filtro guardado activo: oculta lo que no pertenece a él (no solo lo desmarca), tal
+            // como pidió el cliente -- "cuando tengo un filtro solo me debe mostrar eso".
+            if (_activeSavedFilterIds != null)
+            {
+                if (string.IsNullOrEmpty(item.Sheet.UniqueId) || !_activeSavedFilterIds.Contains(item.Sheet.UniqueId))
+                    return false;
+            }
+
             string term = SearchText?.Trim();
             return string.IsNullOrEmpty(term) || item.Matches(term);
         }
@@ -1561,17 +1646,21 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             try
             {
-#if REVIT2022_OR_GREATER
-                // "Combinar en un solo archivo" es una forma de ejecución distinta (una sola llamada
-                // a Revit para todo el lote, no una por lámina/vista) -- ver el comentario de
-                // CombinedPdfExportJob. RevitJobScheduler no distingue: cualquier IRevitStepJob le sirve.
+                // "Combinar en un solo archivo" es una forma de ejecución distinta (una sola llamada/
+                // trabajo para todo el lote, no uno por lámina/vista) -- ver el comentario de
+                // CombinedPdfExportJob (2022+) / CombinedPrintDriverPdfExportJob (2021).
+                // RevitJobScheduler no distingue: cualquier IRevitStepJob le sirve.
                 if (format == ExportFormat.Pdf && PdfCombineIntoSingleFile)
                 {
+#if REVIT2022_OR_GREATER
                     var combinedJob = new CombinedPdfExportJob(request, sheets, OnProgress, OnItemCompleted, OnFinished);
+#else
+                    var combinedJob = new CombinedPrintDriverPdfExportJob(request, sheets, OnProgress, OnItemCompleted, OnFinished);
+#endif
                     _scheduler.Start(combinedJob);
                     return;
                 }
-#endif
+
                 IExportEngine engine = _engines.Resolve(format);
                 var job = new BatchExportJob(engine, request, sheets, OnProgress, OnItemCompleted, OnFinished);
                 _scheduler.Start(job);
@@ -1623,6 +1712,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                 FitToPage = PdfFitToPage,
                 ZoomPercentage = PdfZoomPercentage,
                 PaperPlacement = PdfPlacementMode,
+                CornerMarginMode = PdfCornerMarginMode,
                 OffsetXInches = PdfOffsetXInches,
                 OffsetYInches = PdfOffsetYInches,
                 ColorMode = PdfColorMode,
@@ -1899,12 +1989,28 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _pdfFitToPage = preferences.PdfFitToPage;
             _pdfZoomPercentage = preferences.PdfZoomPercentage;
 
-            // Migración desde el viejo PdfNoMargin (bool) la primera vez que se lee un archivo de
-            // preferencias guardado antes de que existiera PdfPaperPlacementRaw -- ver el
-            // comentario en BatchExportPreferences.PdfPaperPlacementRaw.
-            _pdfPlacementMode = Enum.TryParse(preferences.PdfPaperPlacementRaw, true, out PdfPaperPlacement savedPlacement)
-                ? savedPlacement
-                : (preferences.PdfNoMargin ? PdfPaperPlacement.Center : PdfPaperPlacement.PrinterMargin);
+            // Migración desde el viejo PdfNoMargin (bool), de antes de que existiera
+            // PdfPaperPlacementRaw -- ver el comentario en BatchExportPreferences.PdfPaperPlacementRaw.
+            // También cubre el enum de 3 valores anterior (Center/OffsetFromCorner/PrinterMargin):
+            // "PrinterMargin" ya no es un valor top-level, ahora es CornerMarginMode.PrinterLimit
+            // bajo OffsetFromCorner -- de ahí que Enum.TryParse falle para ese valor guardado y caiga
+            // al mismo camino que un archivo viejo sin el campo en absoluto.
+            if (Enum.TryParse(preferences.PdfPaperPlacementRaw, true, out PdfPaperPlacement savedPlacement))
+            {
+                _pdfPlacementMode = savedPlacement;
+                _pdfCornerMarginMode = Enum.TryParse(preferences.PdfCornerMarginModeRaw, true, out PdfCornerMarginMode savedCornerMode)
+                    ? savedCornerMode
+                    : PdfCornerMarginMode.UserDefined;
+            }
+            else if (preferences.PdfNoMargin)
+            {
+                _pdfPlacementMode = PdfPaperPlacement.Center;
+            }
+            else
+            {
+                _pdfPlacementMode = PdfPaperPlacement.OffsetFromCorner;
+                _pdfCornerMarginMode = PdfCornerMarginMode.PrinterLimit;
+            }
             _pdfOffsetXInches = preferences.PdfOffsetXInches;
             _pdfOffsetYInches = preferences.PdfOffsetYInches;
             _pdfHideCropBoundaries = preferences.PdfHideCropBoundaries;
@@ -1917,9 +2023,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _pdfViewLinksInBlue = preferences.PdfViewLinksInBlue;
             _pdfReplaceHalftoneWithThinLines = preferences.PdfReplaceHalftoneWithThinLines;
             _pdfMaskCoincidentLines = preferences.PdfMaskCoincidentLines;
-            // && CanCombinePdf: nunca arranca marcado en un build 2021 aunque el archivo de
-            // preferencias lo traiga en true de un proyecto que antes se abrió en 2022+.
-            _pdfCombineIntoSingleFile = preferences.PdfCombineIntoSingleFile && CanCombinePdf;
+            _pdfCombineIntoSingleFile = preferences.PdfCombineIntoSingleFile;
             _pdfCombinedFileName = string.IsNullOrWhiteSpace(preferences.PdfCombinedFileName)
                 ? "{ProjectTitle}_combinado"
                 : preferences.PdfCombinedFileName;
@@ -1944,6 +2048,7 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             _preferences.PdfFitToPage = PdfFitToPage;
             _preferences.PdfZoomPercentage = PdfZoomPercentage;
             _preferences.PdfPaperPlacementRaw = PdfPlacementMode.ToString();
+            _preferences.PdfCornerMarginModeRaw = PdfCornerMarginMode.ToString();
             // PdfNoMargin ya no lo lee nadie más que la migración de arriba, pero se sigue
             // escribiendo en sincronía por si alguna vez se necesita rodar el archivo de
             // preferencias hacia atrás a una versión anterior del complemento.

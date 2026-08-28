@@ -52,8 +52,12 @@ namespace GvrTools.Revit.Export.Pdf
             return new Session(request, settings, printer);
         }
 
-        /// <summary>Picks the printer to plot through and rejects anything that would interrupt the user.</summary>
-        private static PdfPrinter ResolvePrinter(string requestedName)
+        /// <summary>
+        /// Picks the printer to plot through and rejects anything that would interrupt the user.
+        /// Internal (not private): <see cref="CombinedPrintDriverPdfExportJob"/> reuses this exact
+        /// same resolution + error messaging instead of duplicating it.
+        /// </summary>
+        internal static PdfPrinter ResolvePrinter(string requestedName)
         {
             if (!string.IsNullOrWhiteSpace(requestedName))
             {
@@ -105,6 +109,33 @@ namespace GvrTools.Revit.Export.Pdf
             }
 
             return message.ToString();
+        }
+
+        /// <summary>
+        /// Picks the mechanism that stops <paramref name="printer"/> from asking where to save.
+        /// Internal (not private, not instance): shared with <see cref="CombinedPrintDriverPdfExportJob"/>
+        /// so the two Revit-2021 PDF paths (per-sheet, combined) can never pick different output
+        /// strategies for the same printer.
+        /// </summary>
+        internal static IPdfOutputController CreateOutputController(PdfPrinter printer, ILog log, PrintManager printManager)
+        {
+            switch (printer.Kind)
+            {
+                case PdfPrinterKind.AdobeDistiller:
+                    return new AdobeDistillerOutput(log, printManager);
+
+                case PdfPrinterKind.Pdf24:
+                    return new Pdf24AutoSaveOutput(log, printManager, printer.Name, printer.Port);
+
+                case PdfPrinterKind.Unknown:
+                    log.Warn($"La impresora '{printer.Name}' no está en la lista de impresoras conocidas " +
+                             "(puerto " + printer.Port + "). Se asume que respeta la ruta de salida; si abre un " +
+                             "cuadro de diálogo, elige otra impresora.");
+                    return new RevitPrintToFileOutput(printManager);
+
+                default:
+                    return new RevitPrintToFileOutput(printManager);
+            }
         }
 
         private static string BuildNoPrinterMessage()
@@ -241,26 +272,8 @@ namespace GvrTools.Revit.Export.Pdf
                 }
             }
 
-            private IPdfOutputController CreateOutputController()
-            {
-                switch (_printer.Kind)
-                {
-                    case PdfPrinterKind.AdobeDistiller:
-                        return new AdobeDistillerOutput(_log, _printManager);
-
-                    case PdfPrinterKind.Pdf24:
-                        return new Pdf24AutoSaveOutput(_log, _printManager, _printer.Name, _printer.Port);
-
-                    case PdfPrinterKind.Unknown:
-                        _log.Warn($"La impresora '{_printer.Name}' no está en la lista de impresoras conocidas " +
-                                  "(puerto " + _printer.Port + "). Se asume que respeta la ruta de salida; si abre un " +
-                                  "cuadro de diálogo, elige otra impresora.");
-                        return new RevitPrintToFileOutput(_printManager);
-
-                    default:
-                        return new RevitPrintToFileOutput(_printManager);
-                }
-            }
+            private IPdfOutputController CreateOutputController() =>
+                PrintDriverPdfExportEngine.CreateOutputController(_printer, _log, _printManager);
 
             private void SelectDriver()
             {
@@ -320,29 +333,35 @@ namespace GvrTools.Revit.Export.Pdf
                 // is touched under Center, so each branch below only sets what applies to it.
                 //
                 // Revit 2021's PrintParameters has no LowerLeft placement or OriginOffsetX/Y at all
-                // (those only exist on PDFExportOptions, added in 2022) -- the closest equivalent
-                // here is Margins + MarginType.UserDefined + UserDefinedMarginX/Y, a margin size
-                // from every edge rather than a single-corner offset, but the only knob 2021 exposes
-                // for "move the drawing off centre by a controlled amount".
-                switch (_settings.PaperPlacement)
+                // (those only exist on PDFExportOptions, added in 2022), but its MarginType enum
+                // already has exactly the 3 variants "Desde una esquina" offers
+                // (NoMargin/PrinterLimit/UserDefined) -- unlike the native 2022+ API, 2021 needs no
+                // approximation here at all.
+                if (_settings.PaperPlacement == PdfPaperPlacement.OffsetFromCorner)
                 {
-                    case PdfPaperPlacement.OffsetFromCorner:
-                        parameters.PaperPlacement = PaperPlacementType.Margins;
-                        parameters.MarginType = MarginType.UserDefined;
-                        parameters.UserDefinedMarginX = _settings.OffsetXInches;
-                        parameters.UserDefinedMarginY = _settings.OffsetYInches;
-                        break;
-                    case PdfPaperPlacement.PrinterMargin:
-                        parameters.PaperPlacement = PaperPlacementType.Margins;
-                        parameters.MarginType = MarginType.PrinterLimit;
-                        break;
-                    default:
-                        parameters.PaperPlacement = PaperPlacementType.Center;
-                        break;
+                    parameters.PaperPlacement = PaperPlacementType.Margins;
+                    switch (_settings.CornerMarginMode)
+                    {
+                        case PdfCornerMarginMode.NoMargin:
+                            parameters.MarginType = MarginType.NoMargin;
+                            break;
+                        case PdfCornerMarginMode.PrinterLimit:
+                            parameters.MarginType = MarginType.PrinterLimit;
+                            break;
+                        default:
+                            parameters.MarginType = MarginType.UserDefined;
+                            parameters.UserDefinedMarginX = _settings.OffsetXInches;
+                            parameters.UserDefinedMarginY = _settings.OffsetYInches;
+                            break;
+                    }
+                }
+                else
+                {
+                    parameters.PaperPlacement = PaperPlacementType.Center;
                 }
 
-                parameters.ColorDepth = ToColorDepth(_settings.ColorMode);
-                parameters.RasterQuality = ToRasterQuality(_settings.RasterQuality);
+                parameters.ColorDepth = PdfExportSettings.ToColorDepth(_settings.ColorMode);
+                parameters.RasterQuality = PdfExportSettings.ToRasterQuality(_settings.RasterQuality);
                 parameters.HideCropBoundaries = _settings.HideCropBoundaries;
                 parameters.HideScopeBoxes = _settings.HideScopeBoxes;
                 parameters.HideUnreferencedViewTags = _settings.HideUnreferencedViewTags;
@@ -359,27 +378,6 @@ namespace GvrTools.Revit.Export.Pdf
                     : _settings.MatchSheetSize ? "sin coincidencia" : "detección desactivada";
 
                 return $"impresora: {_printer.Name}, tamaño: {size}, papel: {paper}";
-            }
-
-            private static ColorDepthType ToColorDepth(PdfColorMode mode)
-            {
-                switch (mode)
-                {
-                    case PdfColorMode.GrayScale: return ColorDepthType.GrayScale;
-                    case PdfColorMode.BlackAndWhite: return ColorDepthType.BlackLine;
-                    default: return ColorDepthType.Color;
-                }
-            }
-
-            private static RasterQualityType ToRasterQuality(PdfRasterQuality quality)
-            {
-                switch (quality)
-                {
-                    case PdfRasterQuality.Low: return RasterQualityType.Low;
-                    case PdfRasterQuality.Medium: return RasterQualityType.Medium;
-                    case PdfRasterQuality.Presentation: return RasterQualityType.Presentation;
-                    default: return RasterQualityType.High;
-                }
             }
         }
     }

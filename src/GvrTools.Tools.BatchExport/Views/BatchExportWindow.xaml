@@ -175,10 +175,10 @@
                                VerticalAlignment="Center"/>
                     <ComboBox MinWidth="190" Style="{StaticResource Gvr.ComboBox}"
                               ItemsSource="{Binding SavedSelectionNames}" SelectedItem="{Binding SelectedSavedSelectionName}"
-                              ToolTip="Elige un filtro guardado para marcar automáticamente las mismas láminas/vistas de la última vez."/>
+                              ToolTip="Elige un filtro guardado para mostrar y marcar solo esas láminas/vistas. '(Todos)' quita el filtro y vuelve a mostrar todo."/>
                     <Button Content="Eliminar" Style="{StaticResource Gvr.Button}" Margin="6,0,0,0"
                             Command="{Binding DeleteSavedSelectionCommand}"
-                            Visibility="{Binding HasSavedSelections, Converter={StaticResource Gvr.BoolToVisibility}}"
+                            Visibility="{Binding IsRealSavedSelectionActive, Converter={StaticResource Gvr.BoolToVisibility}}"
                             ToolTip="Elimina el filtro elegido."/>
                     <Button Content="Guardar selección como filtro..." Style="{StaticResource Gvr.Button}" Margin="12,0,0,0"
                             Command="{Binding SaveSelectionCommand}"
@@ -312,12 +312,14 @@
                             <Run Text="no están en tu plan. Clic en ellas para Cambiar plan."/>
                         </TextBlock>
 
-                        <!-- PDF options -->
+                        <!-- PDF options: 3 columnas agrupadas por tema (estilo ProSheets Format tab), en vez
+                             de una sola lista vertical: Ubicación/Zoom | Líneas ocultas/Apariencia | Opciones/Archivo. -->
                         <StackPanel Margin="0,12,0,0"
                                     Visibility="{Binding ShowPdfOptions, Converter={StaticResource Gvr.BoolToVisibility}}">
                             <TextBlock Text="Opciones de PDF" Style="{StaticResource Gvr.Text.Subtle}"
                                        FontWeight="SemiBold" Margin="0,0,0,6"/>
-                            <StackPanel Visibility="{Binding ShowPrinterSelector, Converter={StaticResource Gvr.BoolToVisibility}}"
+                            <StackPanel Margin="0,0,0,8"
+                                        Visibility="{Binding ShowPrinterSelector, Converter={StaticResource Gvr.BoolToVisibility}}"
                                         ToolTip="Revit 2021 no tiene exportador de PDF propio, así que se plotea con PDF24 Toolbox, la única impresora que este complemento usa para exportación masiva.">
                                 <TextBlock Text="{Binding PrinterHint}" TextWrapping="Wrap">
                                     <TextBlock.Style>
@@ -332,115 +334,141 @@
                                 </TextBlock>
                             </StackPanel>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                <TextBlock Text="Color:" Style="{StaticResource Gvr.Text.Label}"/>
-                                <ComboBox MinWidth="150" Style="{StaticResource Gvr.ComboBox}"
-                                          ItemsSource="{Binding PdfColorModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                          SelectedValue="{Binding PdfColorMode}"
-                                          ToolTip="Color imprime a todo color, Escala de grises convierte a tonos de gris, Blanco y negro imprime todo con líneas negras (sin rellenos ni colores)."/>
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                    <ColumnDefinition Width="*"/>
+                                </Grid.ColumnDefinitions>
 
-                                <TextBlock Text="Calidad ráster:" Style="{StaticResource Gvr.Text.Label}" Margin="18,0,8,0"/>
-                                <ComboBox MinWidth="150" Style="{StaticResource Gvr.ComboBox}"
-                                          ItemsSource="{Binding PdfRasterQualities}" DisplayMemberPath="Label" SelectedValuePath="Value"
-                                          SelectedValue="{Binding PdfRasterQuality}"
-                                          ToolTip="Resolución con la que se rasterizan las imágenes y sombreados en el PDF. Alta es el equilibrio habitual; Presentación produce archivos más grandes pero más nítidos."/>
-                            </StackPanel>
+                                <!-- Columna 1: Ubicación en el papel + Zoom -->
+                                <Border Grid.Column="0" Style="{StaticResource Gvr.Card}" Margin="0,0,6,0" VerticalAlignment="Top">
+                                    <StackPanel>
+                                        <TextBlock Text="Ubicación en el papel" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                        <CheckBox Content="Usar el tamaño de cada lámina" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfMatchSheetSize}" Margin="0,0,0,10"
+                                                  ToolTip="Cada PDF sale en el tamaño de papel real de la lámina (según su rótulo), en vez de forzar un tamaño único para todas."/>
 
-                            <StackPanel Orientation="Horizontal" Margin="0,10,0,0">
-                                <CheckBox Content="Usar el tamaño de cada lámina" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfMatchSheetSize}"
-                                          ToolTip="Cada PDF sale en el tamaño de papel real de la lámina (según su rótulo), en vez de forzar un tamaño único para todas."/>
-                                <CheckBox Content="Ajustar a la página" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfFitToPage}" Margin="18,0,0,0"
-                                          ToolTip="Ajusta el dibujo al tamaño del papel. Si se desmarca, se plotea a la escala indicada a la derecha."/>
-                                <TextBlock Text="Zoom:" Style="{StaticResource Gvr.Text.Label}" Margin="18,0,6,0"
-                                           Visibility="{Binding ShowPdfZoomPercentage, Converter={StaticResource Gvr.BoolToVisibility}}"/>
-                                <TextBox Width="55" Style="{StaticResource Gvr.TextBox}"
-                                         Text="{Binding PdfZoomPercentage, UpdateSourceTrigger=PropertyChanged}"
-                                         Visibility="{Binding ShowPdfZoomPercentage, Converter={StaticResource Gvr.BoolToVisibility}}"
-                                         ToolTip="Escala de ploteo en %. 100 = tamaño real; el dibujo puede quedar cortado si el papel es más chico."/>
-                                <TextBlock Text="%" Style="{StaticResource Gvr.Text.Label}" Margin="4,0,0,0"
-                                           Visibility="{Binding ShowPdfZoomPercentage, Converter={StaticResource Gvr.BoolToVisibility}}"/>
-                            </StackPanel>
+                                        <RadioButton GroupName="GvrPdfPlacement" Content="Centrado" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                     IsChecked="{Binding IsPdfPaperPlacementCenter}" Margin="0,0,0,6"
+                                                     ToolTip="Centra el dibujo en la hoja."/>
+                                        <RadioButton GroupName="GvrPdfPlacement" Content="Desde una esquina" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                     IsChecked="{Binding IsPdfPaperPlacementOffsetFromCorner}" Margin="0,0,0,6"
+                                                     ToolTip="Ancla el dibujo a una esquina. El sub-modo de abajo decide cómo."/>
 
-                            <TextBlock Text="Ubicación en el papel" Style="{StaticResource Gvr.Text.Subtle}"
-                                       FontWeight="SemiBold" Margin="0,12,0,6"/>
-                            <StackPanel Orientation="Horizontal">
-                                <RadioButton GroupName="GvrPdfPlacement" Content="Centrado" VerticalAlignment="Center"
-                                             Foreground="{StaticResource Gvr.Brush.Ink}" Margin="0,0,16,0"
-                                             IsChecked="{Binding IsPdfPaperPlacementCenter}"
-                                             ToolTip="Centra el dibujo en la hoja sin dejar margen."/>
-                                <RadioButton GroupName="GvrPdfPlacement" Content="Desde una esquina" VerticalAlignment="Center"
-                                             Foreground="{StaticResource Gvr.Brush.Ink}" Margin="0,0,16,0"
-                                             IsChecked="{Binding IsPdfPaperPlacementOffsetFromCorner}"
-                                             ToolTip="Ancla el dibujo a una esquina, desplazado por el valor X/Y indicado."/>
-                                <RadioButton GroupName="GvrPdfPlacement" Content="Margen de impresora" VerticalAlignment="Center"
-                                             Foreground="{StaticResource Gvr.Brush.Ink}"
-                                             IsChecked="{Binding IsPdfPaperPlacementPrinterMargin}"
-                                             ToolTip="Respeta el margen mínimo que declara la impresora."/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                                        Visibility="{Binding ShowPdfOffsetFields, Converter={StaticResource Gvr.BoolToVisibility}}">
-                                <TextBlock Text="X:" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,6,0"/>
-                                <TextBox Width="60" Style="{StaticResource Gvr.TextBox}"
-                                         Text="{Binding PdfOffsetXInches, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="Desplazamiento horizontal desde la esquina, en pulgadas."/>
-                                <TextBlock Text="Y:" Style="{StaticResource Gvr.Text.Label}" Margin="12,0,6,0"/>
-                                <TextBox Width="60" Style="{StaticResource Gvr.TextBox}"
-                                         Text="{Binding PdfOffsetYInches, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="Desplazamiento vertical desde la esquina, en pulgadas."/>
-                                <TextBlock Text="pulg." Style="{StaticResource Gvr.Text.Subtle}" Margin="6,0,0,0" VerticalAlignment="Center"/>
-                            </StackPanel>
+                                        <!-- Sub-modo de "Desde una esquina": Sin margen/Límite de impresora/Definido por el
+                                             usuario, igual que ProSheets; el campo X/Y solo aplica al último. -->
+                                        <StackPanel Margin="20,0,0,0"
+                                                    Visibility="{Binding ShowPdfCornerMarginMode, Converter={StaticResource Gvr.BoolToVisibility}}">
+                                            <RadioButton GroupName="GvrPdfCornerMode" Content="Sin margen" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding IsPdfCornerMarginNoMargin}" Margin="0,0,0,6"
+                                                         ToolTip="El dibujo queda al ras de la esquina, sin desplazamiento."/>
+                                            <RadioButton GroupName="GvrPdfCornerMode" Content="Límite de impresora" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding IsPdfCornerMarginPrinterLimit}" Margin="0,0,0,6"
+                                                         ToolTip="Respeta el margen mínimo que declara la impresora."/>
+                                            <RadioButton GroupName="GvrPdfCornerMode" Content="Definido por el usuario" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding IsPdfCornerMarginUserDefined}" Margin="0,0,0,6"
+                                                         ToolTip="Desplazamiento manual con los valores X/Y de abajo."/>
+                                            <StackPanel Orientation="Horizontal" Margin="20,0,0,10"
+                                                        Visibility="{Binding ShowPdfOffsetFields, Converter={StaticResource Gvr.BoolToVisibility}}">
+                                                <TextBlock Text="X:" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,4,0" VerticalAlignment="Center"/>
+                                                <TextBox Width="52" Style="{StaticResource Gvr.TextBox}"
+                                                         Text="{Binding PdfOffsetXInches, UpdateSourceTrigger=PropertyChanged}"
+                                                         ToolTip="Desplazamiento horizontal desde la esquina, en pulgadas."/>
+                                                <TextBlock Text="Y:" Style="{StaticResource Gvr.Text.Label}" Margin="8,0,4,0" VerticalAlignment="Center"/>
+                                                <TextBox Width="52" Style="{StaticResource Gvr.TextBox}"
+                                                         Text="{Binding PdfOffsetYInches, UpdateSourceTrigger=PropertyChanged}"
+                                                         ToolTip="Desplazamiento vertical desde la esquina, en pulgadas."/>
+                                                <TextBlock Text="pulg." Style="{StaticResource Gvr.Text.Subtle}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                            </StackPanel>
+                                        </StackPanel>
 
-                            <TextBlock Text="Opciones avanzadas" Style="{StaticResource Gvr.Text.Subtle}"
-                                       FontWeight="SemiBold" Margin="0,12,0,6"/>
-                            <StackPanel Orientation="Horizontal">
-                                <CheckBox Content="Procesar líneas ocultas como raster" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfProcessAsRaster}"
-                                          ToolTip="Vectorial (por defecto) resuelve más rápido y con más nitidez. Actívalo solo si ves artefactos en geometría muy compleja."/>
-                                <CheckBox Content="Vínculos de vista en azul" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfViewLinksInBlue}"
-                                          ToolTip="Resalta en azul los vínculos de vista (view links) en el PDF."/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <CheckBox Content="Reemplazar medio tono con líneas finas" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfReplaceHalftoneWithThinLines}"
-                                          ToolTip="Útil si el PDF se va a imprimir o fotocopiar en blanco y negro: evita que el medio tono se pierda."/>
-                                <CheckBox Content="Enmascarar líneas coincidentes en bordes" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfMaskCoincidentLines}"
-                                          ToolTip="En los bordes de una región recortada, oculta líneas que coinciden exactamente con el borde del recorte."/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <CheckBox Content="Ocultar límites de recorte" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfHideCropBoundaries}"
-                                          ToolTip="Oculta el recuadro de recorte (crop boundary) de cada vista en el PDF."/>
-                                <CheckBox Content="Ocultar cajas de alcance" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfHideScopeBoxes}"
-                                          ToolTip="Oculta las cajas de alcance (scope boxes) en el PDF."/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
-                                <CheckBox Content="Ocultar etiquetas de vista sin referencia" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfHideUnreferencedViewTags}"
-                                          ToolTip="Oculta las etiquetas de vista (view tags) que no apuntan a nada colocado en el proyecto."/>
-                                <CheckBox Content="Ocultar planos de referencia/trabajo" Style="{StaticResource Gvr.CheckBox}"
-                                          IsChecked="{Binding PdfHideReferencePlanes}"
-                                          ToolTip="Oculta los planos de referencia y de trabajo en el PDF."/>
-                            </StackPanel>
+                                        <TextBlock Text="Zoom" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,8,0,8"/>
+                                        <RadioButton GroupName="GvrPdfZoom" Content="Ajustar a la página" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                     IsChecked="{Binding PdfFitToPage}" Margin="0,0,0,6"
+                                                     ToolTip="Ajusta el dibujo al tamaño del papel."/>
+                                        <StackPanel Orientation="Horizontal">
+                                            <RadioButton GroupName="GvrPdfZoom" Content="Zoom:" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding PdfFitToPage, Converter={StaticResource Gvr.InverseBool}}" VerticalAlignment="Center"
+                                                         ToolTip="Plotea a la escala indicada (el dibujo puede quedar cortado si el papel es más chico)."/>
+                                            <TextBox Width="52" Style="{StaticResource Gvr.TextBox}" Margin="6,0,0,0"
+                                                     Text="{Binding PdfZoomPercentage, UpdateSourceTrigger=PropertyChanged}"
+                                                     IsEnabled="{Binding PdfFitToPage, Converter={StaticResource Gvr.InverseBool}}"
+                                                     ToolTip="Escala de ploteo en %. 100 = tamaño real."/>
+                                            <TextBlock Text="%" Style="{StaticResource Gvr.Text.Label}" Margin="4,0,0,0" VerticalAlignment="Center"/>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
 
-                            <TextBlock Text="Archivo" Style="{StaticResource Gvr.Text.Subtle}"
-                                       FontWeight="SemiBold" Margin="0,12,0,6"
-                                       Visibility="{Binding CanCombinePdf, Converter={StaticResource Gvr.BoolToVisibility}}"/>
-                            <CheckBox Content="Combinar todo en un solo archivo PDF" Style="{StaticResource Gvr.CheckBox}"
-                                      IsChecked="{Binding PdfCombineIntoSingleFile}"
-                                      Visibility="{Binding CanCombinePdf, Converter={StaticResource Gvr.BoolToVisibility}}"
-                                      ToolTip="En vez de un PDF por lámina/vista, escribe todas las seleccionadas en un único archivo (una sola llamada a Revit)."/>
-                            <StackPanel Orientation="Horizontal" Margin="0,6,0,0"
-                                        Visibility="{Binding ShowPdfCombinedFileName, Converter={StaticResource Gvr.BoolToVisibility}}">
-                                <TextBlock Text="Nombre del archivo:" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,6,0"/>
-                                <TextBox Width="260" Style="{StaticResource Gvr.TextBox}"
-                                         Text="{Binding PdfCombinedFileName, UpdateSourceTrigger=PropertyChanged}"
-                                         ToolTip="Nombre del PDF combinado. Acepta los mismos tokens de proyecto que el patrón de láminas: {ProjectTitle} {ProjectNumber} {ProjectName} {ClientName} {Date}."/>
-                            </StackPanel>
+                                <!-- Columna 2: Líneas ocultas + Apariencia -->
+                                <Border Grid.Column="1" Style="{StaticResource Gvr.Card}" Margin="6,0,6,0" VerticalAlignment="Top">
+                                    <StackPanel>
+                                        <TextBlock Text="Líneas ocultas" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                        <RadioButton GroupName="GvrPdfHiddenLine" Content="Procesamiento vectorial" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                     IsChecked="{Binding PdfProcessAsRaster, Converter={StaticResource Gvr.InverseBool}}" Margin="0,0,0,6"
+                                                     ToolTip="Por defecto: resuelve más rápido y con más nitidez."/>
+                                        <RadioButton GroupName="GvrPdfHiddenLine" Content="Procesamiento raster" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                     IsChecked="{Binding PdfProcessAsRaster}" Margin="0,0,0,14"
+                                                     ToolTip="Actívalo solo si ves artefactos en geometría muy compleja."/>
+
+                                        <TextBlock Text="Apariencia" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                        <TextBlock Text="Calidad ráster" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
+                                        <ComboBox Style="{StaticResource Gvr.ComboBox}" Margin="0,0,0,10" HorizontalAlignment="Stretch"
+                                                  ItemsSource="{Binding PdfRasterQualities}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                  SelectedValue="{Binding PdfRasterQuality}"
+                                                  ToolTip="Resolución con la que se rasterizan las imágenes y sombreados en el PDF."/>
+                                        <TextBlock Text="Color" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
+                                        <ComboBox Style="{StaticResource Gvr.ComboBox}" HorizontalAlignment="Stretch"
+                                                  ItemsSource="{Binding PdfColorModes}" DisplayMemberPath="Label" SelectedValuePath="Value"
+                                                  SelectedValue="{Binding PdfColorMode}"
+                                                  ToolTip="Color imprime a todo color, Escala de grises convierte a tonos de gris, Blanco y negro imprime todo con líneas negras."/>
+                                    </StackPanel>
+                                </Border>
+
+                                <!-- Columna 3: Opciones + Archivo -->
+                                <Border Grid.Column="2" Style="{StaticResource Gvr.Card}" Margin="6,0,0,0" VerticalAlignment="Top">
+                                    <StackPanel>
+                                        <TextBlock Text="Opciones" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                        <CheckBox Content="Vínculos de vista en azul" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfViewLinksInBlue}" Margin="0,0,0,6"
+                                                  ToolTip="Resalta en azul los vínculos de vista (view links) en el PDF."/>
+                                        <CheckBox Content="Ocultar planos de referencia/trabajo" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfHideReferencePlanes}" Margin="0,0,0,6"
+                                                  ToolTip="Oculta los planos de referencia y de trabajo en el PDF."/>
+                                        <CheckBox Content="Ocultar etiquetas de vista sin referencia" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfHideUnreferencedViewTags}" Margin="0,0,0,6"
+                                                  ToolTip="Oculta las etiquetas de vista (view tags) que no apuntan a nada colocado en el proyecto."/>
+                                        <CheckBox Content="Ocultar cajas de alcance" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfHideScopeBoxes}" Margin="0,0,0,6"
+                                                  ToolTip="Oculta las cajas de alcance (scope boxes) en el PDF."/>
+                                        <CheckBox Content="Ocultar límites de recorte" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfHideCropBoundaries}" Margin="0,0,0,6"
+                                                  ToolTip="Oculta el recuadro de recorte (crop boundary) de cada vista en el PDF."/>
+                                        <CheckBox Content="Reemplazar medio tono con líneas finas" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfReplaceHalftoneWithThinLines}" Margin="0,0,0,6"
+                                                  ToolTip="Útil si el PDF se va a imprimir o fotocopiar en blanco y negro."/>
+                                        <CheckBox Content="Enmascarar líneas coincidentes en bordes" Style="{StaticResource Gvr.CheckBox}"
+                                                  IsChecked="{Binding PdfMaskCoincidentLines}" Margin="0,0,0,14"
+                                                  ToolTip="En los bordes de una región recortada, oculta líneas que coinciden exactamente con el borde del recorte."/>
+
+                                        <StackPanel Visibility="{Binding CanCombinePdf, Converter={StaticResource Gvr.BoolToVisibility}}">
+                                            <TextBlock Text="Archivo" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                                            <RadioButton GroupName="GvrPdfFile" Content="Crear archivos separados" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding PdfCombineIntoSingleFile, Converter={StaticResource Gvr.InverseBool}}" Margin="0,0,0,6"
+                                                         ToolTip="Un PDF por cada lámina/vista seleccionada (comportamiento habitual)."/>
+                                            <RadioButton GroupName="GvrPdfFile" Content="Combinar en un solo archivo" Foreground="{StaticResource Gvr.Brush.Ink}"
+                                                         IsChecked="{Binding PdfCombineIntoSingleFile}" Margin="0,0,0,6"
+                                                         ToolTip="Escribe todas las láminas/vistas seleccionadas en un único PDF (una sola llamada a Revit)."/>
+                                            <StackPanel Visibility="{Binding ShowPdfCombinedFileName, Converter={StaticResource Gvr.BoolToVisibility}}">
+                                                <TextBlock Text="Nombre del archivo" Style="{StaticResource Gvr.Text.Label}" Margin="0,0,0,4"/>
+                                                <TextBox Style="{StaticResource Gvr.TextBox}" HorizontalAlignment="Stretch"
+                                                         Text="{Binding PdfCombinedFileName, UpdateSourceTrigger=PropertyChanged}"
+                                                         ToolTip="Nombre del PDF combinado. Acepta los mismos tokens de proyecto que el patrón de láminas: {ProjectTitle} {ProjectNumber} {ProjectName} {ClientName} {Date}."/>
+                                            </StackPanel>
+                                        </StackPanel>
+                                    </StackPanel>
+                                </Border>
+                            </Grid>
                         </StackPanel>
 
                         <!-- DWG options -->

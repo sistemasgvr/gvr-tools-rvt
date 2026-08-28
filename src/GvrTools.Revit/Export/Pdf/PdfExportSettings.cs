@@ -26,19 +26,33 @@ namespace GvrTools.Revit.Export.Pdf
 
     /// <summary>
     /// Dónde se ubica el dibujo en la hoja -- "Paper Placement" en la API de Revit
-    /// (<c>PaperPlacementType</c>). Centrado y Margen de impresora son los dos modos que ya existían
-    /// bajo el nombre "Sin margen"; Desde una esquina es nuevo (paridad con ProSheets).
+    /// (<c>PaperPlacementType</c>). Dos niveles, igual que ProSheets: este es el nivel superior;
+    /// "Desde una esquina" se refina con <see cref="PdfCornerMarginMode"/>.
     /// </summary>
     public enum PdfPaperPlacement
     {
-        /// <summary>Centra el dibujo en la hoja sin dejar margen.</summary>
+        /// <summary>Centra el dibujo en la hoja.</summary>
         Center,
 
-        /// <summary>Ancla el dibujo a la esquina inferior izquierda, desplazado por <see cref="PdfExportSettings.OffsetXInches"/>/<see cref="PdfExportSettings.OffsetYInches"/>.</summary>
-        OffsetFromCorner,
+        /// <summary>Ancla el dibujo a una esquina; cómo exactamente lo decide <see cref="PdfCornerMarginMode"/>.</summary>
+        OffsetFromCorner
+    }
+
+    /// <summary>
+    /// Sub-modo de "Desde una esquina" -- corresponde 1:1 al <c>MarginType</c> de la API de Revit
+    /// (<c>NoMargin</c>/<c>PrinterLimit</c>/<c>UserDefined</c>), que ya trae exactamente estas 3
+    /// variantes. Solo importa cuando <see cref="PdfExportSettings.PaperPlacement"/> es OffsetFromCorner.
+    /// </summary>
+    public enum PdfCornerMarginMode
+    {
+        /// <summary>Sin margen: el dibujo queda al ras de la esquina.</summary>
+        NoMargin,
 
         /// <summary>Respeta el margen mínimo que declara la impresora.</summary>
-        PrinterMargin
+        PrinterLimit,
+
+        /// <summary>Desplazamiento manual, ver <see cref="PdfExportSettings.OffsetXInches"/>/<see cref="PdfExportSettings.OffsetYInches"/>.</summary>
+        UserDefined
     }
 
     /// <summary>
@@ -64,15 +78,18 @@ namespace GvrTools.Revit.Export.Pdf
         /// <summary>Where the drawing sits on the sheet.</summary>
         public PdfPaperPlacement PaperPlacement { get; set; } = PdfPaperPlacement.Center;
 
+        /// <summary>How "OffsetFromCorner" is measured. Ignored when <see cref="PaperPlacement"/> is Center.</summary>
+        public PdfCornerMarginMode CornerMarginMode { get; set; } = PdfCornerMarginMode.UserDefined;
+
         /// <summary>
-        /// Offset from the lower-left corner. Only used when <see cref="PaperPlacement"/> is
-        /// OffsetFromCorner. In inches -- per the Revit API contract for both consumers of this
-        /// value: <c>PDFExportOptions.OriginOffsetX/Y</c> and <c>PrintParameters.UserDefinedMarginX/Y</c>
+        /// Offset from the corner. Only used when <see cref="CornerMarginMode"/> is UserDefined. In
+        /// inches -- per the Revit API contract for both consumers of this value:
+        /// <c>PDFExportOptions.OriginOffsetX/Y</c> and <c>PrintParameters.UserDefinedMarginX/Y</c>
         /// are paper-space measurements (like <c>PaperSize</c>), not model-space feet.
         /// </summary>
         public double OffsetXInches { get; set; }
 
-        /// <summary>Offset from the lower-left corner, in inches -- see <see cref="OffsetXInches"/>.</summary>
+        /// <summary>Offset from the corner, in inches -- see <see cref="OffsetXInches"/>.</summary>
         public double OffsetYInches { get; set; }
 
         public PdfColorMode ColorMode { get; set; } = PdfColorMode.Color;
