@@ -132,7 +132,23 @@
         { title: 'Cuándo', field: 'occurredAtUtc', width: 150, formatter: (c) => window.gvrAdmin.formatDate(c.getValue()), responsive: 0 },
         { title: 'Acción', field: 'actionLabel', minWidth: 160, responsive: 0 },
         { title: 'Quién', field: 'actor', minWidth: 100, responsive: 1 },
-        { title: 'IP', field: 'ip', width: 130, formatter: (c) => c.getValue() ? `<code>${c.getValue()}</code>` : '—', formatterParams: { allowHTML: true }, responsive: 2 },
+        // IMPORTANTE: "ip" viene de X-Forwarded-For, un header que el cliente controla por completo
+        // (ver ClientIp() en V1Endpoints.cs) -- puede contener cualquier string, no necesariamente una
+        // IP. Nunca usar allowHTML/innerHTML con este campo: se construye un nodo <code> real y se le
+        // asigna textContent (nunca se interpreta como HTML), a diferencia de la versión anterior que
+        // interpolaba el valor crudo en un template literal con allowHTML: true -- eso permitía XSS
+        // almacenado ejecutable en la sesión de cualquier admin con solo mandar una activación/heartbeat
+        // anónimo con ese header spoofeado.
+        {
+          title: 'IP', field: 'ip', width: 130, responsive: 2,
+          formatter: (c) => {
+            const value = c.getValue();
+            if (!value) return '—';
+            const code = document.createElement('code');
+            code.textContent = value;
+            return code;
+          },
+        },
         { title: 'Detalle', field: 'detailSummary', minWidth: 200, responsive: 0 },
       ],
     });

@@ -49,10 +49,32 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(400, emailError);
         }
 
+        var licenseId = await db.Licenses
+            .Where(l => l.Key == normalizedKey)
+            .Select(l => (Guid?)l.Id)
+            .FirstOrDefaultAsync(ct);
+
+        if (licenseId is null)
+        {
+            throw new LicenseApiException(404, "Licencia no encontrada.");
+        }
+
+        // Bloqueo de fila a nivel de base de datos (SELECT ... FOR UPDATE) ANTES de leer Devices:
+        // sin esto, dos activaciones concurrentes para la misma licencia (dos dispositivos distintos,
+        // justo en el límite de asientos) podían leer el mismo conteo "por debajo del límite" antes
+        // de que ninguna de las dos confirmara, y las dos pasar la validación -- el índice único
+        // (LicenseId, Fingerprint) solo protege contra el MISMO fingerprint duplicado, no contra
+        // exceder MaxUsers/max_devices_per_user por una carrera. Se bloquea PRIMERO y recién después
+        // se cargan Devices, para que la segunda transacción, al obtener el bloqueo, vea ya
+        // confirmados los cambios de la primera.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT 1 FROM license WHERE id = {licenseId.Value} FOR UPDATE", ct);
+
         var license = await db.Licenses
             .Include(l => l.Plan)
             .Include(l => l.Devices)
-            .FirstOrDefaultAsync(l => l.Key == normalizedKey, ct);
+            .FirstOrDefaultAsync(l => l.Id == licenseId.Value, ct);
 
         if (license is null)
         {
@@ -164,6 +186,7 @@ public sealed class LicenseEngine(
 
         await EnsureCurrentPeriodCountersAsync(license, ct);
         await db.SaveChangesAsync(ct);
+        await tx.CommitAsync(ct);
 
         var (json, signature) = await BuildSignedBlobAsync(license, device, ct);
         var accessToken = jwt.Issue(license.Id, device.Id);
@@ -189,6 +212,20 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(400, "Fingerprint requerido.");
         }
 
+        // Devices.Fingerprint es único solo DENTRO de una licencia (LicenseId, Fingerprint) -- a
+        // propósito, porque el mismo fingerprint legítimamente aparece en más de una licencia cuando
+        // una máquina pasa de free a de pago (ActivateAsync crea un Device nuevo bajo la licencia de
+        // pago; el Device viejo bajo la free queda tal cual). Eso significa que NINGÚN índice único de
+        // base de datos por sí solo evita que dos altas free concurrentes con el mismo fingerprint
+        // (antes de que cualquiera de las dos confirme) lean ambas "no existe" y cada una cree su
+        // propia licencia free nueva -- exactamente lo que "anti-reinstalación" promete evitar. Se
+        // serializa con un advisory lock de Postgres por fingerprint (no por fila -- todavía no existe
+        // ninguna fila que bloquear en la primera alta), liberado solo al confirmar/revertir la
+        // transacción.
+        await using var tx = await db.Database.BeginTransactionAsync(ct);
+        await db.Database.ExecuteSqlInterpolatedAsync(
+            $"SELECT pg_advisory_xact_lock(hashtext({request.DeviceFingerprint})::bigint)", ct);
+
         var existingDevice = await db.Devices
             .Include(d => d.License).ThenInclude(l => l!.Plan)
             .FirstOrDefaultAsync(d => d.Fingerprint == request.DeviceFingerprint, ct);
@@ -202,6 +239,7 @@ public sealed class LicenseEngine(
             TouchDevice(existingDevice, clientIp);
             await EnsureCurrentPeriodCountersAsync(reusedLicense, ct);
             await db.SaveChangesAsync(ct);
+            await tx.CommitAsync(ct);
 
             var (reusedJson, reusedSignature) = await BuildSignedBlobAsync(reusedLicense, existingDevice, ct);
             return new ActivateResponse
@@ -219,6 +257,9 @@ public sealed class LicenseEngine(
             // plan free se desactivó a propósito o por error, esto tiene que fallar con un mensaje
             // claro -- nunca inventar un plan fantasma en código.
             await AuditDeniedAsync(clientIp, request.DeviceFingerprint, "Plan free ausente o desactivado.", ct);
+            // Confirma antes de lanzar: si no, el rollback automático del "await using tx" al
+            // propagarse la excepción se llevaría también el registro de auditoría recién escrito.
+            await tx.CommitAsync(ct);
             throw new LicenseApiException(503, "Registro gratuito temporalmente no disponible. Contacta a soporte.");
         }
 
@@ -227,6 +268,9 @@ public sealed class LicenseEngine(
         if (freePlan.ServiceSuspended)
         {
             await AuditDeniedAsync(clientIp, request.DeviceFingerprint, "Plan free con servicio suspendido.", ct);
+            // Ver el comentario equivalente arriba: confirmar antes de lanzar para no perder el
+            // registro de auditoría en el rollback automático.
+            await tx.CommitAsync(ct);
             throw new LicenseApiException(403, ServiceSuspendedMessage(freePlan));
         }
 
@@ -320,6 +364,7 @@ public sealed class LicenseEngine(
         // todavía no existe de verdad en Postgres.
         await db.SaveChangesAsync(ct);
         await EnsureCurrentPeriodCountersAsync(license, ct);
+        await tx.CommitAsync(ct);
 
         var (json, signature) = await BuildSignedBlobAsync(license, device, ct);
         return new ActivateResponse
@@ -367,7 +412,7 @@ public sealed class LicenseEngine(
     {
         var license = await db.Licenses
             .Include(l => l.Plan)
-            .Include(l => l.Devices)
+            .Include(l => l.Devices).ThenInclude(d => d.CompanyUser)
             .FirstOrDefaultAsync(l => l.Id == licenseId, ct);
 
         if (license is null)
@@ -380,6 +425,17 @@ public sealed class LicenseEngine(
         {
             throw new LicenseApiException(401,
                 "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave de licencia.");
+        }
+
+        // Un CompanyUser desactivado desde Admin -> Customers -> Members ("Desactivar") no debe poder
+        // seguir renovando su sesión indefinidamente vía heartbeat -- antes de este chequeo, el botón
+        // "Desactivar" no bloqueaba nada en la práctica: solo impedía NUEVAS activaciones
+        // (FindOrCreateCompanyUserAsync), pero un device ya activado seguía recibiendo un JWT nuevo de
+        // 14 días en cada heartbeat sin límite.
+        if (device.CompanyUser is { IsActive: false })
+        {
+            throw new LicenseApiException(401,
+                "Tu acceso fue desactivado por el administrador de la cuenta. Contacta a soporte.");
         }
 
         // Suspendida/vencida se corta aquí, no esperando a que se agote la gracia offline
@@ -413,14 +469,29 @@ public sealed class LicenseEngine(
             throw new LicenseApiException(404, "Licencia no encontrada.");
         }
 
-        EnsurePlanServiceAvailable(license.Plan);
+        // Antes solo se llamaba a EnsurePlanServiceAvailable (kill switch del PLAN completo) -- eso
+        // ignoraba por completo License.Status/ValidUntil de ESTA licencia puntual. A diferencia de
+        // HeartbeatAsync (que sí corta aquí "sin esperar a la gracia offline", ver comentario ahí),
+        // una licencia suspendida o vencida podía seguir reportando uso y descontando cuota vía
+        // /v1/usage durante toda la vida del JWT ya emitido (hasta 14 días) sin pasar nunca por
+        // heartbeat. EnsureLicenseUsable ya incluye la verificación del kill switch del plan.
+        EnsureLicenseUsable(license);
 
-        var deviceExists = await db.Devices.AnyAsync(
-            d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
-        if (!deviceExists)
+        var device = await db.Devices
+            .Include(d => d.CompanyUser)
+            .FirstOrDefaultAsync(
+                d => d.Id == deviceId && d.LicenseId == licenseId && d.Fingerprint == request.DeviceFingerprint, ct);
+        if (device is null)
         {
             throw new LicenseApiException(401,
                 "Este PC fue desvinculado o ya no está autorizado. Activa de nuevo con tu clave de licencia.");
+        }
+
+        // Mismo chequeo que HeartbeatAsync -- ver el comentario ahí para el porqué.
+        if (device.CompanyUser is { IsActive: false })
+        {
+            throw new LicenseApiException(401,
+                "Tu acceso fue desactivado por el administrador de la cuenta. Contacta a soporte.");
         }
 
         var featureCode = request.FeatureCode.Trim().ToLowerInvariant();

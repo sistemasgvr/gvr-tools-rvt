@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
@@ -24,6 +25,11 @@ namespace GvrTools.Licensing.Storage
         }
 
         public string FilePath => _path;
+
+        // Ver CrossProcessFileLock: dos Revit.exe abiertos a la vez en la misma máquina, cada uno con
+        // su propio LicenseClient, comparten este mismo archivo -- sin este mutex entre procesos
+        // podían intercalar lectura-modificación-escritura y perderse cambios en silencio.
+        private static readonly TimeSpan CrossProcessTimeout = TimeSpan.FromSeconds(5);
 
         public bool TryLoad(out string rawJson, out byte[] signature)
         {
@@ -51,6 +57,51 @@ namespace GvrTools.Licensing.Storage
 
         public bool TryLoadEnvelope(out LicenseCacheEnvelope envelope)
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
+            {
+                return TryLoadEnvelopeUnlocked(out envelope);
+            }
+        }
+
+        /// <summary>
+        /// Lee-modifica-escribe bajo UN SOLO acquire del mutex entre procesos (no dos, uno para leer
+        /// y otro aparte para escribir) -- así ningún otro proceso puede colarse justo entre la
+        /// lectura del existente y la escritura del actualizado.
+        /// </summary>
+        public void Save(string rawJson, byte[] signature)
+        {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
+            {
+                if (!TryLoadEnvelopeUnlocked(out var existing))
+                    existing = new LicenseCacheEnvelope();
+
+                existing.EntitlementJson = rawJson;
+                existing.EntitlementSignatureBase64 = Convert.ToBase64String(signature);
+                WriteEnvelopeUnlocked(existing);
+            }
+        }
+
+        public void SaveEnvelope(LicenseCacheEnvelope envelope)
+        {
+            if (envelope == null) throw new ArgumentNullException(nameof(envelope));
+
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
+            {
+                WriteEnvelopeUnlocked(envelope);
+            }
+        }
+
+        public void Clear()
+        {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
+            {
+                if (File.Exists(_path))
+                    File.Delete(_path);
+            }
+        }
+
+        private bool TryLoadEnvelopeUnlocked(out LicenseCacheEnvelope envelope)
+        {
             envelope = null;
             if (!File.Exists(_path)) return false;
 
@@ -72,29 +123,7 @@ namespace GvrTools.Licensing.Storage
             }
         }
 
-        public void Save(string rawJson, byte[] signature)
-        {
-            if (!TryLoadEnvelope(out var existing))
-                existing = new LicenseCacheEnvelope();
-
-            existing.EntitlementJson = rawJson;
-            existing.EntitlementSignatureBase64 = Convert.ToBase64String(signature);
-            WriteEnvelope(existing);
-        }
-
-        public void SaveEnvelope(LicenseCacheEnvelope envelope)
-        {
-            if (envelope == null) throw new ArgumentNullException(nameof(envelope));
-            WriteEnvelope(envelope);
-        }
-
-        public void Clear()
-        {
-            if (File.Exists(_path))
-                File.Delete(_path);
-        }
-
-        private void WriteEnvelope(LicenseCacheEnvelope envelope)
+        private void WriteEnvelopeUnlocked(LicenseCacheEnvelope envelope)
         {
             var dir = System.IO.Path.GetDirectoryName(_path);
             if (!string.IsNullOrEmpty(dir))
@@ -120,5 +149,24 @@ namespace GvrTools.Licensing.Storage
 
         [DataMember]
         public string EntitlementSignatureBase64 { get; set; }
+
+        /// <summary>
+        /// Consumo local de cuota (TryConsume/SetRemaining) todavía no confirmado por el servidor,
+        /// APARTE del blob firmado -- ver el comentario en EntitlementService.Changed para el porqué.
+        /// No forma parte del contenido firmado; se reaplica en la carga solo para RECORTAR remaining,
+        /// nunca para aumentarlo, así que un archivo manipulado o ausente aquí como mucho vuelve al
+        /// comportamiento previo a este fix (perder el consumo local en cada reinicio), nunca a
+        /// otorgar más cuota de la que el servidor firmó.
+        /// </summary>
+        [DataMember]
+        public Dictionary<string, string> LocalOverrides { get; set; }
+
+        /// <summary>
+        /// Piso de reloj monótono (ISO 8601 UTC) contra el retroceso del reloj del sistema -- ver
+        /// EntitlementService.AdvanceClockFloor. Se actualiza en cada carga/sincronización exitosa con
+        /// el "ahora" más alto visto hasta el momento; nunca se vuelve a bajar.
+        /// </summary>
+        [DataMember]
+        public string LastObservedUtc { get; set; }
     }
 }

@@ -1,6 +1,7 @@
 using System.Windows;
 using GvrTools.Tools.BatchExport.ViewModels;
 using GvrTools.UI.Icons;
+using GvrTools.UI.Services;
 
 namespace GvrTools.Tools.BatchExport.Views
 {
@@ -10,6 +11,7 @@ namespace GvrTools.Tools.BatchExport.Views
         public ExportSuccessWindow(ExportSuccessViewModel viewModel)
         {
             InitializeComponent();
+            WpfHostGuard.EnsureExplicitShutdown();
 
             DataContext = viewModel;
             viewModel.RequestClose += Close;

@@ -1,5 +1,6 @@
 using System.Windows;
 using GvrTools.UI.Icons;
+using GvrTools.UI.Services;
 
 namespace GvrTools.Licensing.Activation
 {
@@ -11,6 +12,7 @@ namespace GvrTools.Licensing.Activation
         public AccountLicenseWindow(AccountLicenseViewModel viewModel)
         {
             InitializeComponent();
+            WpfHostGuard.EnsureExplicitShutdown();
             _viewModel = viewModel;
             DataContext = viewModel;
             viewModel.RequestClose += OnRequestClose;

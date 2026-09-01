@@ -37,15 +37,74 @@ namespace GvrTools.Core.Naming
         /// Same as <see cref="ReserveBaseName(string,string)"/> but also avoids Revit DWG sibling
         /// files named <c>{baseName}-{view}.ext</c> when views are exported separately.
         /// </summary>
+        /// <summary>Hard ceiling on "_2", "_3", ... attempts -- matches ExportPathHelper.AllocateUniqueDirectoryPath's cap.</summary>
+        private const int MaxAttempts = 10000;
+
         public string ReserveBaseName(string baseName, string extension, IReadOnlyList<string> viewSuffixes)
         {
             string ext = NormalizeExtension(extension);
-            string candidate = baseName;
 
-            for (int suffix = 2; !TryReserve(candidate, ext, viewSuffixes); suffix++)
+            // Sanea los sufijos de vista para que sean únicos ENTRE SÍ antes de reservar nada. Sin
+            // esto, dos vistas colocadas en la misma lámina cuyo View.Name sanea al mismo string (p.
+            // ej. "Detalle 1/2" y "Detalle 1:2", donde PathSanitizer convierte ambos caracteres
+            // inválidos a "_") hacían que TryReserve fallara SIEMPRE para cualquier candidate -- la
+            // colisión es entre los dos sufijos duplicados, no depende del nombre base -- y el bucle de
+            // abajo reintentaba para siempre sin ninguna combinación que pudiera tener éxito jamás.
+            IReadOnlyList<string> uniqueViewSuffixes = MakeSuffixesUnique(viewSuffixes);
+
+            string candidate = baseName;
+            int suffix = 2;
+            while (!TryReserve(candidate, ext, uniqueViewSuffixes))
+            {
+                if (suffix > MaxAttempts)
+                {
+                    throw new InvalidOperationException(
+                        $"No se pudo reservar un nombre único para \"{baseName}\" en \"{_folder}\" tras {MaxAttempts} intentos.");
+                }
+
                 candidate = baseName + "_" + suffix.ToString();
+                suffix++;
+            }
 
             return candidate;
+        }
+
+        /// <summary>
+        /// Returns a copy of <paramref name="viewSuffixes"/> where any suffix that sanitizes/repeats
+        /// identically to an earlier one in the same list gets its own "_2", "_3", ... appended, so no
+        /// two entries can ever collide with each other regardless of what the sheet's base name is.
+        /// </summary>
+        private static IReadOnlyList<string> MakeSuffixesUnique(IReadOnlyList<string> viewSuffixes)
+        {
+            if (viewSuffixes == null || viewSuffixes.Count == 0)
+                return viewSuffixes;
+
+            var seen = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            var result = new List<string>(viewSuffixes.Count);
+
+            foreach (string raw in viewSuffixes)
+            {
+                if (string.IsNullOrWhiteSpace(raw))
+                {
+                    result.Add(raw);
+                    continue;
+                }
+
+                string trimmed = raw.Trim();
+                if (!seen.TryGetValue(trimmed, out int count))
+                {
+                    seen[trimmed] = 1;
+                    result.Add(trimmed);
+                }
+                else
+                {
+                    count++;
+                    seen[trimmed] = count;
+                    result.Add(trimmed + "_" + count.ToString());
+                }
+            }
+
+            return result;
         }
 
         /// <summary>Reserves a name and returns the full path it maps to.</summary>

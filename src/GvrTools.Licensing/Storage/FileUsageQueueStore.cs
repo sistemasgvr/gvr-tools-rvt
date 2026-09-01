@@ -24,8 +24,13 @@ namespace GvrTools.Licensing.Storage
             _path = path ?? Path.Combine(dir, "usage-queue.json");
         }
 
+        // Timeout del mutex entre procesos: generoso porque una escritura de este archivo es
+        // milisegundos, nunca debería tardar más salvo que otro proceso quedara colgado sosteniéndolo.
+        private static readonly TimeSpan CrossProcessTimeout = TimeSpan.FromSeconds(5);
+
         public void Enqueue(UsageEventDto item)
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 var list = Load();
@@ -36,6 +41,7 @@ namespace GvrTools.Licensing.Storage
 
         public List<UsageEventDto> PeekAll()
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 return Load();
@@ -45,6 +51,7 @@ namespace GvrTools.Licensing.Storage
         /// <summary>Devuelve todos los eventos pendientes y vacía la cola de forma atómica.</summary>
         public List<UsageEventDto> TakeAll()
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 var list = Load();
@@ -59,6 +66,7 @@ namespace GvrTools.Licensing.Storage
             if (items == null || items.Count == 0)
                 return;
 
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 var current = Load();
@@ -71,14 +79,35 @@ namespace GvrTools.Licensing.Storage
 
         public void ReplaceAll(List<UsageEventDto> remaining)
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 Save(remaining ?? new List<UsageEventDto>());
             }
         }
 
+        /// <summary>
+        /// Quita un único evento por Id, releyendo el archivo primero -- a diferencia de ReplaceAll
+        /// (que sobreescribe la cola entera con una lista dada por el llamador, potencialmente
+        /// obsoleta si algo más encoló un evento nuevo mientras tanto), esto siempre parte del
+        /// contenido ACTUAL en disco bajo el mismo lock, así que nunca puede perder un Enqueue()
+        /// concurrente de otro hilo/tarea (p. ej. otra lámina exportándose mientras un flush está en
+        /// curso en segundo plano).
+        /// </summary>
+        public void RemoveById(Guid eventId)
+        {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
+            lock (_gate)
+            {
+                var current = Load();
+                current.RemoveAll(x => x.EventId == eventId);
+                Save(current);
+            }
+        }
+
         public void Clear()
         {
+            using (new CrossProcessFileLock(_path, CrossProcessTimeout))
             lock (_gate)
             {
                 if (File.Exists(_path))

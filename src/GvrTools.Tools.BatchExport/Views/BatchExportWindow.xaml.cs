@@ -5,6 +5,7 @@ using System.Windows.Interop;
 using GvrTools.Licensing.Activation;
 using GvrTools.Tools.BatchExport.ViewModels;
 using GvrTools.UI.Icons;
+using GvrTools.UI.Services;
 
 namespace GvrTools.Tools.BatchExport.Views
 {
@@ -20,9 +21,17 @@ namespace GvrTools.Tools.BatchExport.Views
         private readonly BatchExportViewModel _viewModel;
         private readonly Action _onClosed;
 
+        /// <summary>true tras el primer intento de cerrar mientras exportaba -- ver OnClosing/OnViewModelPropertyChanged.</summary>
+        private bool _closeRequested;
+
         public BatchExportWindow(BatchExportViewModel viewModel, Action onClosed = null)
         {
             InitializeComponent();
+
+            // Ver GvrTools.UI.Services.WpfHostGuard: sin esto, cerrar una ventana secundaria (p. ej.
+            // el popup de éxito de exportación) podía terminar cerrando también esta ventana, porque
+            // WPF trataba la ventana secundaria como "la última" que estaba rastreando.
+            WpfHostGuard.EnsureExplicitShutdown();
 
             _viewModel = viewModel;
             _onClosed = onClosed;
@@ -37,7 +46,14 @@ namespace GvrTools.Tools.BatchExport.Views
 
             viewModel.RequestChangePlan += OnRequestChangePlan;
             viewModel.ExportSucceeded += OnExportSucceeded;
+            viewModel.PropertyChanged += OnViewModelPropertyChanged;
         }
+
+        /// <summary>Documento de Revit que esta ventana está exportando -- ver BatchExportCommand.Execute.</summary>
+        public Autodesk.Revit.DB.Document Document => _viewModel.Document;
+
+        /// <summary>Título del proyecto que esta ventana está exportando, para el aviso cuando difiere del documento activo.</summary>
+        public string DocumentTitle => _viewModel.DocumentTitle;
 
         /// <summary>"Cambiar plan": mismo flujo que Cuenta/Licencia en la cinta (LicenseUi.ShowAccount), sin duplicar esa lógica.</summary>
         private void OnRequestChangePlan()
@@ -56,13 +72,17 @@ namespace GvrTools.Tools.BatchExport.Views
 
         /// <summary>
         /// Closing mid-run would leave the scheduler writing into a dead window, so the first
-        /// attempt cancels the run instead and the window closes once the current sheet finishes.
+        /// attempt cancels the run instead and the window closes once the current sheet finishes
+        /// (ver OnViewModelPropertyChanged -- eso es lo que de verdad dispara el cierre real cuando
+        /// IsExporting pasa a false; antes nada lo hacía y había que volver a clicar "X" una segunda
+        /// vez para que este método encontrara IsExporting ya en false y dejara pasar el cierre).
         /// </summary>
         protected override void OnClosing(CancelEventArgs e)
         {
             if (_viewModel.IsExporting)
             {
                 e.Cancel = true;
+                _closeRequested = true;
                 _viewModel.CancelCommand.Execute(null);
                 return;
             }
@@ -70,8 +90,18 @@ namespace GvrTools.Tools.BatchExport.Views
             base.OnClosing(e);
         }
 
+        private void OnViewModelPropertyChanged(object sender, PropertyChangedEventArgs e)
+        {
+            if (_closeRequested && e.PropertyName == nameof(BatchExportViewModel.IsExporting) && !_viewModel.IsExporting)
+            {
+                _closeRequested = false;
+                Close();
+            }
+        }
+
         protected override void OnClosed(EventArgs e)
         {
+            _viewModel.PropertyChanged -= OnViewModelPropertyChanged;
             _viewModel.Dispose();
             _onClosed?.Invoke();
 

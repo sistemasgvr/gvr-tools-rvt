@@ -1,5 +1,6 @@
 using System.Windows;
 using GvrTools.UI.Icons;
+using GvrTools.UI.Services;
 
 namespace GvrTools.Licensing.Activation
 {
@@ -8,6 +9,7 @@ namespace GvrTools.Licensing.Activation
         public UpdateAvailableWindow(UpdateAvailableViewModel viewModel)
         {
             InitializeComponent();
+            WpfHostGuard.EnsureExplicitShutdown();
             DataContext = viewModel;
             viewModel.RequestClose += () =>
             {

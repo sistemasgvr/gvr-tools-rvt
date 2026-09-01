@@ -12,6 +12,7 @@ namespace GvrTools.UI.Services
         public TextPromptWindow()
         {
             InitializeComponent();
+            WpfHostGuard.EnsureExplicitShutdown();
             Loaded += OnLoaded;
         }
 

@@ -82,6 +82,17 @@ namespace GvrTools.Tools.BatchExport
 
             if (_openWindow != null)
             {
+                // Sin esto, cambiar de documento activo en Revit y volver a ejecutar el comando
+                // reactivaba en silencio la ventana ya abierta del OTRO proyecto -- el usuario, viendo
+                // el proyecto nuevo activo en Revit, podía terminar exportando láminas del proyecto
+                // viejo pensando que exportó el que tiene abierto ahora.
+                if (_openWindow.Document != null && !ReferenceEquals(_openWindow.Document, uiDocument.Document))
+                {
+                    TaskDialog.Show(DialogTitle,
+                        $"Ya hay una exportación abierta para el proyecto \"{_openWindow.DocumentTitle}\". " +
+                        "Ciérrala primero si quieres exportar el proyecto activo ahora.");
+                }
+
                 _openWindow.Activate();
                 return Result.Succeeded;
             }

@@ -194,7 +194,28 @@ namespace GvrTools.Revit.Export.Pdf
                 _printManager = _document.PrintManager;
                 _output = CreateOutputController();
 
-                SelectDriver();
+                // CreateOutputController() puede devolver un Pdf24AutoSaveOutput cuyo propio
+                // constructor YA mutó el registro de Windows (BackupAndSwitch a Handler="autoSave")
+                // de forma real e inmediata. Si SelectDriver() lanza después (impresora
+                // desinstalada/renombrada entre resolver y seleccionar, spooler caído, etc.), este
+                // constructor nunca retorna -- BeginSession() nunca asigna _session, así que
+                // End()/_session?.Dispose() en el llamador es un no-op y ese Pdf24AutoSaveOutput
+                // queda huérfano, sin nadie que restaure el registro. Se atrapa aquí específicamente
+                // para disponer _output antes de relanzar, evitando que la impresora quede
+                // permanentemente en modo autoSave.
+                try
+                {
+                    SelectDriver();
+                }
+                catch
+                {
+                    try { _output.Dispose(); }
+                    catch (Exception disposeEx)
+                    {
+                        _log.Warn("No se pudo restablecer la salida de la impresora tras un fallo de selección de driver: " + disposeEx.Message);
+                    }
+                    throw;
+                }
 
                 _log.Info($"Impresora '{_printer.Name}' (puerto {_printer.Port}, driver {_printer.Driver}) " +
                           $"clasificada como {_printer.Kind}; salida por {_output.Description}.");

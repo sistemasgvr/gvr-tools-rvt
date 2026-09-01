@@ -26,6 +26,7 @@ namespace GvrTools.Licensing
         private readonly IMachineFingerprint _fingerprint;
         private readonly FileLicenseCacheStore _cache;
         private readonly FileUsageQueueStore _usageQueue;
+        private readonly FileDevicePinStore _devicePin;
         private readonly EntitlementService _entitlements;
         private readonly IEntitlementSignatureVerifier _verifier;
         private readonly bool _ownsApi;
@@ -40,13 +41,19 @@ namespace GvrTools.Licensing
             FileLicenseCacheStore cache = null,
             FileUsageQueueStore usageQueue = null,
             IEntitlementSignatureVerifier verifier = null,
-            bool ownsApi = false)
+            bool ownsApi = false,
+            FileDevicePinStore devicePin = null)
         {
             _verifier = verifier ?? new EcdsaEntitlementSignatureVerifier();
             _usageQueue = usageQueue ?? new FileUsageQueueStore();
             _cache = cache ?? new FileLicenseCacheStore();
+            _devicePin = devicePin ?? new FileDevicePinStore();
             _fingerprint = fingerprint ?? new WindowsMachineFingerprint();
             _entitlements = new EntitlementService(_verifier, _usageQueue);
+            // Ver EntitlementService.Changed: persiste el consumo local (TryConsume/SetRemaining) en
+            // un campo aparte del envelope, para que sobreviva un reinicio de Revit offline en vez de
+            // perderse (lo que antes permitía "recargar" la cuota completa reiniciando sin conexión).
+            _entitlements.Changed += PersistLocalOverrides;
             _api = api;
             _ownsApi = ownsApi || api == null;
 
@@ -57,6 +64,27 @@ namespace GvrTools.Licensing
             }
 
             LoadFromDisk();
+        }
+
+        private void PersistLocalOverrides()
+        {
+            try
+            {
+                if (!_cache.TryLoadEnvelope(out var envelope))
+                    return; // Sin envelope todavía (nunca activado) -- nada que anotar encima.
+
+                var overrides = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+                foreach (var pair in _entitlements.SnapshotFeatures())
+                    overrides[pair.Key] = pair.Value;
+                envelope.LocalOverrides = overrides;
+                _cache.SaveEnvelope(envelope);
+            }
+            catch
+            {
+                // Best effort -- perder esta escritura puntual solo significa volver al
+                // comportamiento previo a este fix para el próximo reinicio, nunca debe tumbar el
+                // consumo que ya se aceptó en memoria.
+            }
         }
 
         public IEntitlementService Entitlements => _entitlements;
@@ -141,13 +169,42 @@ namespace GvrTools.Licensing
             lock (_gate) _accessToken = envelope.AccessToken;
             _entitlements.SetDeviceFingerprint(_fingerprint.GetFingerprint());
 
-            // Firma inválida => no confiar. Gracia vencida => conservar token para heartbeat.
-            if (!_entitlements.TryApplySignedBlob(envelope.EntitlementJson, signature, _fingerprint.GetFingerprint()))
+            // Piso de reloj monótono (ver EntitlementService.AdvanceClockFloor) -- se avanza ANTES de
+            // que TryApplySignedBlob evalúe la gracia offline, con el "ahora" más alto que esta
+            // instalación ya vio, para que atrasar el reloj del sistema no la renueve indefinidamente.
+            if (DateTimeOffset.TryParse(
+                    envelope.LastObservedUtc, CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var lastObserved))
             {
-                if (!_verifier.TryVerify(envelope.EntitlementJson, signature, out _))
+                _entitlements.AdvanceClockFloor(lastObserved);
+            }
+
+            // pinnedDeviceId: ver FileDevicePinStore. license.dat (este envelope) se copia entero si
+            // alguien copia SOLO ese archivo a otra máquina para clonar la licencia sin conexión -- la
+            // marca vive aparte para que esa copia no la arrastre consigo. Firma inválida O DeviceId
+            // que no coincide con la marca => no confiar. Gracia vencida => conservar token para heartbeat.
+            string pinnedDeviceId = _devicePin.Load();
+            if (_entitlements.TryApplySignedBlob(envelope.EntitlementJson, signature, _fingerprint.GetFingerprint(), pinnedDeviceId))
+            {
+                // Reaplica el consumo local (ver EntitlementService.Changed) sobre el blob recién
+                // cargado, ANTES de que cualquier CanUse/Remaining lo lea -- así un reinicio de Revit
+                // offline ya no "recarga" la cuota completa que ya se había consumido localmente.
+                _entitlements.ApplyPersistedLocalOverrides(envelope.LocalOverrides);
+
+                // Persiste el piso avanzado (el "ahora" real de esta corrida) para la próxima carga.
+                try
                 {
-                    ClearLocal();
+                    envelope.LastObservedUtc = _entitlements.EffectiveNowUtc.ToString("O", CultureInfo.InvariantCulture);
+                    _cache.SaveEnvelope(envelope);
                 }
+                catch
+                {
+                    // Best effort -- no persistir el piso esta vez solo deja la protección donde
+                    // estaba antes de esta carga, nunca debe tumbar el uso de una licencia válida.
+                }
+            }
+            else if (!_verifier.TryVerify(envelope.EntitlementJson, signature, out _))
+            {
+                ClearLocal();
             }
         }
 
@@ -300,11 +357,15 @@ namespace GvrTools.Licensing
                 lock (_gate) token = _accessToken;
                 if (string.IsNullOrEmpty(token)) return;
 
-                // Drena atómicamente: evita que un ReplaceAll concurrente borre eventos nuevos.
-                var pending = _usageQueue.TakeAll();
+                // A diferencia de TakeAll() (vaciaba el archivo entero por adelantado y solo escribía
+                // lo sobrante UNA vez, al final del bucle completo), esto lee sin vaciar y reescribe la
+                // cola en disco DESPUÉS DE CADA ítem procesado -- si Revit se cierra a la fuerza (crash,
+                // kill, corte de energía) a mitad de este bucle, lo más que se pierde es el ítem que
+                // estaba en vuelo en ese instante, nunca el resto de la cola todavía sin procesar (que
+                // antes se perdía entero porque TakeAll ya la había vaciado del disco desde el principio).
+                var pending = _usageQueue.PeekAll();
                 if (pending.Count == 0) return;
 
-                var leftover = new List<UsageEventDto>();
                 for (var i = 0; i < pending.Count; i++)
                 {
                     ct.ThrowIfCancellationRequested();
@@ -318,6 +379,12 @@ namespace GvrTools.Licensing
                         if (response?.Remaining != null)
                         {
                             _entitlements.SetRemaining(item.FeatureCode, response.Remaining);
+
+                            // Reportado con éxito: se quita de la cola y se persiste de inmediato --
+                            // ver el comentario de arriba sobre por qué se escribe en cada iteración.
+                            // RemoveById (no ReplaceAll con una instantánea en memoria) para no pisar
+                            // un Enqueue() concurrente de otra tarea mientras este flush está en curso.
+                            _usageQueue.RemoveById(item.EventId);
                         }
                         else
                         {
@@ -325,8 +392,8 @@ namespace GvrTools.Licensing
                             // encontró fila (contador del período/feature no existe todavía en
                             // ese momento puntual). Reintentar más tarde suele resolverlo solo,
                             // pero sin este log no había forma de distinguir esto de un bug real.
+                            // No se quita de la cola -- reintenta en el próximo flush.
                             LogFailure($"Evento de uso '{item.FeatureCode}' quedó pendiente: el servidor no devolvió Remaining (event={item.EventId}).", null);
-                            leftover.Add(item);
                         }
                     }
                     catch (LicenseApiClientException ex) when (IsServerSessionRejected(ex))
@@ -339,7 +406,7 @@ namespace GvrTools.Licensing
                         // ahora queda un log explícito de cuántos eventos se perdieron, en vez de
                         // desaparecer en silencio.
                         int lostCount = pending.Count - i;
-                        ClearLocal();
+                        ClearLocal(); // Ya vacía la cola (_usageQueue.Clear()) -- nada más que persistir aquí.
 
                         if (await TryActivateFreeAsync(ct).ConfigureAwait(false))
                         {
@@ -351,20 +418,17 @@ namespace GvrTools.Licensing
                             MarkNeedsReactivation(ex.Message);
                         }
 
-                        leftover.Clear();
                         break;
                     }
                     catch (Exception ex)
                     {
+                        // Este ítem y todo lo que sigue ya están en "remaining" tal cual (nada se quitó
+                        // todavía para ellos) -- no hace falta volver a escribir, el disco ya refleja
+                        // exactamente este estado gracias a la persistencia incremental de arriba.
                         LogFailure($"No se pudo reportar uso '{item.FeatureCode}' (event={item.EventId}); queda en cola para reintentar.", ex);
-                        for (var j = i; j < pending.Count; j++)
-                            leftover.Add(pending[j]);
                         break;
                     }
                 }
-
-                if (leftover.Count > 0)
-                    _usageQueue.PrependAll(leftover);
             }
             finally
             {
@@ -499,16 +563,32 @@ namespace GvrTools.Licensing
         {
             var signature = Convert.FromBase64String(signatureBase64 ?? string.Empty);
             _entitlements.SetDeviceFingerprint(_fingerprint.GetFingerprint());
+            // Sin expectedDeviceId aquí a propósito: esta es la respuesta ONLINE genuina del servidor
+            // para EL FINGERPRINT REAL de esta máquina (recién enviado en el request de
+            // activate/heartbeat) -- es la fuente de verdad que define cuál es el DeviceId correcto
+            // para esta instalación, no algo que deba validarse contra una marca previa.
             if (!_entitlements.TryApplySignedBlob(entitlementJson, signature, _fingerprint.GetFingerprint()))
                 throw new InvalidOperationException("El servidor devolvió un blob de licencia inválido.");
 
+            // Fija la marca (ver FileDevicePinStore) con el DeviceId que el servidor acaba de confirmar
+            // para esta máquina, para que un license.dat copiado desde otra instalación se rechace en
+            // el próximo LoadFromDisk offline en vez de usarse como si fuera legítimo.
+            _devicePin.Save(_entitlements.DeviceId);
+
             lock (_gate) _accessToken = accessToken;
+
+            // Un intercambio online genuino es un "ahora" confiable -- avanza el piso de reloj (ver
+            // EntitlementService.AdvanceClockFloor) igual que en LoadFromDisk, para que la próxima
+            // gracia offline se cuente desde este momento real, no desde uno posiblemente atrasado a
+            // mano después.
+            _entitlements.AdvanceClockFloor(DateTimeOffset.UtcNow);
 
             _cache.SaveEnvelope(new LicenseCacheEnvelope
             {
                 AccessToken = accessToken,
                 EntitlementJson = entitlementJson,
-                EntitlementSignatureBase64 = signatureBase64
+                EntitlementSignatureBase64 = signatureBase64,
+                LastObservedUtc = _entitlements.EffectiveNowUtc.ToString("O", CultureInfo.InvariantCulture)
             });
         }
 

@@ -5,6 +5,7 @@ using System.ComponentModel;
 using System.IO;
 using System.Linq;
 using System.Windows.Data;
+using Autodesk.Revit.DB;
 using Autodesk.Revit.UI;
 using GvrTools.Core.Batch;
 using GvrTools.Core.Diagnostics;
@@ -442,6 +443,9 @@ namespace GvrTools.Tools.BatchExport.ViewModels
         public ObservableCollection<ExportResultViewModel> Results { get; } = new ObservableCollection<ExportResultViewModel>();
 
         public string DocumentTitle => _project.Title;
+
+        /// <summary>Documento de Revit que esta ventana está exportando -- expuesto para que BatchExportCommand pueda detectar si el usuario cambió de documento activo antes de reactivar una ventana ya abierta.</summary>
+        public Document Document => _uiDocument.Document;
 
         /// <summary>Expuesto solo para que el code-behind reutilice el mismo IUserDialogs al abrir ExportSuccessWindow.</summary>
         public IUserDialogs Dialogs => _dialogs;
@@ -960,8 +964,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             set
             {
                 if (Set(ref _pdfCombineIntoSingleFile, value && CanCombinePdf))
+                {
                     Raise(nameof(ShowPdfCombinedFileName), nameof(NamingPatternIsUsed), nameof(NamingPatternIsInert),
                           nameof(NamingPatternInertHint), nameof(CanEditNamingPattern));
+
+                    // StepCountFor (y por lo tanto el "X / Y" en reposo del paso Crear) depende de
+                    // este valor -- combinado cuenta 1 paso en vez de N. Sin esto, togglear la casilla
+                    // dejaba el preview de progreso mostrando el conteo de ANTES hasta que el usuario
+                    // tocaba algo más (formato/selección) que sí disparaba RefreshIdleProgressScale.
+                    RefreshIdleProgressScale();
+                }
             }
         }
 
@@ -1662,7 +1674,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
             }
         }
 
-        private void LaunchFormat(ExportFormat format, List<SheetSnapshot> sheets)
+        /// <param name="onFailedToStart">
+        /// Solo lo usa OnFinished para la SEGUNDA fase de un run PDF+DWG (DWG falla al arrancar
+        /// DESPUÉS de que PDF ya terminó con éxito). Sin esto, el catch de abajo -- pensado para la
+        /// PRIMERA fase (PDF falla al arrancar, cae a intentar solo DWG) -- se quedaba con la
+        /// excepción sin relanzarla porque para entonces _multiFormatPhase ya valía 1, así que el
+        /// try/catch de OnFinished alrededor de esta misma llamada nunca llegaba a ejecutarse: los
+        /// resultados de la fase PDF ya exitosa (historial, cuota, popup de éxito) se perdían en
+        /// silencio en vez de cerrarse con FinishExport.
+        /// </param>
+        private void LaunchFormat(ExportFormat format, List<SheetSnapshot> sheets, Action<Exception> onFailedToStart = null)
         {
             _currentExportFormat = format;
             _itemsCompletedInPhase = 0;
@@ -1705,6 +1726,12 @@ namespace GvrTools.Tools.BatchExport.ViewModels
                     _progressOffset = StepCountFor(format, sheets.Count);
                     StatusText = $"{ExportFormatInfo.Label(format)}: {ex.Message} — Continuando con DWG...";
                     LaunchFormat(ExportFormat.Dwg, sheets);
+                    return;
+                }
+
+                if (onFailedToStart != null)
+                {
+                    onFailedToStart(ex);
                     return;
                 }
 
@@ -1918,10 +1945,21 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
                 try
                 {
-                    LaunchFormat(ExportFormat.Dwg, _pendingSheets);
+                    // onFailedToStart: ver el comentario del parámetro en LaunchFormat. Sin esto, un
+                    // fallo aquí no propagaba hasta este catch (quedaba atrapado dentro de
+                    // LaunchFormat), así que los resultados ya exitosos de la fase PDF nunca llegaban
+                    // a FinishExport -- ni historial, ni cuota, ni popup de éxito, pese a que los PDF
+                    // sí se habían generado.
+                    LaunchFormat(ExportFormat.Dwg, _pendingSheets, onFailedToStart: ex =>
+                    {
+                        _log.Error("No se pudo iniciar la exportación DWG.", ex);
+                        FinishExport(result);
+                    });
                 }
                 catch (Exception ex)
                 {
+                    // Red de seguridad genuina para cualquier excepción que LaunchFormat no atrape
+                    // internamente (no debería llegar aquí en el caso ya cubierto arriba).
                     _log.Error("No se pudo iniciar la exportación DWG.", ex);
                     FinishExport(result);
                 }
@@ -2020,6 +2058,16 @@ namespace GvrTools.Tools.BatchExport.ViewModels
 
             if (totalSucceeded > 0)
                 ExportSucceeded?.Invoke(new ExportSummary(totalSucceeded, totalFailed, folderText, RevealTarget));
+
+            // Vuelve a null (ver el comentario del campo: "null fuera de un export") ahora que todo lo
+            // de arriba que necesitaba las rutas reales de ESTE lote ya las leyó. Sin esto,
+            // GetDestinationFolder/DestinationFolder/RevealTarget seguían mostrando la carpeta del
+            // lote YA TERMINADO si el usuario cambiaba OutputFolder o de formato/selección antes de
+            // exportar de nuevo -- el archivo se escribía en el lugar correcto igual (StartExport
+            // recalcula antes de escribir), pero el preview y "Abrir carpeta" quedaban desincronizados
+            // hasta el siguiente export.
+            _runDestinationFolders = null;
+            Raise(nameof(DestinationFolder));
         }
 
         private void RefreshCommands()
