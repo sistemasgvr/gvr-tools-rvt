@@ -45,11 +45,11 @@ En **Revit 2021** el PDF se genera con **PDF24** (debe estar instalada). En **20
 
 | Opción | Qué hace | Cuándo usarla |
 |--------|----------|---------------|
-| **Usar el tamaño de cada lámina** | Cada PDF sale en el tamaño real de esa lámina (A1, A0…). | Entregas normales. Desmárcalo solo si quieres forzar un solo tamaño. |
+| **Usar el tamaño de cada lámina** | Activado: cada PDF usa el tamaño del rótulo. Desactivado: **mismo papel fijo para todas** (ANSI D / ~22×34" en 2022+ y en 2021 vía PDF24 si el driver lo ofrece). | Entregas normales → activado. |
 | **Centrado** | Dibujo centrado en la hoja. | Recomendado. |
 | **Desde una esquina** | Ancla el dibujo desde una esquina. | Cuando necesitas un margen o alineación concreta. |
 | **Sin margen** | Pegado a la esquina. | Casos especiales. |
-| **Límite de impresora** | Respeta el margen mínimo de la impresora. | Si se va a imprimir en papel físico. |
+| **Límite de impresora** | Deja margen desde la esquina. **2021:** margen real de la impresora. **2022+:** ~0,25 pulg (la API nativa no tiene equivalente exacto). | Si se va a imprimir en papel físico. |
 | **Definido por el usuario** | Desplazamiento manual (X / Y en pulgadas). | Ajustes finos. |
 
 ### PDF — Zoom
@@ -57,7 +57,7 @@ En **Revit 2021** el PDF se genera con **PDF24** (debe estar instalada). En **20
 | Opción | Qué hace |
 |--------|----------|
 | **Ajustar a la página** | Escala el dibujo para que quepa completo. **Recomendado.** |
-| **Zoom %** | Escala fija. Si el papel es más chico, puede cortarse. `100` = tamaño real. |
+| **Zoom %** | Escala fija (p. ej. 50 % = mitad del tamaño, con espacio en blanco). **Hay que seleccionar “Zoom”, no “Ajustar a la página”.** En Revit 2022+ el complemento elige un tamaño de papel estándar para que el zoom se respete (si usa “tamaño de lámina” + ajustar, Revit ignora el zoom). |
 
 ### PDF — Líneas ocultas
 

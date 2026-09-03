@@ -73,8 +73,20 @@ namespace GvrTools.Revit.Export.Pdf
                 string baseName = _namer.ReserveBaseName(sheet);
                 string expectedPath = Path.Combine(_folder, baseName + ".pdf");
 
-                using (PDFExportOptions options = PdfExportOptionsFactory.Build(_settings, baseName, ResolveOrientation(view)))
+                SheetSize sheetSize = view is ViewSheet viewSheet
+                    ? SheetSizeReader.Read(_document, viewSheet)
+                    : SheetSize.Unknown;
+
+                using (PDFExportOptions options = PdfExportOptionsFactory.Build(
+                    _settings, baseName, ResolveOrientation(view, sheetSize), sheetSize))
                 {
+                    if (!_settings.FitToPage)
+                    {
+                        _log.Info(
+                            $"PDF '{sheet.Label}': Zoom={_settings.ZoomPercentage}%, " +
+                            $"PaperFormat={options.PaperFormat}, size={sheetSize}.");
+                    }
+
                     bool exported = _document.Export(_folder, new List<ElementId> { sheet.Id }, options);
 
                     if (!exported)
@@ -101,18 +113,28 @@ namespace GvrTools.Revit.Export.Pdf
             }
 
             /// <summary>
-            /// Auto is right for sheets whose size Revit can work out on its own; measuring the
-            /// title block only pays off when the user asked us to respect each sheet's own size. A
-            /// standalone view has no title block to measure, so it always falls back to Auto.
+            /// Auto when Revit can size the page from the sheet; explicit Landscape/Portrait when
+            /// we force a named paper format (zoom / corner / fixed paper) so orientation matches
+            /// the title block.
             /// </summary>
-            private PageOrientationType ResolveOrientation(View view)
+            private PageOrientationType ResolveOrientation(View view, SheetSize size)
             {
-                if (!_settings.MatchSheetSize || !(view is ViewSheet sheet)) return PageOrientationType.Auto;
+                bool needsNamedPaper =
+                    !_settings.FitToPage
+                    || _settings.PaperPlacement == PdfPaperPlacement.OffsetFromCorner
+                    || !_settings.MatchSheetSize;
 
-                SheetSize size = SheetSizeReader.Read(_document, sheet);
-                if (!size.IsKnown) return PageOrientationType.Auto;
+                if (!needsNamedPaper)
+                {
+                    if (!_settings.MatchSheetSize || !(view is ViewSheet)) return PageOrientationType.Auto;
+                    if (!size.IsKnown) return PageOrientationType.Auto;
+                    return size.IsLandscape ? PageOrientationType.Landscape : PageOrientationType.Portrait;
+                }
 
-                return size.IsLandscape ? PageOrientationType.Landscape : PageOrientationType.Portrait;
+                if (size.IsKnown)
+                    return size.IsLandscape ? PageOrientationType.Landscape : PageOrientationType.Portrait;
+
+                return PageOrientationType.Auto;
             }
         }
     }

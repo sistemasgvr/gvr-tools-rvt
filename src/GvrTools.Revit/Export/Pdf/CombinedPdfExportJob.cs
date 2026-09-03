@@ -138,12 +138,34 @@ namespace GvrTools.Revit.Export.Pdf
             string fileName = BuildCombinedFileName();
             expectedPath = Path.Combine(_folder, fileName + ".pdf");
 
-            // Orientation is Auto rather than per-sheet size matching: Revit's Combine mode writes
-            // one paper setup for the whole set, it cannot vary per sheet the way separate-file
-            // exports can, so "usar el tamaño de cada lámina" does not apply here.
-            bool exported;
-            using (PDFExportOptions options = PdfExportOptionsFactory.Build(_settings, fileName, PageOrientationType.Auto))
+            // One paper setup for the whole set. Prefer the first resolvable sheet's size so Zoom
+            // / corner placement get a named ExportPaperFormat (Default would ignore them).
+            SheetSize representative = SheetSize.Unknown;
+            PageOrientationType orientation = PageOrientationType.Auto;
+            foreach (ElementId id in ids)
             {
+                if (!(_document.GetElement(id) is ViewSheet sheet)) continue;
+                representative = SheetSizeReader.Read(_document, sheet);
+                if (representative.IsKnown)
+                {
+                    orientation = representative.IsLandscape
+                        ? PageOrientationType.Landscape
+                        : PageOrientationType.Portrait;
+                    break;
+                }
+            }
+
+            bool exported;
+            using (PDFExportOptions options = PdfExportOptionsFactory.Build(
+                _settings, fileName, orientation, representative))
+            {
+                if (!_settings.FitToPage)
+                {
+                    _log.Info(
+                        $"PDF combinado: Zoom={_settings.ZoomPercentage}%, " +
+                        $"PaperFormat={options.PaperFormat}, size={representative}.");
+                }
+
                 try
                 {
                     exported = _document.Export(_folder, ids, options);

@@ -347,7 +347,7 @@
                                         <TextBlock Text="Ubicación en el papel" Style="{StaticResource Gvr.Text.Subtle}" FontWeight="SemiBold" Margin="0,0,0,8"/>
                                         <CheckBox Content="Usar el tamaño de cada lámina" Style="{StaticResource Gvr.CheckBox}"
                                                   IsChecked="{Binding PdfMatchSheetSize}" Margin="0,0,0,10"
-                                                  ToolTip="Cada PDF usa el tamaño real de esa lámina (A1, A0, etc. según el rótulo). Si lo desmarcas, todas salen en el mismo tamaño de papel."/>
+                                                  ToolTip="Activado: cada PDF usa el tamaño del rótulo de esa lámina. Desactivado: todas salen en el mismo papel fijo (ANSI D / 22×34 in en Revit 2022+; papel por defecto de la impresora en 2021)."/>
 
                                         <RadioButton GroupName="GvrPdfPlacement" Content="Centrado" Foreground="{StaticResource Gvr.Brush.Ink}"
                                                      IsChecked="{Binding IsPdfPaperPlacementCenter}" Margin="0,0,0,6"
@@ -365,7 +365,7 @@
                                                          ToolTip="Pega el dibujo a la esquina, sin dejar espacio."/>
                                             <RadioButton GroupName="GvrPdfCornerMode" Content="Límite de impresora" Foreground="{StaticResource Gvr.Brush.Ink}"
                                                          IsChecked="{Binding IsPdfCornerMarginPrinterLimit}" Margin="0,0,0,6"
-                                                         ToolTip="Deja el margen mínimo que exige la impresora (evita que se corte al imprimir en papel)."/>
+                                                         ToolTip="Deja un margen desde la esquina para no cortar al imprimir. En Revit 2021 usa el margen real de la impresora; en 2022+ aproxima ~0,25 pulg."/>
                                             <RadioButton GroupName="GvrPdfCornerMode" Content="Definido por el usuario" Foreground="{StaticResource Gvr.Brush.Ink}"
                                                          IsChecked="{Binding IsPdfCornerMarginUserDefined}" Margin="0,0,0,6"
                                                          ToolTip="Tú defines cuánto se desplaza desde la esquina (valores X e Y abajo)."/>
@@ -390,11 +390,11 @@
                                         <StackPanel Orientation="Horizontal">
                                             <RadioButton GroupName="GvrPdfZoom" Content="Zoom:" Foreground="{StaticResource Gvr.Brush.Ink}"
                                                          IsChecked="{Binding PdfFitToPage, Converter={StaticResource Gvr.InverseBool}}" VerticalAlignment="Center"
-                                                         ToolTip="Fija una escala manual. Si el papel es más chico que el dibujo, puede cortarse."/>
+                                                         ToolTip="Fija una escala manual (p. ej. 50 % = mitad del tamaño). Debe estar seleccionada esta opción, no 'Ajustar a la página'."/>
                                             <TextBox Width="52" Style="{StaticResource Gvr.TextBox}" Margin="6,0,0,0"
                                                      Text="{Binding PdfZoomPercentage, UpdateSourceTrigger=PropertyChanged}"
                                                      IsEnabled="{Binding PdfFitToPage, Converter={StaticResource Gvr.InverseBool}}"
-                                                     ToolTip="Porcentaje de escala. 100 % = tamaño real del dibujo."/>
+                                                     ToolTip="Porcentaje de escala. 100 % = tamaño real. Solo aplica si elegiste Zoom (no Ajustar a la página)."/>
                                             <TextBlock Text="%" Style="{StaticResource Gvr.Text.Label}" Margin="4,0,0,0" VerticalAlignment="Center"/>
                                         </StackPanel>
                                     </StackPanel>

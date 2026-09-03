@@ -312,7 +312,9 @@ namespace GvrTools.Revit.Export.Pdf
                 // PrintToFile stays true throughout: Revit rejects false for virtual printers
                 // (Adobe PDF, PDF24, most PDF drivers), which is exactly what we always use here.
                 _printManager.PrintToFile = true;
-                _printManager.CombinedFile = true;
+                // CombinedFile only applies to PrintRange.Select; with Current it is a no-op and
+                // some drivers behave oddly if left true, so keep it false on the per-sheet path.
+                _printManager.CombinedFile = false;
             }
 
             /// <summary>Configures paper, orientation, zoom and margins for one sheet or view.</summary>
@@ -326,9 +328,19 @@ namespace GvrTools.Revit.Export.Pdf
                 // and falls back to whatever paper the printer defaults to (same as a sheet whose
                 // size Revit couldn't read).
                 SheetSize size = view is ViewSheet sheet ? SheetSizeReader.Read(_document, sheet) : SheetSize.Unknown;
-                PaperSize matched = _settings.MatchSheetSize
-                    ? PaperSizeMatcher.FindBestMatch(_printManager.PaperSizes, _printer.Name, size)
-                    : null;
+                PaperSize matched = null;
+                if (_settings.MatchSheetSize)
+                {
+                    matched = PaperSizeMatcher.FindBestMatch(_printManager.PaperSizes, _printer.Name, size);
+                }
+                else
+                {
+                    // Same idea as native ANSI_D when MatchSheetSize is off: one fixed paper for the run.
+                    matched = PaperSizeMatcher.FindBestMatch(
+                        _printManager.PaperSizes,
+                        _printer.Name,
+                        new SheetSize(22.0, 34.0));
+                }
 
                 bool sizeApplied = false;
                 if (matched != null)
@@ -336,7 +348,11 @@ namespace GvrTools.Revit.Export.Pdf
                     try
                     {
                         parameters.PaperSize = matched;
-                        parameters.PageOrientation = size.IsLandscape
+                        // Match on: use sheet orientation. Match off: fixed ANSI D → landscape.
+                        bool landscape = _settings.MatchSheetSize
+                            ? (size.IsKnown && size.IsLandscape)
+                            : true;
+                        parameters.PageOrientation = landscape
                             ? PageOrientationType.Landscape
                             : PageOrientationType.Portrait;
                         sizeApplied = true;
@@ -348,7 +364,13 @@ namespace GvrTools.Revit.Export.Pdf
                 }
 
                 parameters.ZoomType = _settings.FitToPage ? ZoomType.FitToPage : ZoomType.Zoom;
-                if (!_settings.FitToPage) parameters.Zoom = _settings.ZoomPercentage;
+                if (!_settings.FitToPage)
+                {
+                    int zoom = _settings.ZoomPercentage;
+                    if (zoom < 1) zoom = 1;
+                    if (zoom > 999) zoom = 999;
+                    parameters.Zoom = zoom;
+                }
 
                 // MarginType may only be assigned while PaperPlacement is Margins; Revit throws if it
                 // is touched under Center, so each branch below only sets what applies to it.
@@ -394,11 +416,19 @@ namespace GvrTools.Revit.Export.Pdf
                     ? HiddenLineViewsType.RasterProcessing
                     : HiddenLineViewsType.VectorProcessing;
 
+                // Re-assign InSession after mutating PrintParameters so Apply() commits Zoom /
+                // paper / appearance (some Revit 2021 builds drop in-place edits otherwise).
+                setup.CurrentPrintSetting = setup.InSession;
+
                 string paper = sizeApplied
                     ? matched.Name
                     : _settings.MatchSheetSize ? "sin coincidencia" : "detección desactivada";
 
-                return $"impresora: {_printer.Name}, tamaño: {size}, papel: {paper}";
+                string zoomText = _settings.FitToPage
+                    ? "ajustar a página"
+                    : $"zoom {_settings.ZoomPercentage}%";
+
+                return $"impresora: {_printer.Name}, tamaño: {size}, papel: {paper}, {zoomText}";
             }
         }
     }
